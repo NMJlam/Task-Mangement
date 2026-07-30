@@ -1,0 +1,27 @@
+# Local development ONLY — not part of deployment. Production is Vercel + Neon.
+# This gives each developer a throwaway Postgres so migrations and reseeds never
+# touch a shared db or burn Neon's free-tier quota (RR3). See docs/local-setup.md.
+services:
+  postgres:
+    image: postgres:16
+    container_name: ctp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ctp
+      POSTGRES_PASSWORD: ctp
+      POSTGRES_DB: ctp
+    ports:
+      # Host port defaults to 5432 but is overridable: set POSTGRES_PORT in .env
+      # if you already run Postgres locally on 5432 (common). Keep DATABASE_URL's
+      # port in sync. See docs/local-setup.md.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ctp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ctp -d ctp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ctp-pgdata:

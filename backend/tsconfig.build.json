@@ -1,0 +1,17 @@
+{
+  "//": "Emit config for the Vercel/Node runtime. api/index.ts imports the",
+  "//2": "compiled dist/app.js — a REAL .js file, so Vercel's file tracer can",
+  "//3": "resolve it (it cannot remap a .js import onto .ts source). Dev + tests",
+  "//4": "still run from src via tsx/vitest; this only produces the deploy build.",
+  "//5": "paths:{} clears the base's @ctp/shared -> ../shared/src alias for the BUILD only. That alias pulls shared's source into this program and breaks rootDir (TS6059). At build time @ctp/shared must resolve from its compiled package (shared/dist, built first via build:packages) through node_modules. Dev/typecheck still use the source alias from the base config.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {}
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,14 @@
+{
+  "//": "Emit config for the Vercel/Node runtime. Dev + tests still read source",
+  "//2": "(frontend/vite alias, backend vitest alias); this produces the compiled",
+  "//3": "dist/ that shared's package.json main/types/exports point at.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

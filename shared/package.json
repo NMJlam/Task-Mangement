@@ -1,0 +1,22 @@
+{
+  "name": "@ctp/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//": "main/types/exports point at the COMPILED dist so the Node/Vercel runtime loads real .js. Dev + tests resolve @ctp/shared from source via aliases (frontend/vite.config.ts, backend/vitest.config.ts) and tsconfig `paths`, so no build is needed in dev. `npm run build` emits dist (see tsconfig.build.json).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  }
+}

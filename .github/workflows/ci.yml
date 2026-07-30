@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Runs on every PR and every push. No database: the unit/integration
+  # tests here do not touch Postgres. Any job that exercises request paths
+  # (httpDb / RR9) must instead point DATABASE_URL at the Neon dev branch — the
+  # Postgres service container below is only for the nodeDb() path.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  # E2E on every push and PR. Includes a Postgres service so migrate/seed and
+  # any nodeDb()-backed flows can run; the current Playwright specs (health +
+  # axe) don't need it, but it's wired for when integration e2e lands.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ctp
+          POSTGRES_PASSWORD: ctp
+          POSTGRES_DB: ctp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ctp -d ctp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ctp:ctp@localhost:5432/ctp
+      DATABASE_URL_POOLED: postgresql://ctp:ctp@localhost:5432/ctp
+      CRON_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run db:migrate && npm run db:seed
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

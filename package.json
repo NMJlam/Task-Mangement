@@ -1,0 +1,60 @@
+{
+  "name": "club-task-platform",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared"
+  ],
+  "//overrides:esbuild-kit": "drizzle-kit still lists the deprecated @esbuild-kit/esm-loader as a dep but no longer imports it (it uses tsx). Alias it — and thereby its child @esbuild-kit/core-utils — to tsx to drop both 'npm warn deprecated' lines. Unused at runtime, so this is tree hygiene only.",
+  "overrides": {
+    "@esbuild-kit/esm-loader": "npm:tsx@^4"
+  },
+  "scripts": {
+    "dev": "concurrently -n frontend,backend -c green,cyan \"npm:dev:frontend\" \"npm:dev:backend\"",
+    "dev:frontend": "npm run dev --workspace @ctp/frontend",
+    "dev:backend": "npm run dev --workspace @ctp/backend",
+    "build:packages": "npm run build --workspace @ctp/shared && npm run build --workspace @ctp/backend",
+    "build": "npm run build:packages && npm run build --workspace @ctp/frontend",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present && tsc -p api/tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:generate": "npm run db:generate --workspace @ctp/backend",
+    "db:migrate": "npm run db:migrate --workspace @ctp/backend",
+    "db:seed": "npm run db:seed --workspace @ctp/backend",
+    "db:studio": "npm run db:studio --workspace @ctp/backend",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "drizzle-orm": "^0.45.2",
+    "@eslint/js": "^9.37.0",
+    "@playwright/test": "^1.56.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.10.5",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.37.0",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^16.4.0",
+    "jsdom": "^27.0.0",
+    "prettier": "^3.6.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}

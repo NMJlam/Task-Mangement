@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+frontend/dist/
+*.tsbuildinfo
+
+# Env — commit only .env.example
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Test / E2E artifacts
+playwright-report/
+test-results/
+coverage/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.vercel
+.env*
