@@ -13,10 +13,10 @@ in committed code**. Deploys to Vercel + Neon; Docker Postgres is local-only.
 ```
 api/         Vercel serverless shim — ONE file (see rule below)
 frontend/    Vite + React 19 SPA. src/{components,components/ui,lib,hooks,routes}
-backend/     Express 4. src/{app.ts,middleware,routes,services,db,config}
+backend/     Express 4. src/{app.ts,middleware,routes,db,config}
 shared/      zod schemas + inferred types — imported by BOTH sides
 e2e/         Playwright specs (incl. axe scan)
-docs/        stack-versions.md, accessibility.md, local-setup.md
+docs/        setup.md, architecture.md, contributing.md, stack-versions.md, accessibility.md
 ```
 
 ## Structural rules (enforced, not by discipline)
@@ -34,7 +34,7 @@ docs/        stack-versions.md, accessibility.md, local-setup.md
 
 Assembled in app order: **`log → authenticate → authorise → validate → handler`**.
 `log` is global (`app.ts`); the other three are applied per-route (see
-`routes/example.ts`). `validate(schema, part)` takes a zod schema **from
+`routes/example/example.ts`). `validate(schema, part)` takes a zod schema **from
 `@ctp/shared`** and 422s with the shared `ApiError` shape. `app.ts` does not call
 `listen()` — `dev-server.ts`, Vitest, and `api/index.ts` all import the same app.
 
@@ -66,7 +66,11 @@ are keyed on the Google `sub` claim, not email. `db:seed` is idempotent.
 
 ## The one command
 
-`npm run verify` = `typecheck && lint && format:check && test`. This is what CI
-runs; run it before opening a PR. See `docs/local-setup.md` for the full command
-table and `docs/stack-versions.md` for versions and every deviation from the
-original setup brief.
+`npm run verify` = `typecheck && lint && format:check && test:unit &&
+test:integration && test:e2e` — the full suite (needs Docker Postgres up +
+Playwright browsers). Run it before opening a PR. CI runs the three test suites
+as **separate jobs** (`unit` / `integration` / `e2e`) so a red check names the
+bucket. For a fast, DB-free inner loop use `npm run test:unit`. See
+`docs/setup.md` for the full command table, `docs/contributing.md` for the
+testing tiers, and `docs/stack-versions.md` for versions and every deviation from
+the original setup brief.
