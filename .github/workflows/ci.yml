@@ -9,11 +9,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Runs on every PR and every push. No database: the unit/integration
-  # tests here do not touch Postgres. Any job that exercises request paths
-  # (httpDb / RR9) must instead point DATABASE_URL at the Neon dev branch — the
-  # Postgres service container below is only for the nodeDb() path.
-  verify:
+  # ── Unit bucket ──────────────────────────────────────────────────────────
+  # Static checks + DB-free unit/component tests. No database needed. A red
+  # "unit" check means typecheck/lint/format or a unit test broke.
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,11 +21,49 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run verify
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:unit
 
-  # E2E on every push and PR. Includes a Postgres service so migrate/seed and
-  # any nodeDb()-backed flows can run; the current Playwright specs (health +
-  # axe) don't need it, but it's wired for when integration e2e lands.
+  # ── Integration bucket ───────────────────────────────────────────────────
+  # DB-backed tests (supertest → Express app → Postgres) via getDb()/nodeDb().
+  # Runs migrate + seed first. A red "integration" check means an integration
+  # test broke — distinct from the unit and e2e buckets.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ctp
+          POSTGRES_PASSWORD: ctp
+          POSTGRES_DB: ctp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ctp -d ctp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ctp:ctp@localhost:5432/ctp
+      DATABASE_URL_POOLED: postgresql://ctp:ctp@localhost:5432/ctp
+      CRON_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate && npm run db:seed
+      - run: npm run test:integration
+
+  # ── E2E bucket ───────────────────────────────────────────────────────────
+  # Playwright (health render + axe scan). Includes Postgres so migrate/seed and
+  # any nodeDb()-backed flows can run. A red "e2e" check means a browser-level
+  # journey or the accessibility scan broke.
   e2e:
     runs-on: ubuntu-latest
     services:
