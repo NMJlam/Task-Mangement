@@ -1,5 +1,5 @@
 import path from "node:path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   // Resolve the shared workspace from source in tests, mirroring
@@ -14,5 +14,9 @@ export default defineConfig({
     name: "backend",
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Integration tests (*.integration.test.ts) are DB-backed and run via
+    // vitest.integration.config.ts (npm run test:integration), NOT in the
+    // DB-free unit run. See docs/contributing.md.
+    exclude: [...configDefaults.exclude, "src/**/*.integration.test.ts"],
   },
 });

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
-import { CRON_SECRET } from "../env.js";
+import { CRON_SECRET } from "../../env.js";
 
 export const cronRouter = Router();
 

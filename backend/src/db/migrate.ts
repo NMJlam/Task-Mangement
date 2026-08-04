@@ -7,9 +7,7 @@ import { Pool } from "pg";
 // driver — so this works against Docker Postgres and CI's service container.
 const url = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
 if (!url) {
-  throw new Error(
-    "DATABASE_URL(_POOLED) is not set. See docs/local-setup.md before running db:migrate.",
-  );
+  throw new Error("DATABASE_URL(_POOLED) is not set. See docs/setup.md before running db:migrate.");
 }
 
 const pool = new Pool({ connectionString: url });
