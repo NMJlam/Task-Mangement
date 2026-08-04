@@ -1,6 +1,6 @@
 import type { HealthResponse } from "@ctp/shared";
 import { Router } from "express";
-import { COMMIT_SHA } from "../env.js";
+import { COMMIT_SHA } from "../../env.js";
 
 export const healthRouter = Router();
 

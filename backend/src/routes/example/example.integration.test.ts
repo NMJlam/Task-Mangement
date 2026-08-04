@@ -1,0 +1,48 @@
+import { sql } from "drizzle-orm";
+import request from "supertest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import app from "../../app.js";
+import { nodeDb } from "../../db/client.js";
+import { auditLog } from "../../db/schema/index.js";
+
+/**
+ * DB-backed integration test: drives the real Express app (full middleware
+ * chain) with supertest against Docker Postgres. Isolation is a per-test
+ * TRUNCATE of ONLY `audit_log` — the append-only table this fixture route
+ * writes to — so the core seed (users/teams/events/tasks) is never disturbed
+ * and other tests / Drizzle Studio keep their data. See docs/contributing.md.
+ */
+describe("POST /api/example/audit (integration)", () => {
+  const db = nodeDb();
+
+  beforeEach(async () => {
+    await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
+  });
+
+  it("inserts a row and returns it (201)", async () => {
+    const res = await request(app)
+      .post("/api/example/audit")
+      .send({ action: "task.updated", entityType: "task" });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ ok: true, entry: { action: "task.updated" } });
+
+    const rows = await db.select().from(auditLog);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "task.updated", entityType: "task" });
+  });
+
+  it("rejects invalid input with the shared ApiError shape (422)", async () => {
+    const res = await request(app).post("/api/example/audit").send({ action: "" });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+
+    const rows = await db.select().from(auditLog);
+    expect(rows).toHaveLength(0);
+  });
+});
