@@ -83,7 +83,7 @@ Sprint-1 load test, provision **one free Neon dev branch** and point
 | `dev`                                                  | frontend + backend concurrently                             |
 | `dev:frontend` / `dev:backend`                         | run one side                                                |
 | `build`                                                | build shared + backend, then the frontend                   |
-| `typecheck`                                            | `tsc --noEmit` across all workspaces + `api/`               |
+| `typecheck`                                            | `build:packages`, then per-workspace `tsc` + `tsc -p api/tsconfig.json` |
 | `lint` / `lint:fix`                                    | ESLint (flat config)                                        |
 | `format` / `format:check`                              | Prettier                                                    |
 | `test:unit`                                            | Vitest unit/component tests — **no database needed**        |
