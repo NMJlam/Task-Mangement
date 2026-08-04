@@ -67,9 +67,35 @@ export function getDb(): ReturnType<typeof nodeDb> {
  * Migrations, seeding, local dev, and unit/integration tests. A standard `pg`
  * pool against the pooled/local connection string. This is the DEFAULT for
  * local work and points at Docker Postgres.
+ *
+ * The pool is created ONCE and cached for the process lifecycle, then reused by
+ * every caller — so getDb() on each /example/audit request shares one pool
+ * instead of opening fresh connections per call. Release it with closeNodeDb()
+ * on shutdown or in test teardown.
  */
-export function nodeDb() {
+let nodePool: Pool | undefined;
+let cachedNodeDb: ReturnType<typeof buildNodeDb> | undefined;
+
+function buildNodeDb() {
   const url = process.env.DATABASE_URL_POOLED || requireUrl("DATABASE_URL");
-  const pool = new Pool({ connectionString: url });
-  return drizzleNode(pool, { schema });
+  nodePool = new Pool({ connectionString: url });
+  return drizzleNode(nodePool, { schema });
+}
+
+export function nodeDb(): ReturnType<typeof buildNodeDb> {
+  cachedNodeDb ??= buildNodeDb();
+  return cachedNodeDb;
+}
+
+/**
+ * Close the cached node pool and release its connections. A no-op if nodeDb()
+ * was never called. Use it in test teardown (afterAll) and on graceful
+ * shutdown so the process isn't left holding open Postgres connections.
+ */
+export async function closeNodeDb(): Promise<void> {
+  if (nodePool) {
+    await nodePool.end();
+    nodePool = undefined;
+    cachedNodeDb = undefined;
+  }
 }

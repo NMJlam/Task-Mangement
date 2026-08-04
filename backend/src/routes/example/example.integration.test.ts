@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import app from "../../app.js";
-import { nodeDb } from "../../db/client.js";
+import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { auditLog } from "../../db/schema/index.js";
 
 /**
@@ -21,6 +21,7 @@ describe("POST /api/example/audit (integration)", () => {
 
   afterAll(async () => {
     await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
+    await closeNodeDb();
   });
 
   it("inserts a row and returns it (201)", async () => {
