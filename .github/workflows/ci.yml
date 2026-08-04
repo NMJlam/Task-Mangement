@@ -1,7 +1,6 @@
 name: CI
 
 on:
-  pull_request:
   push:
 
 concurrency:
@@ -32,9 +31,12 @@ jobs:
   # test broke — distinct from the unit and e2e buckets.
   integration:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
-        image: postgres:16
+        # postgres:16 (16.14) pinned to the multi-arch manifest index digest
+        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: ctp
           POSTGRES_PASSWORD: ctp
@@ -51,8 +53,8 @@ jobs:
       DATABASE_URL_POOLED: postgresql://ctp:ctp@localhost:5432/ctp
       CRON_SECRET: ci-secret
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm

@@ -78,19 +78,19 @@ Sprint-1 load test, provision **one free Neon dev branch** and point
 
 ## Scripts
 
-| Script                                                 | Does                                                        |
-| ------------------------------------------------------ | ----------------------------------------------------------- |
-| `dev`                                                  | frontend + backend concurrently                             |
-| `dev:frontend` / `dev:backend`                         | run one side                                                |
-| `build`                                                | build shared + backend, then the frontend                   |
+| Script                                                 | Does                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `dev`                                                  | frontend + backend concurrently                                         |
+| `dev:frontend` / `dev:backend`                         | run one side                                                            |
+| `build`                                                | build shared + backend, then the frontend                               |
 | `typecheck`                                            | `build:packages`, then per-workspace `tsc` + `tsc -p api/tsconfig.json` |
-| `lint` / `lint:fix`                                    | ESLint (flat config)                                        |
-| `format` / `format:check`                              | Prettier                                                    |
-| `test:unit`                                            | Vitest unit/component tests — **no database needed**        |
-| `test:integration`                                     | Vitest + supertest, DB-backed — **needs Docker Postgres**   |
-| `test:e2e`                                             | Playwright (health render + axe scan)                       |
-| `db:generate` / `db:migrate` / `db:seed` / `db:studio` | Drizzle: generate a migration / apply / seed / open Studio  |
-| **`verify`**                                           | typecheck + lint + format:check + **all three test suites** |
+| `lint` / `lint:fix`                                    | ESLint (flat config)                                                    |
+| `format` / `format:check`                              | Prettier                                                                |
+| `test:unit`                                            | Vitest unit/component tests — **no database needed**                    |
+| `test:integration`                                     | Vitest + supertest, DB-backed — **needs Docker Postgres**               |
+| `test:e2e`                                             | Playwright (health render + axe scan)                                   |
+| `db:generate` / `db:migrate` / `db:seed` / `db:studio` | Drizzle: generate a migration / apply / seed / open Studio              |
+| **`verify`**                                           | typecheck + lint + format:check + **all three test suites**             |
 
 > **`npm run verify` runs the entire suite** (including `test:integration` and
 > `test:e2e`), so it needs **Docker Postgres up** and Playwright browsers
