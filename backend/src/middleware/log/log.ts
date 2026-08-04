@@ -6,6 +6,8 @@ import type { NextFunction, Request, Response } from "express";
  */
 export function log(req: Request, _res: Response, next: NextFunction): void {
   // Minimal breadcrumb for now; replace with structured logging in Increment 1.
-  console.log(`${req.method} ${req.originalUrl}`);
+  // Log the pathname only — req.originalUrl carries the query string, which can
+  // hold tokens/emails. TODO(R11): allowlist-redact query keys in structured logs.
+  console.log(`${req.method} ${req.path}`);
   next();
 }
