@@ -24,7 +24,7 @@ This is enforced: a `.husky/commit-msg` hook runs `commitlint` and **rejects a
 non-conforming message** (hooks install automatically on `npm ci` via the
 `prepare` script).
 
-```
+```text
 <type>(<optional scope>): <subject>
 ```
 
@@ -43,14 +43,14 @@ requirement ID (`R7`, `US-21`) in the body if it helps traceability.
 
 ## Branches
 
-Name branches **`<student_identifer>/<short-description>`**:
+Name branches **`<student_identifier>/<short-description>`**:
 
-```
+```text
 smith0024/task-crud
 doe1234/fix-health-flake
 ```
 
-- `<student_identifer>` — the string before the "@" on your Monash email.
+- `<student_identifier>` — the string before the "@" on your Monash email.
 - `<short-description>` — kebab-case, a few words on the work.
 
 Branch off `main`; open a PR back into `main`. Direct pushes to `main` are

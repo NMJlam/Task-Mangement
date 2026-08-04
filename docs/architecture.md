@@ -9,7 +9,7 @@ the map to read before adding a feature. For running the app see
 A TypeScript monorepo (npm workspaces), `strict: true`, **no `any` in committed
 code**. Three runtime packages plus tests and docs:
 
-```
+```text
 api/         Vercel serverless shim — ONE file (api/index.ts)
 frontend/    Vite + React 19 SPA          src/{components,components/ui,lib,hooks,routes}
 backend/     Express 4 API                src/{app.ts,middleware,routes,db,config}
@@ -24,7 +24,7 @@ Postgres is local-only.
 
 ### Request lifecycle, end to end
 
-```
+```text
 browser (React SPA)
   │  fetch("/api/…")
   ▼
@@ -55,7 +55,7 @@ code paths between dev, test, and prod.
 
 ### `shared/` — the contract
 
-```
+```text
 shared/src/
   errors.ts            apiErrorSchema / ApiError — the one API error shape
   schemas/             ONE FOLDER PER SCHEMA — schema + its colocated unit test
@@ -72,7 +72,7 @@ single source of truth both sides depend on.
 
 ### `backend/` — the Express API
 
-```
+```text
 backend/src/
   app.ts               the configured app (no listen()); mounts middleware + routes
   dev-server.ts        local entry: imports app, calls listen() on :3001
@@ -103,7 +103,7 @@ backend/src/
 
 ### `frontend/` — the React SPA (MVVM)
 
-```
+```text
 frontend/src/
   main.tsx             app entry + router
   routes/              page components — declarative, no data-fetching logic
@@ -176,7 +176,7 @@ job runs it:
 
 ### What exists today (the reference for each kind)
 
-```
+```text
 shared/src/schemas/example-form/example-form.test.ts      unit        — a schema / type
 shared/src/schemas/audit-fixture/audit-fixture.test.ts    unit        — a schema / type
 backend/src/middleware/validate/validate.test.ts          unit        — a middleware in isolation
@@ -252,7 +252,7 @@ Postgres). Full guide, isolation rules, and copy-paste examples:
 
 The finished feature module:
 
-```
+```text
 backend/src/routes/tasks/
   tasks.ts                      the Router + handlers
   tasks.integration.test.ts     colocated endpoint test
