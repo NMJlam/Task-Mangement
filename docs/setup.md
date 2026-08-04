@@ -159,7 +159,7 @@ npx tsx -e "import {nodeDb} from './src/db/client.js'; import {auditLog} from '.
 ## Repo-owner checklist (GitHub / Vercel UI — can't be scripted here)
 
 - [ ] Push to a remote and set the default branch to `main`.
-- [ ] **Branch protection on `main`**: require 1 approving review, require the
+- [ ] **Branch protection on `main`**: require 2 approving reviews, require the
       `unit`, `integration`, and `e2e` CI checks to pass, no direct pushes.
 - [ ] Add repo **secrets/variables** for any CI job that hits request paths:
       `DATABASE_URL` → the Neon dev branch (not the CI Postgres service).

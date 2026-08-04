@@ -95,7 +95,7 @@ route`) — it mirrors the commit convention and reads well in the merge log.
 
 ### Review
 
-PRs need **2 approving review** and all CI checks green before merge. CI runs
+PRs need **2 approving reviews** and all CI checks green before merge. CI runs
 three buckets — see below — so a red check tells you exactly what broke.
 
 ## Testing
