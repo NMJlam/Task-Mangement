@@ -30,4 +30,3 @@ Full setup, scripts, and workflows: **[`docs/setup.md`](docs/setup.md)**.
 - Versions & deviations — [`docs/stack-versions.md`](docs/stack-versions.md)
 - Accessibility (R14) evidence — [`docs/accessibility.md`](docs/accessibility.md)
 - Agent/architecture conventions — [`CLAUDE.md`](CLAUDE.md)
-- Proposal — _TODO: link the team proposal document._
