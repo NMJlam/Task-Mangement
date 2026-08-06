@@ -161,8 +161,11 @@ npx tsx -e "import {nodeDb} from './src/db/client.js'; import {auditLog} from '.
 - [ ] Push to a remote and set the default branch to `main`.
 - [ ] **Branch protection on `main`**: require 2 approving reviews, require the
       `unit`, `integration`, and `e2e` CI checks to pass, no direct pushes.
-- [ ] Add repo **secrets/variables** for any CI job that hits request paths:
-      `DATABASE_URL` → the Neon dev branch (not the CI Postgres service).
+- [ ] **CI needs no database secret.** The `integration` and `e2e` jobs run
+      against the workflow's Postgres service container (`nodeDb()`/pg), so the
+      whole suite reproduces locally with `npm run verify` before anything is
+      pushed. CI never points at Neon — Neon is a production-only concern
+      (next bullet).
 - [ ] On Vercel: set `CRON_SECRET`, `DATABASE_URL`, Google OAuth vars; run a
       preview deploy and complete the checks in
       [`stack-versions.md`](stack-versions.md).
