@@ -84,7 +84,7 @@ backend/src/
     log/log.ts           request logging
     auth/                authN + authZ grouped (two halves of one concern)
       authenticate.ts      session → invite claim → app_user membership (401/403 fail-closed)
-      authorise.ts         tier and capability middleware factories
+      authorise.ts         tier middleware factory
     validate/            body/query validation — code + its colocated unit test
       validate.ts
       validate.test.ts
@@ -134,8 +134,9 @@ handler`**.
   parsed value on `res.locals.validated`.
 
 `authenticate` validates the Better Auth session, resolves `public.app_user`,
-and fails closed with 401/403. `authorise(minTier)` and `requireCapability(cap)`
-enforce the two RBAC axes after authentication.
+and fails closed with 401/403. `authorise(minTier)` enforces the tier axis after
+authentication; feature routes call the shared `can()` helper for discrete
+capabilities.
 
 ## Database
 

@@ -24,5 +24,7 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
-.vercel
-.env*
+
+# Local agent state
+.claude/
+skill-observations/
