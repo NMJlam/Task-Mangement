@@ -34,6 +34,7 @@ it("tells a signed-in account without membership that it needs an invite", () =>
     account: { id: "account" },
     isLoading: false,
     member: null,
+    needsInvite: true,
     signOut: vi.fn(),
   });
 
@@ -45,4 +46,22 @@ it("tells a signed-in account without membership that it needs an invite", () =>
 
   expect(screen.queryByText("secret")).not.toBeInTheDocument();
   expect(screen.getByText(/need a club invite/i)).toBeInTheDocument();
+});
+
+it("does not blame a server error on a missing invite", () => {
+  useAuth.mockReturnValue({
+    account: { id: "account" },
+    isLoading: false,
+    member: null,
+    needsInvite: false,
+    signOut: vi.fn(),
+  });
+
+  render(
+    <MemoryRouter>
+      <RequireAuth>secret</RequireAuth>
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByText(/unable to verify club membership/i)).toBeInTheDocument();
 });

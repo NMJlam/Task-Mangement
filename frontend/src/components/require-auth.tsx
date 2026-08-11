@@ -54,7 +54,7 @@ export function RequireAuth({
   minTier?: Tier;
   capability?: Capability;
 }) {
-  const { account, isLoading, member, signOut } = useAuth();
+  const { account, isLoading, member, needsInvite, signOut } = useAuth();
 
   if (isLoading) {
     return (
@@ -70,7 +70,11 @@ export function RequireAuth({
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-8">
         <p className="text-destructive">
-          {member ? "You do not have access." : "You need a club invite before you can join."}
+          {member
+            ? "You do not have access."
+            : needsInvite
+              ? "You need a club invite before you can join."
+              : "Unable to verify club membership."}
         </p>
         <Button variant="outline" onClick={() => void signOut()}>
           Sign out
