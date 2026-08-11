@@ -51,5 +51,6 @@ async function seedProduction(): Promise<void> {
   }
 }
 
-await (process.env.NODE_ENV === "production" ? seedProduction() : seedLocal());
+if (process.env.NODE_ENV !== "production") await seedLocal();
+if (process.env.NODE_ENV === "production" || process.env.FOUNDER_EMAIL) await seedProduction();
 await closeNodeDb();
