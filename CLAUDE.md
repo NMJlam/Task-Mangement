@@ -46,8 +46,9 @@ Two factories in `backend/src/db/client.ts`:
 - `httpDb()` (Neon HTTP) — request path in production (RR9) → Neon only; **throws**
   on a localhost URL.
 
-Never import the wrong one into a route. Schema lives in `src/db/schema/`; users
-are keyed on the Google `sub` claim, not email. `db:seed` is idempotent.
+Never import the wrong one into a route. Better Auth owns accounts in
+`auth.user`; `public.app_user` stores club membership and RBAC. `db:seed` is
+idempotent.
 
 ## Conventions
 

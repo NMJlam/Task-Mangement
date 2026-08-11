@@ -1,10 +1,20 @@
+import { can, type Capability, type Tier } from "@ctp/shared";
 import type { NextFunction, Request, Response } from "express";
 
-/**
- * Role/ownership checks, run after authenticate.
- * TODO(R3): enforce role- and team-scoped permissions; 403 on failure.
- * Stub passes through for now.
- */
-export function authorise(_req: Request, _res: Response, next: NextFunction): void {
-  next();
+function forbidden(res: Response): void {
+  res.status(403).json({ error: { code: "FORBIDDEN", message: "You do not have access." } });
+}
+
+export function authorise(minTier: Tier) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || req.user.tier < minTier) return forbidden(res);
+    next();
+  };
+}
+
+export function requireCapability(capability: Capability) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || !can(req.user.role, capability)) return forbidden(res);
+    next();
+  };
 }

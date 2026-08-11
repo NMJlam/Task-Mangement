@@ -1,4 +1,6 @@
+import { toNodeHandler } from "better-auth/node";
 import express from "express";
+import { auth } from "./auth/auth.js";
 import { log } from "./middleware/index.js";
 import { apiRouter } from "./routes/index.js";
 
@@ -13,8 +15,13 @@ import { apiRouter } from "./routes/index.js";
  */
 const app = express();
 
-app.use(express.json());
 app.use(log);
+
+// Better Auth owns every /api/auth/* route (Google sign-in, callback, session).
+// It MUST be mounted BEFORE express.json() so it can read the raw request body.
+app.all("/api/auth/*", toNodeHandler(auth));
+
+app.use(express.json());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VERCEL PATH NORMALISATION — verify before relying on it.

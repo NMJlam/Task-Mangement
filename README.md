@@ -16,6 +16,8 @@ nvm use                                  # Node 24 (.nvmrc)
 npm ci
 cp .env.example .env                     # then fill in DATABASE_URL (see setup)
 docker compose up -d                     # local Postgres
+docker compose exec -T postgres psql -U ctp -d ctp -c 'CREATE SCHEMA IF NOT EXISTS auth;'
+npx @better-auth/cli migrate --config backend/src/auth/auth.ts -y
 npm run db:migrate && npm run db:seed
 npm run dev                              # http://localhost:5173
 ```

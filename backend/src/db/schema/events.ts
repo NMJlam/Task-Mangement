@@ -3,7 +3,7 @@ import { teams } from "./teams.js";
 
 /** A calendar event for a team. TODO(R9): location, recurrence, attendees. */
 export const events = pgTable("events", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: uuid("id").primaryKey(),
   teamId: uuid("team_id")
     .notNull()
     .references(() => teams.id, { onDelete: "cascade" }),
