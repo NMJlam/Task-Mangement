@@ -19,9 +19,7 @@ nvm use                                  # Node 24 (.nvmrc)
 npm ci                                   # install all workspaces (+ husky hooks)
 cp .env.example .env                     # then fill in DATABASE_URL — see below
 docker compose up -d                     # throwaway Postgres (local dev only)
-docker compose exec -T postgres psql -U ctp -d ctp -c 'CREATE SCHEMA IF NOT EXISTS auth;'
-npx @better-auth/cli migrate --config backend/src/auth/auth.ts -y
-npm run db:migrate && npm run db:seed    # schema + reproducible seed data
+npm run db:migrate && npm run db:seed    # auth/app schemas + reproducible seed data
 ```
 
 Then start both dev servers:
@@ -91,7 +89,7 @@ Sprint-1 load test, provision **one free Neon dev branch** and point
 | `test:unit`                                            | Vitest unit/component tests — **no database needed**                    |
 | `test:integration`                                     | Vitest + supertest, DB-backed — **needs Docker Postgres**               |
 | `test:e2e`                                             | Playwright (health render + axe scan)                                   |
-| `db:generate` / `db:migrate` / `db:seed` / `db:studio` | Drizzle: generate a migration / apply / seed / open Studio              |
+| `db:generate` / `db:migrate` / `db:seed` / `db:studio` | Generate / migrate auth + app schemas / seed / open Drizzle Studio      |
 | **`verify`**                                           | typecheck + lint + format:check + **all three test suites**             |
 
 > **`npm run verify` runs the entire suite** (including `test:integration` and

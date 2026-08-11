@@ -1,7 +1,9 @@
 import "../config/load-env.js";
+import { getMigrations } from "better-auth/db/migration";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { auth, authDatabase } from "../auth/auth.js";
 
 // Migrations always run through the pg (nodeDb) path — never the Neon HTTP
 // driver — so this works against Docker Postgres and CI's service container.
@@ -13,7 +15,13 @@ if (!url) {
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool);
 
-await migrate(db, { migrationsFolder: "drizzle" });
-await pool.end();
+try {
+  await pool.query("CREATE SCHEMA IF NOT EXISTS auth");
+  const { runMigrations } = await getMigrations(auth.options);
+  await runMigrations();
+  await migrate(db, { migrationsFolder: "drizzle" });
+} finally {
+  await Promise.all([authDatabase.end(), pool.end()]);
+}
 
 console.log("✅ migrations applied");
