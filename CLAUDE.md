@@ -47,8 +47,8 @@ Two factories in `backend/src/db/client.ts`:
   on a localhost URL.
 
 Never import the wrong one into a route. Better Auth owns accounts in
-`auth.user`; `public.app_user` stores club membership and RBAC. `db:seed` is
-idempotent.
+`auth.user`; `public.app_user` stores invite-gated club membership and RBAC.
+Accounts may exist without membership. `db:seed` is idempotent.
 
 ## Conventions
 

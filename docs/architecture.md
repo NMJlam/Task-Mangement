@@ -77,13 +77,13 @@ backend/src/
   app.ts               the configured app (no listen()); mounts middleware + routes
   dev-server.ts        local entry: imports app, calls listen() on :3001
   env.ts               typed runtime/auth environment access
-  auth/auth.ts         self-hosted Better Auth + invite-only account hook
+  auth/auth.ts         self-hosted Better Auth account/session configuration
   config/load-env.ts   resolves the repo-root .env deterministically
   middleware/          ONE FOLDER PER CONCERN; index.ts is the barrel
     index.ts             re-exports the chain (log → authenticate → authorise → validate)
     log/log.ts           request logging
     auth/                authN + authZ grouped (two halves of one concern)
-      authenticate.ts      session → app_user membership (401/403 fail-closed)
+      authenticate.ts      session → invite claim → app_user membership (401/403 fail-closed)
       authorise.ts         tier and capability middleware factories
     validate/            body/query validation — code + its colocated unit test
       validate.ts

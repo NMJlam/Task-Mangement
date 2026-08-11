@@ -1,8 +1,9 @@
 import { fromNodeHeaders } from "better-auth/node";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { auth } from "../../auth/auth.js";
 import { getDb } from "../../db/client.js";
+import { newId } from "../../db/id.js";
 import { appUsers } from "../../db/schema/index.js";
 
 /**
@@ -18,11 +19,33 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     res.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Sign-in required." } });
     return;
   }
-  const [membership] = await getDb()
-    .select()
-    .from(appUsers)
-    .where(eq(appUsers.authUserId, session.user.id))
-    .limit(1);
+  const db = getDb();
+  const findMembership = () =>
+    db.select().from(appUsers).where(eq(appUsers.authUserId, session.user.id)).limit(1);
+  let [membership] = await findMembership();
+  if (!membership && session.user.emailVerified) {
+    await db.execute(sql`
+      WITH accepted AS (
+        UPDATE "invite"
+        SET "accepted_at" = now()
+        WHERE "id" = (
+          SELECT "id" FROM "invite"
+          WHERE "email" = ${session.user.email.toLowerCase()}
+            AND "accepted_at" IS NULL
+            AND "revoked_at" IS NULL
+            AND "expires_at" > now()
+          ORDER BY "expires_at" DESC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING "role"
+      )
+      INSERT INTO "app_user" ("id", "auth_user_id", "role")
+      SELECT ${newId()}::uuid, ${session.user.id}, "role" FROM accepted
+      ON CONFLICT ("auth_user_id") DO NOTHING
+    `);
+    [membership] = await findMembership();
+  }
   if (!membership) {
     res
       .status(403)
