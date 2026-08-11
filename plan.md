@@ -1,4 +1,4 @@
-# Auth + RBAC — Implementation Plan
+# Auth + RBAC (R2) — Implementation Plan
 
 Google OAuth (Better Auth, self-hosted in Express) + tier/capability RBAC for the
 Club/Committee Task Platform. Built on the **existing Express + Vite** stack — not

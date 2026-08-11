@@ -23,14 +23,18 @@ function SelfDemotion({ member }: { member: AuthUser }) {
   const [error, setError] = useState(false);
 
   async function demote() {
-    const response = await fetch(`/api/members/${member.id}/role`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role: "officer" }),
-    });
-    if (!response.ok) return setError(true);
-    window.location.reload();
+    try {
+      const response = await fetch(`/api/members/${member.id}/role`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role: "officer" }),
+      });
+      if (!response.ok) return setError(true);
+      window.location.reload();
+    } catch {
+      setError(true);
+    }
   }
 
   return (
