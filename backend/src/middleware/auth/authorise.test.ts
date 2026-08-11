@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { describe, expect, it, vi } from "vitest";
-import { authorise, requireCapability } from "./authorise.js";
+import { authorise } from "./authorise.js";
 
 function response() {
   const res = {} as Response & { statusCode?: number };
@@ -19,17 +19,6 @@ describe("authorisation", () => {
     const next = vi.fn();
 
     authorise(1)(req, res, next);
-
-    expect(res.statusCode).toBe(403);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it("checks role capabilities", () => {
-    const req = { user: { role: "marketing_director" } } as Request;
-    const res = response();
-    const next = vi.fn();
-
-    requireCapability("member:role-change")(req, res, next);
 
     expect(res.statusCode).toBe(403);
     expect(next).not.toHaveBeenCalled();

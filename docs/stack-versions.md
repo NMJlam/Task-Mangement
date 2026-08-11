@@ -26,9 +26,7 @@ the setup instructions and why. Update this file when you bump a major version.
 | react-hook-form          | 7.83.0  |                                        |
 | @hookform/resolvers      | 5.5.7   |                                        |
 | radix-ui                 | 1.6.7   | shadcn now uses the unified package.   |
-| react-day-picker         | 10.0.1  | shadcn calendar dep.                   |
 | sonner                   | 2.0.7   | toasts.                                |
-| next-themes              | 0.4.6   | pulled in by shadcn sonner (unused).   |
 | lucide-react             | 0.545.0 | icons.                                 |
 | vitest                   | 3.2.7   |                                        |
 | jsdom                    | 27.4.0  | frontend test env.                     |

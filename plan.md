@@ -51,7 +51,7 @@ Next.js. Companion diagram: `docs/auth-rbac-architecture.drawio`.
 
 - [x] Rewrite `backend/src/middleware/auth/authenticate.ts` — `getSession`; 401 if none; look up `app_user` by `auth_user_id = session.user.id`; **403 if none** (fail closed); set `req.user = { id: app_user.id, email, role, tier }`.
 - [x] Rewrite `backend/src/middleware/auth/authorise.ts` — `authorise(minTier: 0|1|2)` factory → 403 when `req.user.tier < minTier`.
-- [x] Add `requireCapability(cap)` sibling (thin wrapper over `can`) — used as features land.
+- [x] Feature routes call shared `can()` for capability checks.
 - [x] `routes/me/me.ts` — `MeResponse` now carries `role` + `tier`.
 
 ## Phase 4 — Role-change endpoint (the "change roles per endpoint" ask)

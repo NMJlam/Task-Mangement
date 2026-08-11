@@ -16,8 +16,6 @@ export function useAuth() {
     account,
     member: me.status === "ok" ? me.user : null,
     needsInvite: me.status === "no_membership",
-    role: me.status === "ok" ? me.user.role : null,
-    tier: me.status === "ok" ? me.user.tier : null,
     /** Redirects to Google, then back to the app root once signed in. */
     signInWithGoogle: () =>
       authClient.signIn.social({
