@@ -28,3 +28,21 @@ it("hides capability-gated UI from roles without the capability", () => {
   expect(screen.queryByText("secret")).not.toBeInTheDocument();
   expect(screen.getByText(/do not have access/i)).toBeInTheDocument();
 });
+
+it("tells a signed-in account without membership that it needs an invite", () => {
+  useAuth.mockReturnValue({
+    account: { id: "account" },
+    isLoading: false,
+    member: null,
+    signOut: vi.fn(),
+  });
+
+  render(
+    <MemoryRouter>
+      <RequireAuth>secret</RequireAuth>
+    </MemoryRouter>,
+  );
+
+  expect(screen.queryByText("secret")).not.toBeInTheDocument();
+  expect(screen.getByText(/need a club invite/i)).toBeInTheDocument();
+});

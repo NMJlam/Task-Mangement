@@ -69,7 +69,9 @@ export function RequireAuth({
   if (!member || member.tier < minTier || (capability && !can(member.role, capability))) {
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">You do not have access.</p>
+        <p className="text-destructive">
+          {member ? "You do not have access." : "You need a club invite before you can join."}
+        </p>
         <Button variant="outline" onClick={() => void signOut()}>
           Sign out
         </Button>

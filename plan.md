@@ -14,7 +14,7 @@ Next.js. Companion diagram: `docs/auth-rbac-architecture.drawio`.
 - **6 roles → 3 tiers** via a STORED generated column. Roles are a code-defined enum in `shared`; DB stores `text` + `CHECK` (no `pgEnum`, no roles table).
 - **Fail closed:** no session → 401; session but no `app_user` → 403.
 - **Membership-management guard** (invite + role-change, `authorise(1)`): actor tier ≥ 1; grant only role at tier ≤ own; act only on target at current tier ≤ own; **self-demote allowed**; **vacancy guard** — a change dropping any role above `officer` to zero holders is rejected (promote a successor first).
-- **Bootstrap:** local seed = test committee; prod = one seeded `president` `invite`, then invite-only. No `invited_by` column.
+- **Bootstrap:** account creation is open; club membership requires a live invite. Local seed = test committee; prod = one seeded `president` invite. No `invited_by` column.
 - **IDs:** app-generated UUIDv7 via one `newId()`; no `defaultRandom()`/`gen_random_uuid()`.
 
 ## Watch-outs (design corners that bite if ignored)
@@ -45,7 +45,7 @@ Next.js. Companion diagram: `docs/auth-rbac-architecture.drawio`.
 ## Phase 2 — Better Auth
 
 - [x] `auth.ts` — no change needed for role (role lives in `app_user`, not Better Auth). Confirm `app.ts` mounts `/api/auth/*` (already wired).
-- [x] Invite `user.create.before` hook is **Phase 5** (prod gate), not here.
+- [x] Account creation remains open; membership claiming is **Phase 5**.
 
 ## Phase 3 — Middleware
 
@@ -67,7 +67,7 @@ Next.js. Companion diagram: `docs/auth-rbac-architecture.drawio`.
 
 - [x] `schema/invite.ts` (id, email lowercased, role, expires_at, accepted_at, revoked_at; derived status; no unique on email).
 - [x] `POST /api/invites` — `authorise(1)` + grant-tier ≤ actor tier cap.
-- [x] Better Auth `user.create.before` hook — match a live invite on `emailVerified` email; else throw (no account created).
+- [x] `authenticate` claims a matching live invite for a verified account; without one the account remains outside the club.
 - [x] Prod seed: one `president` invite for the founder's email.
 
 ## Phase 6 — Frontend surface
