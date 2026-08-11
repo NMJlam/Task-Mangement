@@ -15,14 +15,19 @@ import {
  *
  * Google is the only sign-in method. Better Auth owns its own tables
  * (user/session/account/verification) in the SAME Postgres the app uses — Docker
- * locally, Neon in prod. These are managed by Better Auth's own CLI, not the
- * Drizzle schema/`db:migrate`; create them with `npx @better-auth/cli migrate`.
+ * locally, Neon in prod. `db:migrate` runs Better Auth's migration API before
+ * Drizzle adds application tables and cross-schema foreign keys.
  *
  * TODO(R2): on Vercel serverless against Neon, swap this `pg.Pool` for the
  * Neon serverless driver so we don't hold long-lived pooled connections (RR9).
  */
+export const authDatabase = new Pool({
+  connectionString: DATABASE_URL,
+  options: "-c search_path=auth",
+});
+
 export const auth = betterAuth({
-  database: new Pool({ connectionString: DATABASE_URL, options: "-c search_path=auth" }),
+  database: authDatabase,
   baseURL: BETTER_AUTH_URL,
   secret: BETTER_AUTH_SECRET,
   // The browser reaches these routes at BETTER_AUTH_URL/api/auth/* (via the Vite
