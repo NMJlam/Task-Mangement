@@ -26,6 +26,10 @@ export const authDatabase = new Pool({
   options: "-c search_path=auth",
 });
 
+// Idle-client errors emit on the pool; without a listener the 'error' event is
+// unhandled and crashes the process. Log and let pg discard the dead client.
+authDatabase.on("error", (err) => console.error("auth pool error", err));
+
 export const auth = betterAuth({
   database: authDatabase,
   baseURL: BETTER_AUTH_URL,

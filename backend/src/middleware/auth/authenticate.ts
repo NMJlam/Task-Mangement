@@ -14,17 +14,18 @@ import { appUsers } from "../../db/schema/index.js";
  * cookie. 401s when there is no valid session.
  */
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-  if (!session?.user) {
-    res.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Sign-in required." } });
-    return;
-  }
-  const db = getDb();
-  const findMembership = () =>
-    db.select().from(appUsers).where(eq(appUsers.authUserId, session.user.id)).limit(1);
-  let [membership] = await findMembership();
-  if (!membership && session.user.emailVerified) {
-    await db.execute(sql`
+  try {
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    if (!session?.user) {
+      res.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Sign-in required." } });
+      return;
+    }
+    const db = getDb();
+    const findMembership = () =>
+      db.select().from(appUsers).where(eq(appUsers.authUserId, session.user.id)).limit(1);
+    let [membership] = await findMembership();
+    if (!membership && session.user.emailVerified) {
+      await db.execute(sql`
       WITH accepted AS (
         UPDATE "invite"
         SET "accepted_at" = now()
@@ -44,19 +45,22 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       SELECT ${newId()}::uuid, ${session.user.id}, "role" FROM accepted
       ON CONFLICT ("auth_user_id") DO NOTHING
     `);
-    [membership] = await findMembership();
+      [membership] = await findMembership();
+    }
+    if (!membership) {
+      res
+        .status(403)
+        .json({ error: { code: "NO_MEMBERSHIP", message: "Club membership required." } });
+      return;
+    }
+    req.user = {
+      id: membership.id,
+      email: session.user.email,
+      role: membership.role,
+      tier: membership.tier,
+    };
+    next();
+  } catch (error) {
+    next(error);
   }
-  if (!membership) {
-    res
-      .status(403)
-      .json({ error: { code: "NO_MEMBERSHIP", message: "Club membership required." } });
-    return;
-  }
-  req.user = {
-    id: membership.id,
-    email: session.user.email,
-    role: membership.role,
-    tier: membership.tier,
-  };
-  next();
 }

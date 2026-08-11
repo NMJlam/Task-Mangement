@@ -31,6 +31,8 @@ describe("GET /api/me", () => {
 
   beforeEach(async () => {
     getSession.mockReset();
+    // app_user rows created by these tests are removed via the
+    // app_user_auth_user_id_auth_user_id_fk ON DELETE CASCADE when the auth user goes.
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-me-%'`);
     await db.execute(sql`DELETE FROM ${invites} WHERE ${invites.email} LIKE 'test-me-%'`);
   });
