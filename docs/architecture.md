@@ -76,14 +76,15 @@ single source of truth both sides depend on.
 backend/src/
   app.ts               the configured app (no listen()); mounts middleware + routes
   dev-server.ts        local entry: imports app, calls listen() on :3001
-  env.ts               minimal typed env access (COMMIT_SHA, CRON_SECRET, PORT)
+  env.ts               typed runtime/auth environment access
+  auth/auth.ts         self-hosted Better Auth + invite-only account hook
   config/load-env.ts   resolves the repo-root .env deterministically
   middleware/          ONE FOLDER PER CONCERN; index.ts is the barrel
     index.ts             re-exports the chain (log → authenticate → authorise → validate)
     log/log.ts           request logging
     auth/                authN + authZ grouped (two halves of one concern)
-      authenticate.ts      who are you (session) — TODO(R2)
-      authorise.ts         what may you do (roles) — TODO(R3)
+      authenticate.ts      session → app_user membership (401/403 fail-closed)
+      authorise.ts         tier and capability middleware factories
     validate/            body/query validation — code + its colocated unit test
       validate.ts
       validate.test.ts
@@ -93,6 +94,9 @@ backend/src/
       example.ts           the Router + handlers
       example.integration.test.ts   colocated endpoint test
     health/health.ts     GET /api/health
+    me/me.ts             GET /api/me membership identity
+    members/members.ts   guarded role changes
+    invites/invites.ts   invite creation
     cron/cron.ts         cron endpoints (secret-guarded)
   db/
     client.ts          nodeDb() / httpDb() / getDb() factories
@@ -129,9 +133,9 @@ handler`**.
   **422** with the shared `ApiError` shape on failure; on success it puts the
   parsed value on `res.locals.validated`.
 
-> `authenticate` and `authorise` are currently **pass-through stubs**
-> (`TODO(R2)` / `TODO(R3)`) — they call `next()` so the chain is wired but not
-> yet enforcing. Real session + role checks land in Increment 1.
+`authenticate` validates the Better Auth session, resolves `public.app_user`,
+and fails closed with 401/403. `authorise(minTier)` and `requireCapability(cap)`
+enforce the two RBAC axes after authentication.
 
 ## Database
 
@@ -145,8 +149,9 @@ Two drivers plus a selector, all in `backend/src/db/client.ts`:
 
 Route handlers call **`getDb()`** so a single code path runs against Docker in
 dev/tests and Neon in production; the "never import the wrong driver" rule is
-enforced in that one function. Schema lives in `db/schema/`; **users are keyed on
-the Google `sub` claim, not email**. `db:seed` is idempotent.
+enforced in that one function. Better Auth owns accounts in `auth.user`; club
+membership and RBAC live in `public.app_user`, linked by the auth user id.
+`db:seed` is idempotent.
 
 ## Testing — where tests live & what goes where
 
@@ -298,7 +303,7 @@ component or a route.
 
 New file in `backend/src/db/schema/`, export it from `schema/index.ts`, then
 `npm run db:generate && npm run db:migrate`. If it needs seed data, extend
-`seed.ts` (keep it idempotent — fixed UUIDs + `onConflictDoNothing`).
+`seed.ts` (keep it idempotent with stable conflict targets).
 
 ## Stub markers
 

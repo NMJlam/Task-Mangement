@@ -41,6 +41,13 @@ export default tseslint.config(
           groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.property.name='defaultRandom']",
+          message: "Generate UUIDv7 IDs with backend/src/db/id.ts newId().",
+        },
+      ],
     },
   },
 

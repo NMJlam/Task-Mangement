@@ -1,6 +1,7 @@
 import { auditFixtureSchema, exampleFormSchema, type AuditFixture } from "@ctp/shared";
 import { Router } from "express";
 import { getDb } from "../../db/client.js";
+import { newId } from "../../db/id.js";
 import { auditLog } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 
@@ -17,7 +18,7 @@ export const exampleRouter = Router();
 exampleRouter.post(
   "/example",
   authenticate,
-  authorise,
+  authorise(0),
   validate(exampleFormSchema, "body"),
   (_req, res) => {
     res.status(200).json({ ok: true, received: res.locals.validated });
@@ -35,7 +36,7 @@ exampleRouter.post(
 exampleRouter.post(
   "/example/audit",
   authenticate,
-  authorise,
+  authorise(0),
   validate(auditFixtureSchema, "body"),
   async (_req, res) => {
     const input = res.locals.validated as AuditFixture;
@@ -43,6 +44,7 @@ exampleRouter.post(
     const [row] = await db
       .insert(auditLog)
       .values({
+        id: newId(),
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId,

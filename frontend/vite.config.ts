@@ -10,6 +10,9 @@ const root = import.meta.dirname;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Env lives in the monorepo-root .env (shared with the backend), not frontend/.
+  // Without this, Vite only reads frontend/.env and VITE_* vars come back undefined.
+  envDir: path.resolve(root, ".."),
   resolve: {
     alias: {
       // shadcn + app imports: "@/..." → frontend/src/...

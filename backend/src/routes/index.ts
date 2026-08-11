@@ -2,6 +2,9 @@ import { Router } from "express";
 import { cronRouter } from "./cron/cron.js";
 import { exampleRouter } from "./example/example.js";
 import { healthRouter } from "./health/health.js";
+import { invitesRouter } from "./invites/invites.js";
+import { meRouter } from "./me/me.js";
+import { membersRouter } from "./members/members.js";
 
 /**
  * All routes, mounted under /api by app.ts.
@@ -12,6 +15,9 @@ import { healthRouter } from "./health/health.js";
 export const apiRouter = Router();
 
 apiRouter.use(healthRouter);
+apiRouter.use(meRouter);
+apiRouter.use(membersRouter);
+apiRouter.use(invitesRouter);
 // Mounted under a path prefix so the cron-secret guard is scoped to /api/cron/*.
 apiRouter.use("/cron", cronRouter);
 apiRouter.use(exampleRouter);

@@ -1,8 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// E2E harness. `npm run dev` starts both frontend and backend; the health page
-// and the axe scan only need the frontend (the /api/health fetch degrades
-// gracefully if the backend is down), so no database is required.
+// E2E harness. Public login/redirect checks need no OAuth account.
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,

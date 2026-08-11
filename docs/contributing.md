@@ -173,8 +173,7 @@ import { auditLog } from "../../db/schema/index.js";
 
 describe("POST /api/example/audit (integration)", () => {
   const db = nodeDb();
-  // Isolate by truncating ONLY the table this route writes to, so the core
-  // seed (users/teams/events/tasks) stays intact for other tests / Studio.
+  // Isolate by truncating ONLY the table this route writes to.
   beforeEach(async () => {
     await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
   });
@@ -189,9 +188,8 @@ describe("POST /api/example/audit (integration)", () => {
 });
 ```
 
-**Isolation rule:** truncate only the table(s) your test writes to, in
-`beforeEach`. Never truncate the core seeded tables — other tests and Drizzle
-Studio depend on them.
+**Isolation rule:** clean only the rows or tables your test writes. Never truncate
+shared seed tables — other tests and Drizzle Studio may depend on them.
 
 > **These tests exercise the `pg`/`nodeDb` driver, not the Neon HTTP driver that
 > ships to production.** Drizzle presents the same query API for both, so CRUD is

@@ -1,19 +1,37 @@
 import { sql } from "drizzle-orm";
 import request from "supertest";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
-import { auditLog } from "../../db/schema/index.js";
+import { newId } from "../../db/id.js";
+import { appUsers, auditLog } from "../../db/schema/index.js";
+
+const getSession = vi.hoisted(() => vi.fn());
+vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
 
 /**
  * DB-backed integration test: drives the real Express app (full middleware
  * chain) with supertest against Docker Postgres. Isolation is a per-test
  * TRUNCATE of ONLY `audit_log` — the append-only table this fixture route
- * writes to — so the core seed (users/teams/events/tasks) is never disturbed
- * and other tests / Drizzle Studio keep their data. See docs/contributing.md.
+ * writes to, so other tests and Drizzle Studio keep their data. See
+ * docs/contributing.md.
  */
 describe("POST /api/example/audit (integration)", () => {
   const db = nodeDb();
+  const authUserId = "test-audit-member";
+
+  beforeAll(async () => {
+    await db.execute(sql`
+      INSERT INTO auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      VALUES (${authUserId}, 'Audit Member', 'audit@example.com', true, now(), now())
+      ON CONFLICT (id) DO NOTHING
+    `);
+    await db
+      .insert(appUsers)
+      .values({ id: newId(), authUserId, role: "officer" })
+      .onConflictDoNothing({ target: appUsers.authUserId });
+    getSession.mockResolvedValue({ user: { id: authUserId, email: "audit@example.com" } });
+  });
 
   beforeEach(async () => {
     await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
@@ -21,6 +39,7 @@ describe("POST /api/example/audit (integration)", () => {
 
   afterAll(async () => {
     await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
+    await db.execute(sql`DELETE FROM auth."user" WHERE id = ${authUserId}`);
     await closeNodeDb();
   });
 

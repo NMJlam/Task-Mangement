@@ -12,13 +12,15 @@ it day to day. For architecture and "where does this code go", see
 - **Docker** — for the local Postgres container. Local dev only; production is
   Neon.
 
-## Fresh clone — five commands
+## Fresh clone
 
 ```bash
 nvm use                                  # Node 24 (.nvmrc)
 npm ci                                   # install all workspaces (+ husky hooks)
 cp .env.example .env                     # then fill in DATABASE_URL — see below
 docker compose up -d                     # throwaway Postgres (local dev only)
+docker compose exec -T postgres psql -U ctp -d ctp -c 'CREATE SCHEMA IF NOT EXISTS auth;'
+npx @better-auth/cli migrate --config backend/src/auth/auth.ts -y
 npm run db:migrate && npm run db:seed    # schema + reproducible seed data
 ```
 
@@ -119,8 +121,7 @@ npm run db:migrate          # applies it to your local Postgres
 npm run db:seed             # idempotent — safe to re-run
 ```
 
-`db:seed` upserts on fixed UUIDs, so counts stay at **5 users / 3 teams / 6
-events / 30 tasks** no matter how often you run it.
+`db:seed` creates one membership for each of the six roles and is safe to run repeatedly.
 
 ### Browse the database — Drizzle Studio
 
