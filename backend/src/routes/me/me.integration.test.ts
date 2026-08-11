@@ -12,6 +12,23 @@ vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.
 describe("GET /api/me", () => {
   const db = nodeDb();
 
+  async function invitedAccount(name: string) {
+    const authUserId = `test-me-${name}`;
+    const email = `test-me-${name}@example.com`;
+    await db.execute(sql`
+      INSERT INTO auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      VALUES (${authUserId}, 'Invited Member', ${email}, true, now(), now())
+    `);
+    await db.insert(invites).values({
+      id: newId(),
+      email,
+      role: "marketing_director",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    getSession.mockResolvedValue({ user: { id: authUserId, email, emailVerified: true } });
+    return { authUserId, email };
+  }
+
   beforeEach(async () => {
     getSession.mockReset();
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-me-%'`);
@@ -35,21 +52,7 @@ describe("GET /api/me", () => {
   });
 
   it("joins an account to the club when it has a live invite", async () => {
-    const authUserId = "test-me-invited";
-    const email = "test-me-invited@example.com";
-    await db.execute(sql`
-      INSERT INTO auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
-      VALUES (${authUserId}, 'Invited Member', ${email}, true, now(), now())
-    `);
-    await db.insert(invites).values({
-      id: newId(),
-      email,
-      role: "marketing_director",
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-    getSession.mockResolvedValue({
-      user: { id: authUserId, email, emailVerified: true },
-    });
+    const { email } = await invitedAccount("invited");
 
     const response = await request(app).get("/api/me");
 
@@ -58,6 +61,17 @@ describe("GET /api/me", () => {
     expect(
       (await db.select().from(invites).where(eq(invites.email, email)))[0]?.acceptedAt,
     ).not.toBeNull();
+  });
+
+  it("joins concurrent requests with one invite", async () => {
+    const { authUserId } = await invitedAccount("concurrent");
+
+    const responses = await Promise.all([request(app).get("/api/me"), request(app).get("/api/me")]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    expect(
+      await db.select().from(appUsers).where(eq(appUsers.authUserId, authUserId)),
+    ).toHaveLength(1);
   });
 
   it("returns the linked membership", async () => {

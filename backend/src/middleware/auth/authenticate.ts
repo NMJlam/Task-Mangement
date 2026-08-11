@@ -36,7 +36,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
             AND "expires_at" > now()
           ORDER BY "expires_at" DESC
           LIMIT 1
-          FOR UPDATE SKIP LOCKED
+          FOR UPDATE
         )
         RETURNING "role"
       )
