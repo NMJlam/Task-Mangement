@@ -18,27 +18,31 @@ invitesRouter.post(
   authenticate,
   authorise(1),
   validate(createInviteSchema),
-  async (req, res) => {
-    const input = res.locals.validated as CreateInvite;
-    if (tierForRole(input.role) > req.user!.tier) {
-      res
-        .status(403)
-        .json({ error: { code: "FORBIDDEN", message: "Invite role exceeds your tier." } });
-      return;
-    }
-    if (!can(req.user!.role, "invite:create")) {
-      res
-        .status(403)
-        .json({ error: { code: "FORBIDDEN", message: "Role cannot create invites." } });
-      return;
-    }
+  async (req, res, next) => {
+    try {
+      const input = res.locals.validated as CreateInvite;
+      if (tierForRole(input.role) > req.user!.tier) {
+        res
+          .status(403)
+          .json({ error: { code: "FORBIDDEN", message: "Invite role exceeds your tier." } });
+        return;
+      }
+      if (!can(req.user!.role, "invite:create")) {
+        res
+          .status(403)
+          .json({ error: { code: "FORBIDDEN", message: "Role cannot create invites." } });
+        return;
+      }
 
-    const [invite] = await getDb()
-      .insert(invites)
-      .values({ id: newId(), ...input })
-      .returning();
-    res
-      .status(201)
-      .json({ invite: { ...invite!, status: "pending" } } satisfies CreateInviteResponse);
+      const [invite] = await getDb()
+        .insert(invites)
+        .values({ id: newId(), ...input })
+        .returning();
+      res
+        .status(201)
+        .json({ invite: { ...invite!, status: "pending" } } satisfies CreateInviteResponse);
+    } catch (error) {
+      next(error);
+    }
   },
 );
