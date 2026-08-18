@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import request from "supertest";
-import { afterAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { invites } from "../../db/schema/index.js";
@@ -10,6 +10,10 @@ vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.
 
 const db = nodeDb();
 const email = "invite-integration@example.com";
+
+beforeAll(async () => {
+  await db.delete(invites).where(eq(invites.email, email));
+});
 
 afterAll(async () => {
   await db.delete(invites).where(eq(invites.email, email));
