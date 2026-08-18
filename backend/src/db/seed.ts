@@ -27,28 +27,31 @@ async function seedProduction(): Promise<void> {
   if (!email) throw new Error("FOUNDER_EMAIL is required for the production bootstrap seed.");
 
   const db = nodeDb();
-  const [existing] = await db
-    .select({ id: invites.id })
-    .from(invites)
-    .where(
-      and(
-        eq(invites.email, email),
-        eq(invites.role, "president"),
-        isNull(invites.acceptedAt),
-        isNull(invites.revokedAt),
-        gt(invites.expiresAt, new Date()),
-      ),
-    )
-    .limit(1);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}), hashtext('president'))`);
+    const [existing] = await tx
+      .select({ id: invites.id })
+      .from(invites)
+      .where(
+        and(
+          eq(invites.email, email),
+          eq(invites.role, "president"),
+          isNull(invites.acceptedAt),
+          isNull(invites.revokedAt),
+          gt(invites.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
 
-  if (!existing) {
-    await db.insert(invites).values({
-      id: newId(),
-      email,
-      role: "president",
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
-  }
+    if (!existing) {
+      await tx.insert(invites).values({
+        id: newId(),
+        email,
+        role: "president",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+    }
+  });
 }
 
 if (process.env.NODE_ENV !== "production") await seedLocal();
