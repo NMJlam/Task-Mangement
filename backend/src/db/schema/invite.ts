@@ -1,6 +1,7 @@
 import type { Role } from "@ctp/shared";
 import { sql } from "drizzle-orm";
 import { check, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { SQL_ROLE_LIST } from "./app-user.js";
 
 export const invites = pgTable(
   "invite",
@@ -16,7 +17,10 @@ export const invites = pgTable(
     check("invite_email_lowercase_check", sql`${table.email} = lower(${table.email})`),
     check(
       "invite_role_check",
-      sql`${table.role} IN ('president', 'vice_president', 'treasurer', 'secretary', 'marketing_director', 'officer')`,
+      sql`${table.role} IN (${sql.join(
+        SQL_ROLE_LIST.map(({ literal }) => literal),
+        sql`, `,
+      )})`,
     ),
   ],
 );
