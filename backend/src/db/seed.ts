@@ -29,6 +29,7 @@ async function seedProduction(): Promise<void> {
   const db = nodeDb();
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}), hashtext('president'))`);
+    const now = new Date();
     const [existing] = await tx
       .select({ id: invites.id })
       .from(invites)
@@ -38,17 +39,23 @@ async function seedProduction(): Promise<void> {
           eq(invites.role, "president"),
           isNull(invites.acceptedAt),
           isNull(invites.revokedAt),
-          gt(invites.expiresAt, new Date()),
+          gt(invites.expiresAt, now),
         ),
       )
       .limit(1);
 
     if (!existing) {
+      await tx
+        .update(invites)
+        .set({ revokedAt: now })
+        .where(
+          and(eq(invites.email, email), isNull(invites.acceptedAt), isNull(invites.revokedAt)),
+        );
       await tx.insert(invites).values({
         id: newId(),
         email,
         role: "president",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
       });
     }
   });
