@@ -59,6 +59,7 @@ it("rejects a verified account without an invite", async () => {
 
   await authenticate({ headers: {} } as Request, res, next);
 
+  expect(mocks.limit).toHaveBeenCalledOnce();
   expect(res.statusCode).toBe(403);
   expect(res.json).toHaveBeenCalledWith({
     error: { code: "NO_MEMBERSHIP", message: "Club membership required." },
@@ -95,8 +96,8 @@ it("claims an invite before authorising a verified account", async () => {
   mocks.getSession.mockResolvedValue({
     user: { id: "account-id", email: "member@example.com", emailVerified: true },
   });
-  mocks.limit.mockResolvedValueOnce([]).mockResolvedValueOnce([membership]);
-  mocks.execute.mockResolvedValue({ rows: [] });
+  mocks.limit.mockResolvedValue([]);
+  mocks.execute.mockResolvedValue({ rows: [membership] });
   const req = { headers: {} } as Request;
   const res = response();
   const next = vi.fn();
@@ -104,6 +105,7 @@ it("claims an invite before authorising a verified account", async () => {
   await authenticate(req, res, next);
 
   expect(mocks.execute).toHaveBeenCalledOnce();
+  expect(mocks.limit).toHaveBeenCalledOnce();
   expect(req.user).toMatchObject({ id: membership.id, email: "member@example.com" });
   expect(next).toHaveBeenCalledOnce();
 });
