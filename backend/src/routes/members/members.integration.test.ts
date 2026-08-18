@@ -101,7 +101,7 @@ describe("PATCH /api/members/:id/role", () => {
     );
   });
 
-  it("serializes concurrent changes so one role holder remains", async () => {
+  it("allows concurrent demotions when another role holder remains", async () => {
     const actor = await member("actor", "president");
     const existing = await member("existing-secretary", "secretary");
     const first = await member("first", "secretary");
@@ -115,10 +115,9 @@ describe("PATCH /api/members/:id/role", () => {
     );
 
     expect(responses.map(({ status }) => status).sort()).toEqual([200, 200]);
-    expect(
-      (await db.select().from(appUsers).where(eq(appUsers.role, "secretary"))).filter(({ id }) =>
-        [existing.id, first.id, second.id].includes(id),
-      ),
-    ).toEqual([existing]);
+    expect(responses.map(({ body }) => body.member.role)).toEqual(["officer", "officer"]);
+    expect((await db.select().from(appUsers).where(eq(appUsers.id, existing.id)))[0]?.role).toBe(
+      "secretary",
+    );
   });
 });
