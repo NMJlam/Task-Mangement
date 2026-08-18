@@ -29,9 +29,9 @@ CREATE TABLE "invite" (
 ALTER TABLE "app_user" ADD CONSTRAINT "app_user_auth_user_id_auth_user_id_fk" FOREIGN KEY ("auth_user_id") REFERENCES "auth"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 DROP TABLE "users" CASCADE;--> statement-breakpoint
+DROP TABLE "sessions" CASCADE;--> statement-breakpoint
 ALTER TABLE "audit_log" ALTER COLUMN "id" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "events" ALTER COLUMN "id" DROP DEFAULT;--> statement-breakpoint
-ALTER TABLE "sessions" ALTER COLUMN "id" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "teams" ALTER COLUMN "id" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "tasks" ALTER COLUMN "id" DROP DEFAULT;--> statement-breakpoint
 DROP TYPE "public"."user_role";
