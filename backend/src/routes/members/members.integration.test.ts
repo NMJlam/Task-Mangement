@@ -103,30 +103,22 @@ describe("PATCH /api/members/:id/role", () => {
 
   it("serializes concurrent changes so one role holder remains", async () => {
     const actor = await member("actor", "president");
+    const existing = await member("existing-secretary", "secretary");
     const first = await member("first", "secretary");
     const second = await member("second", "secretary");
     getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
-    await db
-      .update(appUsers)
-      .set({ role: "officer" })
-      .where(eq(appUsers.authUserId, "seed-secretary"));
 
-    try {
-      const responses = await Promise.all(
-        [first, second].map((target) =>
-          request(app).patch(`/api/members/${target.id}/role`).send({ role: "officer" }),
-        ),
-      );
+    const responses = await Promise.all(
+      [first, second].map((target) =>
+        request(app).patch(`/api/members/${target.id}/role`).send({ role: "officer" }),
+      ),
+    );
 
-      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
-      expect(await db.select().from(appUsers).where(eq(appUsers.role, "secretary"))).toHaveLength(
-        1,
-      );
-    } finally {
-      await db
-        .update(appUsers)
-        .set({ role: "secretary" })
-        .where(eq(appUsers.authUserId, "seed-secretary"));
-    }
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 200]);
+    expect(
+      (await db.select().from(appUsers).where(eq(appUsers.role, "secretary"))).filter(({ id }) =>
+        [existing.id, first.id, second.id].includes(id),
+      ),
+    ).toEqual([existing]);
   });
 });
