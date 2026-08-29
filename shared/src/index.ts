@@ -8,6 +8,7 @@ export * from "./schemas/auth-user/auth-user.js";
 export * from "./schemas/invite/invite.js";
 export * from "./schemas/member/member.js";
 export * from "./schemas/role/role.js";
+export * from "./schemas/task/task.js";
 export * from "./schemas/health/health.js";
 export * from "./schemas/example-form/example-form.js";
 export * from "./schemas/audit-fixture/audit-fixture.js";
