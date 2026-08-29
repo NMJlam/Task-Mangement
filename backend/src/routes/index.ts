@@ -5,6 +5,7 @@ import { healthRouter } from "./health/health.js";
 import { invitesRouter } from "./invites/invites.js";
 import { meRouter } from "./me/me.js";
 import { membersRouter } from "./members/members.js";
+import { tasksRouter } from "./tasks/tasks.js";
 
 /**
  * All routes, mounted under /api by app.ts.
@@ -18,6 +19,7 @@ apiRouter.use(healthRouter);
 apiRouter.use(meRouter);
 apiRouter.use(membersRouter);
 apiRouter.use(invitesRouter);
+apiRouter.use(tasksRouter);
 // Mounted under a path prefix so the cron-secret guard is scoped to /api/cron/*.
 apiRouter.use("/cron", cronRouter);
 apiRouter.use(exampleRouter);
