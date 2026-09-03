@@ -3,6 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { closeNodeDb, nodeDb } from "./client.js";
 import { newId } from "./id.js";
 import { appUsers, invites, settings } from "./schema/index.js";
+import { seedDemo } from "./seed-demo.js";
 
 /**
  * Creates the pinned settings row. `settings` is a singleton table (CHECK id = 1)
@@ -76,4 +77,8 @@ async function seedProduction(): Promise<void> {
 await seedSettings();
 if (process.env.NODE_ENV !== "production") await seedLocal();
 if (process.env.NODE_ENV === "production" || process.env.FOUNDER_EMAIL) await seedProduction();
+// Opt-in only, and never in production. CI runs this script before the
+// integration tier, so anything unconditional here becomes the shared test
+// fixture — see seed-demo.ts for the constraint that imposes.
+if (process.env.SEED_DEMO && process.env.NODE_ENV !== "production") await seedDemo();
 await closeNodeDb();
