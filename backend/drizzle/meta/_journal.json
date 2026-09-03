@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1785395659810,
-      "tag": "0000_famous_the_stranger",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1786445352897,
-      "tag": "0001_sparkling_sleeper",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1787096082214,
-      "tag": "0002_modern_the_watchers",
+      "when": 1787809322214,
+      "tag": "0000_flat_agent_zero",
       "breakpoints": true
     }
   ]

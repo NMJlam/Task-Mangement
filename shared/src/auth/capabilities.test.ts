@@ -14,8 +14,8 @@ describe("role access", () => {
   });
 
   it("reports capability gains and removals between roles", () => {
-    expect(can("marketing_director", "invite:create")).toBe(true);
-    expect(roleDiff("marketing_director", "vice_president")).toEqual({
+    expect(can("director", "invite:create")).toBe(true);
+    expect(roleDiff("director", "vice_president")).toEqual({
       gains: ["member:role-change"],
       removed: ["invite:create"],
     });

@@ -4,9 +4,7 @@ import { RoleChangeConfirmation } from "./role-change-confirmation";
 
 it("shows capability gains and removals before confirmation", () => {
   const confirm = vi.fn();
-  render(
-    <RoleChangeConfirmation from="marketing_director" to="vice_president" onConfirm={confirm} />,
-  );
+  render(<RoleChangeConfirmation from="director" to="vice_president" onConfirm={confirm} />);
 
   expect(screen.getByText("member:role-change")).toBeInTheDocument();
   expect(screen.getByText("invite:create")).toBeInTheDocument();
