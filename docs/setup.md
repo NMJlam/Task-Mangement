@@ -160,6 +160,26 @@ npm run db:seed             # idempotent — safe to re-run
 
 `db:seed` creates one membership for each of the six roles and is safe to run repeatedly.
 
+### Demo data — `SEED_DEMO=1`
+
+The default seed deliberately populates only `settings`, `auth.user` and
+`app_user`: CI runs `db:migrate && db:seed` before the integration tier, so
+whatever it writes **is** the shared test fixture, and widening it breaks tests
+that assume those six role holders are the only ones. To fill the other
+thirteen tables with a coherent demo club — five teams, three events across the
+status lifecycle, workstreams, a Kanban board, channels of every kind, threaded
+and file messages, one AI run, one expense per status, notifications and audit
+rows — opt in:
+
+```bash
+SEED_DEMO=1 npm run db:seed          # PowerShell: $env:SEED_DEMO=1; npm run db:seed
+```
+
+It adds no `app_user` rows and is idempotent (ids are derived from slugs, every
+insert is `ON CONFLICT DO NOTHING`), so the integration suite still passes with
+it loaded. Ignored when `NODE_ENV=production`. See
+`backend/src/db/seed-demo.ts`.
+
 ### Browse the database — Drizzle Studio
 
 ```bash

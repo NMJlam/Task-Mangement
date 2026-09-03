@@ -1,0 +1,18 @@
+# Line endings: LF in the repository AND in every working tree.
+#
+# Without this, core.autocrlf=true (the Windows default) checks files out as
+# CRLF while Prettier's endOfLine defaults to "lf" — so `npm run format:check`
+# fails on every checked-out file on Windows while passing in CI on Linux.
+# `eol=lf` pins the working tree too, so the whole team sees the same bytes.
+* text=auto eol=lf
+
+# Binaries must never be line-ending converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff  binary
+*.woff2 binary
+*.pdf  binary
