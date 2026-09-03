@@ -1,9 +1,175 @@
 {
-  "id": "8bd78fa6-293b-404d-a707-e3fda4916696",
+  "id": "92ea25d7-edc7-4b4b-8aca-48846f874aa0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.ai_run": {
+      "name": "ai_run",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "steps": {
+          "name": "steps",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "cost_micro_usd": {
+          "name": "cost_micro_usd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ai_run_channel_id_channel_id_fk": {
+          "name": "ai_run_channel_id_channel_id_fk",
+          "tableFrom": "ai_run",
+          "tableTo": "channel",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ai_run_user_id_app_user_id_fk": {
+          "name": "ai_run_user_id_app_user_id_fk",
+          "tableFrom": "ai_run",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ai_run_cost_non_negative_check": {
+          "name": "ai_run_cost_non_negative_check",
+          "value": "\"ai_run\".\"cost_micro_usd\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.app_user": {
+      "name": "app_user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "auth_user_id": {
+          "name": "auth_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tier": {
+          "name": "tier",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "CASE role\n          WHEN 'president' THEN 2\n          WHEN 'vice_president' THEN 2\n          WHEN 'treasurer' THEN 2\n          WHEN 'secretary' THEN 2\n          WHEN 'director' THEN 1\n          WHEN 'officer' THEN 0\n        END",
+            "type": "stored"
+          }
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "app_user_auth_user_id_user_id_fk": {
+          "name": "app_user_auth_user_id_user_id_fk",
+          "tableFrom": "app_user",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "auth_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "app_user_auth_user_id_unique": {
+          "name": "app_user_auth_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "auth_user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "app_user_role_check": {
+          "name": "app_user_role_check",
+          "value": "\"app_user\".\"role\" IN ('president', 'vice_president', 'treasurer', 'secretary', 'director', 'officer')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.audit_log": {
       "name": "audit_log",
       "schema": "",
@@ -12,8 +178,7 @@
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
         "actor_id": {
           "name": "actor_id",
@@ -55,10 +220,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "audit_log_actor_id_users_id_fk": {
-          "name": "audit_log_actor_id_users_id_fk",
+        "audit_log_actor_id_app_user_id_fk": {
+          "name": "audit_log_actor_id_app_user_id_fk",
           "tableFrom": "audit_log",
-          "tableTo": "users",
+          "tableTo": "app_user",
           "columnsFrom": [
             "actor_id"
           ],
@@ -75,21 +240,238 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.events": {
-      "name": "events",
+    "auth.user": {
+      "name": "user",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chan_member": {
+      "name": "chan_member",
+      "schema": "",
+      "columns": {
+        "channel_id": {
+          "name": "channel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_read_at": {
+          "name": "last_read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "chan_member_user_idx": {
+          "name": "chan_member_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chan_member_channel_id_channel_id_fk": {
+          "name": "chan_member_channel_id_channel_id_fk",
+          "tableFrom": "chan_member",
+          "tableTo": "channel",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "chan_member_user_id_app_user_id_fk": {
+          "name": "chan_member_user_id_app_user_id_fk",
+          "tableFrom": "chan_member",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "chan_member_channel_id_user_id_pk": {
+          "name": "chan_member_channel_id_user_id_pk",
+          "columns": [
+            "channel_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.channel": {
+      "name": "channel",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "team_id": {
           "name": "team_id",
           "type": "uuid",
           "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "min_tier": {
+          "name": "min_tier",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "channel_one_per_team": {
+          "name": "channel_one_per_team",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"channel\".\"kind\" = 'team'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "channel_event_id_event_id_fk": {
+          "name": "channel_event_id_event_id_fk",
+          "tableFrom": "channel",
+          "tableTo": "event",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "channel_team_id_team_id_fk": {
+          "name": "channel_team_id_team_id_fk",
+          "tableFrom": "channel",
+          "tableTo": "team",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "channel_kind_check": {
+          "name": "channel_kind_check",
+          "value": "\"channel\".\"kind\" IN ('team', 'event', 'group', 'dm', 'ai')"
+        },
+        "channel_min_tier_range_check": {
+          "name": "channel_min_tier_range_check",
+          "value": "\"channel\".\"min_tier\" BETWEEN 0 AND 2"
+        },
+        "channel_parent_matches_kind_check": {
+          "name": "channel_parent_matches_kind_check",
+          "value": "CASE \"channel\".\"kind\"\n        WHEN 'team'  THEN \"channel\".\"team_id\"  IS NOT NULL AND \"channel\".\"event_id\" IS NULL\n        WHEN 'event' THEN \"channel\".\"event_id\" IS NOT NULL AND \"channel\".\"team_id\"  IS NULL\n        ELSE              \"channel\".\"team_id\"  IS NULL     AND \"channel\".\"event_id\" IS NULL\n      END"
+        },
+        "channel_min_tier_only_when_tier_gated_check": {
+          "name": "channel_min_tier_only_when_tier_gated_check",
+          "value": "\"channel\".\"kind\" IN ('team', 'event') OR \"channel\".\"min_tier\" = 0"
+        },
+        "channel_named_unless_dm_check": {
+          "name": "channel_named_unless_dm_check",
+          "value": "\"channel\".\"kind\" = 'dm' OR (\"channel\".\"name\" IS NOT NULL AND length(trim(\"channel\".\"name\")) > 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.event": {
+      "name": "event",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
           "notNull": true
         },
         "title": {
@@ -108,7 +490,171 @@
           "name": "ends_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'planning'"
+        },
+        "allocation_cents": {
+          "name": "allocation_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "min_tier": {
+          "name": "min_tier",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "event_starts_at_idx": {
+          "name": "event_starts_at_idx",
+          "columns": [
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "event_title_not_blank_check": {
+          "name": "event_title_not_blank_check",
+          "value": "length(trim(\"event\".\"title\")) > 0"
+        },
+        "event_status_check": {
+          "name": "event_status_check",
+          "value": "\"event\".\"status\" IN ('planning', 'live', 'wrapped', 'cancelled')"
+        },
+        "event_allocation_non_negative_check": {
+          "name": "event_allocation_non_negative_check",
+          "value": "\"event\".\"allocation_cents\" >= 0"
+        },
+        "event_min_tier_range_check": {
+          "name": "event_min_tier_range_check",
+          "value": "\"event\".\"min_tier\" BETWEEN 0 AND 2"
+        },
+        "event_ends_after_start_check": {
+          "name": "event_ends_after_start_check",
+          "value": "\"event\".\"ends_at\" IS NULL OR \"event\".\"ends_at\" >= \"event\".\"starts_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.expense": {
+      "name": "expense",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
           "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "submitter": {
+          "name": "submitter",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decider": {
+          "name": "decider",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_key": {
+          "name": "receipt_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paid_at": {
+          "name": "paid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -118,49 +664,125 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "expense_pending_idx": {
+          "name": "expense_pending_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"expense\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "events_team_id_teams_id_fk": {
-          "name": "events_team_id_teams_id_fk",
-          "tableFrom": "events",
-          "tableTo": "teams",
+        "expense_event_id_event_id_fk": {
+          "name": "expense_event_id_event_id_fk",
+          "tableFrom": "expense",
+          "tableTo": "event",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "expense_team_id_team_id_fk": {
+          "name": "expense_team_id_team_id_fk",
+          "tableFrom": "expense",
+          "tableTo": "team",
           "columnsFrom": [
             "team_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "expense_submitter_app_user_id_fk": {
+          "name": "expense_submitter_app_user_id_fk",
+          "tableFrom": "expense",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "submitter"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "expense_decider_app_user_id_fk": {
+          "name": "expense_decider_app_user_id_fk",
+          "tableFrom": "expense",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "decider"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "expense_amount_positive_check": {
+          "name": "expense_amount_positive_check",
+          "value": "\"expense\".\"amount_cents\" > 0"
+        },
+        "expense_description_not_blank_check": {
+          "name": "expense_description_not_blank_check",
+          "value": "length(trim(\"expense\".\"description\")) > 0"
+        },
+        "expense_category_check": {
+          "name": "expense_category_check",
+          "value": "\"expense\".\"category\" IN ('catering', 'venue', 'marketing', 'equipment', 'transport', 'printing', 'other')"
+        },
+        "expense_status_check": {
+          "name": "expense_status_check",
+          "value": "\"expense\".\"status\" IN ('pending', 'approved', 'paid', 'rejected')"
+        },
+        "expense_rejection_reason_matches_status_check": {
+          "name": "expense_rejection_reason_matches_status_check",
+          "value": "(\"expense\".\"status\" = 'rejected') = (\"expense\".\"rejection_reason\" IS NOT NULL)"
+        },
+        "expense_decider_is_not_submitter_check": {
+          "name": "expense_decider_is_not_submitter_check",
+          "value": "\"expense\".\"decider\" IS NULL OR \"expense\".\"decider\" <> \"expense\".\"submitter\""
+        },
+        "expense_decided_at_matches_status_check": {
+          "name": "expense_decided_at_matches_status_check",
+          "value": "(\"expense\".\"status\" = 'pending') = (\"expense\".\"decided_at\" IS NULL)"
+        },
+        "expense_paid_at_matches_status_check": {
+          "name": "expense_paid_at_matches_status_check",
+          "value": "(\"expense\".\"status\" = 'paid') = (\"expense\".\"paid_at\" IS NOT NULL)"
+        }
+      },
       "isRLSEnabled": false
     },
-    "public.users": {
-      "name": "users",
+    "public.team": {
+      "name": "team",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "google_sub": {
-          "name": "google_sub",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
           "notNull": true
         },
         "name": {
@@ -169,60 +791,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "role": {
-          "name": "role",
-          "type": "user_role",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'member'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "users_google_sub_unique": {
-          "name": "users_google_sub_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "google_sub"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.sessions": {
-      "name": "sessions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
+        "lead": {
+          "name": "lead",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -234,61 +807,41 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "sessions_user_id_users_id_fk": {
-          "name": "sessions_user_id_users_id_fk",
-          "tableFrom": "sessions",
-          "tableTo": "users",
+        "team_lead_app_user_id_fk": {
+          "name": "team_lead_app_user_id_fk",
+          "tableFrom": "team",
+          "tableTo": "app_user",
           "columnsFrom": [
-            "user_id"
+            "lead"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.teams": {
-      "name": "teams",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+      "uniqueConstraints": {
+        "team_name_unique": {
+          "name": "team_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "team_name_not_blank_check": {
+          "name": "team_name_not_blank_check",
+          "value": "length(trim(\"team\".\"name\")) > 0"
+        }
+      },
       "isRLSEnabled": false
     },
-    "public.team_members": {
-      "name": "team_members",
+    "public.team_member": {
+      "name": "team_member",
       "schema": "",
       "columns": {
         "team_id": {
@@ -302,21 +855,30 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "joined_at": {
-          "name": "joined_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "team_member_user_idx": {
+          "name": "team_member_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "team_members_team_id_teams_id_fk": {
-          "name": "team_members_team_id_teams_id_fk",
-          "tableFrom": "team_members",
-          "tableTo": "teams",
+        "team_member_team_id_team_id_fk": {
+          "name": "team_member_team_id_team_id_fk",
+          "tableFrom": "team_member",
+          "tableTo": "team",
           "columnsFrom": [
             "team_id"
           ],
@@ -326,10 +888,10 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "team_members_user_id_users_id_fk": {
-          "name": "team_members_user_id_users_id_fk",
-          "tableFrom": "team_members",
-          "tableTo": "users",
+        "team_member_user_id_app_user_id_fk": {
+          "name": "team_member_user_id_app_user_id_fk",
+          "tableFrom": "team_member",
+          "tableTo": "app_user",
           "columnsFrom": [
             "user_id"
           ],
@@ -341,8 +903,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "team_members_team_id_user_id_pk": {
-          "name": "team_members_team_id_user_id_pk",
+        "team_member_team_id_user_id_pk": {
+          "name": "team_member_team_id_user_id_pk",
           "columns": [
             "team_id",
             "user_id"
@@ -354,16 +916,106 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.tasks": {
-      "name": "tasks",
+    "public.invite": {
+      "name": "invite",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
           "notNull": true,
-          "default": "gen_random_uuid()"
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "invite_email_idx": {
+          "name": "invite_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "invite_email_lowercase_check": {
+          "name": "invite_email_lowercase_check",
+          "value": "\"invite\".\"email\" = lower(\"invite\".\"email\")"
+        },
+        "invite_role_check": {
+          "name": "invite_role_check",
+          "value": "\"invite\".\"role\" IN ('president', 'vice_president', 'treasurer', 'secretary', 'director', 'officer')"
+        },
+        "invite_not_both_accepted_and_revoked_check": {
+          "name": "invite_not_both_accepted_and_revoked_check",
+          "value": "\"invite\".\"accepted_at\" IS NULL OR \"invite\".\"revoked_at\" IS NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.workstream": {
+      "name": "workstream",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         },
         "team_id": {
           "name": "team_id",
@@ -371,28 +1023,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
+        "brief": {
+          "name": "brief",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "status": {
-          "name": "status",
-          "type": "task_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'todo'"
-        },
-        "assignee_id": {
-          "name": "assignee_id",
+        "lead": {
+          "name": "lead",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -413,12 +1051,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "tasks_team_id_teams_id_fk": {
-          "name": "tasks_team_id_teams_id_fk",
-          "tableFrom": "tasks",
-          "tableTo": "teams",
+        "workstream_event_id_event_id_fk": {
+          "name": "workstream_event_id_event_id_fk",
+          "tableFrom": "workstream",
+          "tableTo": "event",
           "columnsFrom": [
-            "team_id"
+            "event_id"
           ],
           "columnsTo": [
             "id"
@@ -426,12 +1064,530 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "tasks_assignee_id_users_id_fk": {
-          "name": "tasks_assignee_id_users_id_fk",
-          "tableFrom": "tasks",
-          "tableTo": "users",
+        "workstream_team_id_team_id_fk": {
+          "name": "workstream_team_id_team_id_fk",
+          "tableFrom": "workstream",
+          "tableTo": "team",
           "columnsFrom": [
-            "assignee_id"
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "workstream_lead_app_user_id_fk": {
+          "name": "workstream_lead_app_user_id_fk",
+          "tableFrom": "workstream",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "lead"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workstream_one_per_team_per_event": {
+          "name": "workstream_one_per_team_per_event",
+          "nullsNotDistinct": false,
+          "columns": [
+            "event_id",
+            "team_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.task": {
+      "name": "task",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee": {
+          "name": "assignee",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creator": {
+          "name": "creator",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'todo'"
+        },
+        "priority": {
+          "name": "priority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'medium'"
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "board_order": {
+          "name": "board_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "min_tier": {
+          "name": "min_tier",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_run_id": {
+          "name": "ai_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "task_board_idx": {
+          "name": "task_board_idx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "board_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_assignee_open_idx": {
+          "name": "task_assignee_open_idx",
+          "columns": [
+            {
+              "expression": "assignee",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"task\".\"status\" <> 'done'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "task_overdue_idx": {
+          "name": "task_overdue_idx",
+          "columns": [
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"task\".\"status\" <> 'done' AND \"task\".\"due_at\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_event_id_event_id_fk": {
+          "name": "task_event_id_event_id_fk",
+          "tableFrom": "task",
+          "tableTo": "event",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "task_team_id_team_id_fk": {
+          "name": "task_team_id_team_id_fk",
+          "tableFrom": "task",
+          "tableTo": "team",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "task_assignee_app_user_id_fk": {
+          "name": "task_assignee_app_user_id_fk",
+          "tableFrom": "task",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "assignee"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "task_creator_app_user_id_fk": {
+          "name": "task_creator_app_user_id_fk",
+          "tableFrom": "task",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "creator"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "task_ai_run_id_ai_run_id_fk": {
+          "name": "task_ai_run_id_ai_run_id_fk",
+          "tableFrom": "task",
+          "tableTo": "ai_run",
+          "columnsFrom": [
+            "ai_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "task_within_declared_workstream": {
+          "name": "task_within_declared_workstream",
+          "tableFrom": "task",
+          "tableTo": "workstream",
+          "columnsFrom": [
+            "event_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "event_id",
+            "team_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "task_title_not_blank_check": {
+          "name": "task_title_not_blank_check",
+          "value": "length(trim(\"task\".\"title\")) > 0"
+        },
+        "task_status_check": {
+          "name": "task_status_check",
+          "value": "\"task\".\"status\" IN ('todo', 'in_progress', 'blocked', 'done')"
+        },
+        "task_priority_check": {
+          "name": "task_priority_check",
+          "value": "\"task\".\"priority\" IN ('low', 'medium', 'high', 'urgent')"
+        },
+        "task_min_tier_range_check": {
+          "name": "task_min_tier_range_check",
+          "value": "\"task\".\"min_tier\" BETWEEN 0 AND 2"
+        },
+        "task_completed_at_matches_status_check": {
+          "name": "task_completed_at_matches_status_check",
+          "value": "(\"task\".\"status\" = 'done') = (\"task\".\"completed_at\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.message": {
+      "name": "message",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author": {
+          "name": "author",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "file_key": {
+          "name": "file_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_size_bytes": {
+          "name": "file_size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_mime": {
+          "name": "file_mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_run_id": {
+          "name": "ai_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "edited_at": {
+          "name": "edited_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "message_channel_idx": {
+          "name": "message_channel_idx",
+          "columns": [
+            {
+              "expression": "channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "message_task_idx": {
+          "name": "message_task_idx",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"message\".\"task_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "message_parent_idx": {
+          "name": "message_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"message\".\"parent_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "message_channel_id_channel_id_fk": {
+          "name": "message_channel_id_channel_id_fk",
+          "tableFrom": "message",
+          "tableTo": "channel",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "message_task_id_task_id_fk": {
+          "name": "message_task_id_task_id_fk",
+          "tableFrom": "message",
+          "tableTo": "task",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "message_parent_id_message_id_fk": {
+          "name": "message_parent_id_message_id_fk",
+          "tableFrom": "message",
+          "tableTo": "message",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "message_author_app_user_id_fk": {
+          "name": "message_author_app_user_id_fk",
+          "tableFrom": "message",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "author"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "message_ai_run_id_ai_run_id_fk": {
+          "name": "message_ai_run_id_ai_run_id_fk",
+          "tableFrom": "message",
+          "tableTo": "ai_run",
+          "columnsFrom": [
+            "ai_run_id"
           ],
           "columnsTo": [
             "id"
@@ -443,31 +1599,197 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "message_has_content_check": {
+          "name": "message_has_content_check",
+          "value": "\"message\".\"body\" <> '' OR \"message\".\"file_key\" IS NOT NULL"
+        },
+        "message_file_all_or_nothing_check": {
+          "name": "message_file_all_or_nothing_check",
+          "value": "num_nulls(\"message\".\"file_key\", \"message\".\"file_name\", \"message\".\"file_size_bytes\", \"message\".\"file_mime\") IN (0, 4)"
+        },
+        "message_file_size_positive_check": {
+          "name": "message_file_size_positive_check",
+          "value": "\"message\".\"file_size_bytes\" IS NULL OR \"message\".\"file_size_bytes\" > 0"
+        },
+        "message_not_own_parent_check": {
+          "name": "message_not_own_parent_check",
+          "value": "\"message\".\"parent_id\" IS NULL OR \"message\".\"parent_id\" <> \"message\".\"id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.settings": {
+      "name": "settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "budget_cents": {
+          "name": "budget_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "settings_singleton_check": {
+          "name": "settings_singleton_check",
+          "value": "\"settings\".\"id\" = 1"
+        },
+        "settings_budget_non_negative_check": {
+          "name": "settings_budget_non_negative_check",
+          "value": "\"settings\".\"budget_cents\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.notification": {
+      "name": "notification",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "notification_feed_idx": {
+          "name": "notification_feed_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notification_unread_idx": {
+          "name": "notification_unread_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"notification\".\"read_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "notification_user_id_app_user_id_fk": {
+          "name": "notification_user_id_app_user_id_fk",
+          "tableFrom": "notification",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "notification_kind_check": {
+          "name": "notification_kind_check",
+          "value": "\"notification\".\"kind\" IN ('task_assigned', 'task_due', 'mention', 'expense_decided', 'invite_accepted', 'event_created')"
+        },
+        "notification_entity_all_or_nothing_check": {
+          "name": "notification_entity_all_or_nothing_check",
+          "value": "num_nulls(\"notification\".\"entity_type\", \"notification\".\"entity_id\") IN (0, 2)"
+        }
+      },
       "isRLSEnabled": false
     }
   },
-  "enums": {
-    "public.user_role": {
-      "name": "user_role",
-      "schema": "public",
-      "values": [
-        "admin",
-        "leader",
-        "member"
-      ]
-    },
-    "public.task_status": {
-      "name": "task_status",
-      "schema": "public",
-      "values": [
-        "todo",
-        "in_progress",
-        "done"
-      ]
-    }
+  "enums": {},
+  "schemas": {
+    "auth": "auth"
   },
-  "schemas": {},
   "sequences": {},
   "roles": {},
   "policies": {},

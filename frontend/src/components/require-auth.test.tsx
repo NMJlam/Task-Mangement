@@ -13,7 +13,7 @@ it("hides capability-gated UI from roles without the capability", () => {
     member: {
       id: "019ff060-2362-7399-9032-b4bbcc3a25d5",
       email: "director@example.com",
-      role: "marketing_director",
+      role: "director",
       tier: 1,
     },
     signOut: vi.fn(),

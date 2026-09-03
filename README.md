@@ -20,6 +20,9 @@ npm run db:migrate && npm run db:seed
 npm run dev                              # http://localhost:5173
 ```
 
+On Windows the commands differ — see
+[On Windows](docs/setup.md#on-windows).
+
 Full setup, scripts, and workflows: **[`docs/setup.md`](docs/setup.md)**.
 
 ## Documentation
