@@ -51,11 +51,20 @@ describe("/api/tasks", () => {
     return row!;
   }
 
-  // Deleting the team cascades to its tasks; deleting the auth user cascades to
-  // app_user. Both prefixes are unique to this file, so parallel fixtures from
-  // other suites are untouched.
+  // Delete order follows the FKs, which do NOT cascade here: task.team_id and
+  // task.creator are ON DELETE SET NULL, and app_user.auth_user_id is ON DELETE
+  // RESTRICT. Dropping the team first would only NULL the task's team_id and
+  // strand the row; dropping the auth user first errors outright. The prefix is
+  // unique to this file, so parallel fixtures from other suites are untouched.
   async function cleanup() {
-    await db.execute(sql`DELETE FROM "teams" WHERE "name" LIKE 'test-task-%'`);
+    await db.execute(sql`
+      DELETE FROM "task"
+      WHERE "team_id" IN (SELECT "id" FROM "team" WHERE "name" LIKE 'test-task-%')
+         OR "creator" IN (SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%')
+         OR "assignee" IN (SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%')
+    `);
+    await db.execute(sql`DELETE FROM "team" WHERE "name" LIKE 'test-task-%'`);
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-task-%'`);
   }
 
@@ -77,15 +86,32 @@ describe("/api/tasks", () => {
 
       const response = await request(app)
         .post("/api/tasks")
-        .send({ teamId, title: "  Book the venue  ", assigneeId: actor.id });
+        .send({ teamId, title: "  Book the venue  ", assignee: actor.id });
 
       expect(response.status).toBe(201);
       expect(response.body.task).toMatchObject({
         teamId,
         title: "Book the venue",
         status: "todo",
-        assigneeId: actor.id,
+        priority: "medium",
+        assignee: actor.id,
       });
+    });
+
+    // `creator` is stamped from the session, so a caller cannot attribute work
+    // to someone else by putting a different id in the body.
+    it("stamps creator from the session and ignores a body-supplied one", async () => {
+      const actor = await member("officer", "officer");
+      const other = await member("secretary", "secretary");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ teamId, title: "Own it", creator: other.id });
+
+      expect(response.status).toBe(201);
+      expect(response.body.task.creator).toBe(actor.id);
     });
 
     it("401s without a session", async () => {
@@ -119,14 +145,14 @@ describe("/api/tasks", () => {
       expect(response.body.error.code).toBe("TEAM_NOT_FOUND");
     });
 
-    it("422s on an unknown assignee, which has no FK to catch it", async () => {
+    it("422s on an unknown assignee rather than surfacing an FK violation", async () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
       signedInAs(actor);
 
       const response = await request(app)
         .post("/api/tasks")
-        .send({ teamId, title: "Unassigned", assigneeId: UNKNOWN_ID });
+        .send({ teamId, title: "Unassigned", assignee: UNKNOWN_ID });
 
       expect(response.status).toBe(422);
       expect(response.body.error.code).toBe("ASSIGNEE_NOT_FOUND");
@@ -138,7 +164,7 @@ describe("/api/tasks", () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
       await seedTask(teamId, { title: "Open", status: "todo" });
-      await seedTask(teamId, { title: "Finished", status: "done" });
+      await seedTask(teamId, { title: "Finished", status: "done", completedAt: new Date() });
       signedInAs(actor);
 
       const all = await request(app).get("/api/tasks").query({ teamId });
@@ -171,6 +197,7 @@ describe("/api/tasks", () => {
       await seedTask(teamId, {
         title: "Past but done",
         status: "done",
+        completedAt: new Date(),
         dueAt: new Date(Date.now() - HOUR),
       });
       await seedTask(teamId, { title: "Due later", dueAt: new Date(Date.now() + HOUR) });
@@ -223,15 +250,15 @@ describe("/api/tasks", () => {
     it("applies a partial update and clears a nullable field", async () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
-      const existing = await seedTask(teamId, { assigneeId: null });
+      const existing = await seedTask(teamId, { assignee: null });
       signedInAs(actor);
 
       const response = await request(app)
         .patch(`/api/tasks/${existing.id}`)
-        .send({ title: "Renamed", assigneeId: null });
+        .send({ title: "Renamed", assignee: null });
 
       expect(response.status).toBe(200);
-      expect(response.body.task).toMatchObject({ title: "Renamed", assigneeId: null });
+      expect(response.body.task).toMatchObject({ title: "Renamed", assignee: null });
     });
 
     it("422s on an empty patch", async () => {
@@ -272,7 +299,7 @@ describe("/api/tasks", () => {
       expect(response.body.task).toMatchObject({ id: existing.id, status: "in_progress" });
     });
 
-    it("422s on a status outside the enum", async () => {
+    it("accepts blocked, which is a first-class status here", async () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
       const existing = await seedTask(teamId);
@@ -282,7 +309,45 @@ describe("/api/tasks", () => {
         .patch(`/api/tasks/${existing.id}/status`)
         .send({ status: "blocked" });
 
+      expect(response.status).toBe(200);
+      expect(response.body.task).toMatchObject({ status: "blocked" });
+    });
+
+    it("422s on a status outside the enum", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}/status`)
+        .send({ status: "archived" });
+
       expect(response.status).toBe(422);
+    });
+
+    // The table enforces `(status = 'done') = (completed_at IS NOT NULL)`, so
+    // the route derives the timestamp on every status write. Without this the
+    // CHECK turns an ordinary board move into a 500.
+    it("stamps completed_at on the way into done and clears it on the way out", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      signedInAs(actor);
+
+      const done = await request(app)
+        .patch(`/api/tasks/${existing.id}/status`)
+        .send({ status: "done" });
+
+      expect(done.status).toBe(200);
+      expect(done.body.task.completedAt).not.toBeNull();
+
+      const reopened = await request(app)
+        .patch(`/api/tasks/${existing.id}/status`)
+        .send({ status: "todo" });
+
+      expect(reopened.status).toBe(200);
+      expect(reopened.body.task.completedAt).toBeNull();
     });
   });
 
@@ -299,7 +364,7 @@ describe("/api/tasks", () => {
     });
 
     it("deletes for tier 1 and up", async () => {
-      const actor = await member("director", "marketing_director");
+      const actor = await member("director", "director");
       const { id: teamId } = await team();
       const existing = await seedTask(teamId);
       signedInAs(actor);
@@ -312,7 +377,7 @@ describe("/api/tasks", () => {
     });
 
     it("404s for an unknown id", async () => {
-      const actor = await member("director", "marketing_director");
+      const actor = await member("director", "director");
       signedInAs(actor);
 
       const response = await request(app).delete(`/api/tasks/${UNKNOWN_ID}`);
@@ -335,7 +400,7 @@ describe("/api/tasks", () => {
     });
 
     it("creates every task in the batch for tier 1 and up", async () => {
-      const actor = await member("director", "marketing_director");
+      const actor = await member("director", "director");
       const { id: teamId } = await team();
       signedInAs(actor);
 
@@ -355,7 +420,7 @@ describe("/api/tasks", () => {
     });
 
     it("writes nothing when one task in the batch has a bad reference", async () => {
-      const actor = await member("director", "marketing_director");
+      const actor = await member("director", "director");
       const { id: teamId } = await team();
       signedInAs(actor);
 
@@ -375,7 +440,7 @@ describe("/api/tasks", () => {
     });
 
     it("422s on an empty batch", async () => {
-      const actor = await member("director", "marketing_director");
+      const actor = await member("director", "director");
       signedInAs(actor);
 
       const response = await request(app).post("/api/tasks/bulk").send({ tasks: [] });

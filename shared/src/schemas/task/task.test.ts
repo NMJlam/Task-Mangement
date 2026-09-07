@@ -9,18 +9,31 @@ import {
 const teamId = "018f3a4b-0000-7000-8000-000000000001";
 
 describe("createTaskSchema", () => {
-  it("trims the title and defaults status to todo", () => {
+  it("trims the title and defaults status and priority", () => {
     const task = createTaskSchema.parse({ teamId, title: "  Book the venue  " });
     expect(task.title).toBe("Book the venue");
     expect(task.status).toBe("todo");
+    expect(task.priority).toBe("medium");
   });
 
   it("rejects a blank title", () => {
     expect(createTaskSchema.safeParse({ teamId, title: "   " }).success).toBe(false);
   });
 
+  it("accepts blocked, which is a first-class status", () => {
+    expect(createTaskSchema.parse({ teamId, title: "Ok", status: "blocked" }).status).toBe(
+      "blocked",
+    );
+  });
+
   it("rejects an unknown status", () => {
-    expect(createTaskSchema.safeParse({ teamId, title: "Ok", status: "blocked" }).success).toBe(
+    expect(createTaskSchema.safeParse({ teamId, title: "Ok", status: "archived" }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects an unknown priority", () => {
+    expect(createTaskSchema.safeParse({ teamId, title: "Ok", priority: "asap" }).success).toBe(
       false,
     );
   });
@@ -36,7 +49,7 @@ describe("updateTaskSchema", () => {
   });
 
   it("allows clearing a nullable field", () => {
-    expect(updateTaskSchema.parse({ assigneeId: null }).assigneeId).toBeNull();
+    expect(updateTaskSchema.parse({ assignee: null }).assignee).toBeNull();
   });
 
   it("rejects an empty patch", () => {
