@@ -22,7 +22,7 @@ describe("GET /api/me", () => {
     await db.insert(invites).values({
       id: newId(),
       email,
-      role: "marketing_director",
+      role: "director",
       expiresAt: new Date(Date.now() + 60_000),
     });
     getSession.mockResolvedValue({ user: { id: authUserId, email, emailVerified: true } });
@@ -31,13 +31,17 @@ describe("GET /api/me", () => {
 
   beforeEach(async () => {
     getSession.mockReset();
-    // app_user rows created by these tests are removed via the
-    // app_user_auth_user_id_auth_user_id_fk ON DELETE CASCADE when the auth user goes.
+    // Removal order is fixed (rule 15): app_user FIRST, then the auth user.
+    // The FK is ON DELETE RESTRICT, so deleting the auth user while a membership
+    // still points at it is refused — which is the point. That guard is what
+    // stops a departing member's open tasks being orphaned without a handover.
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-me-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-me-%'`);
     await db.execute(sql`DELETE FROM ${invites} WHERE ${invites.email} LIKE 'test-me-%'`);
   });
 
   afterAll(async () => {
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-me-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-me-%'`);
     await db.execute(sql`DELETE FROM ${invites} WHERE ${invites.email} LIKE 'test-me-%'`);
     await closeNodeDb();
@@ -59,7 +63,7 @@ describe("GET /api/me", () => {
     const response = await request(app).get("/api/me");
 
     expect(response.status).toBe(200);
-    expect(response.body.user).toMatchObject({ email, role: "marketing_director", tier: 1 });
+    expect(response.body.user).toMatchObject({ email, role: "director", tier: 1 });
     expect(
       (await db.select().from(invites).where(eq(invites.email, email)))[0]?.acceptedAt,
     ).not.toBeNull();

@@ -39,6 +39,7 @@ describe("POST /api/example/audit (integration)", () => {
 
   afterAll(async () => {
     await db.execute(sql`TRUNCATE TABLE ${auditLog}`);
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" = ${authUserId}`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id = ${authUserId}`);
     await closeNodeDb();
   });

@@ -1,2 +1,0 @@
-CREATE INDEX "invite_email_idx" ON "invite" USING btree ("email");--> statement-breakpoint
-CREATE UNIQUE INDEX "invite_open_email_unique" ON "invite" USING btree ("email") WHERE "invite"."accepted_at" IS NULL AND "invite"."revoked_at" IS NULL;

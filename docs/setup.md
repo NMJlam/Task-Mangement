@@ -12,6 +12,9 @@ it day to day. For architecture and "where does this code go", see
 - **Docker** — for the local Postgres container. Local dev only; production is
   Neon.
 
+> Windows users: `nvm use` and `cp` need equivalents and Docker Desktop must be
+> running — see [On Windows](#on-windows).
+
 ## Fresh clone
 
 ```bash
@@ -29,6 +32,42 @@ npm run dev            # frontend :5173, backend :3001; /api is proxied
 ```
 
 Open <http://localhost:5173>. The `/health` route is the one fully-wired page.
+
+### On Windows
+
+The commands above are bash. In **Windows PowerShell 5.1** (the default shell)
+the equivalent is:
+
+```powershell
+fnm use --install-if-missing             # or nvm-windows: nvm install 24; nvm use 24
+npm ci
+Copy-Item .env.example .env              # then fill in DATABASE_URL — see below
+docker compose up -d                     # start Docker Desktop first
+npm run db:migrate; if ($?) { npm run db:seed }
+npm run dev                              # http://localhost:5173
+```
+
+Four differences, none of them optional:
+
+- **No `&&`.** Windows PowerShell 5.1 has no pipeline chain operators — `a && b`
+  is a parser error. Use `a; if ($?) { b }`, or run the commands separately.
+  (PowerShell 7+ and `npm run` scripts are both fine; this only bites you when
+  you paste a chained command into the shell.)
+- **`cp` → `Copy-Item`**, `nvm use` → `fnm use` or `nvm install 24; nvm use 24`.
+  Neither `nvm` nor `fnm` ships with Windows — install one
+  (`winget install Schniz.fnm`) or use the Node 24 MSI from nodejs.org.
+- **Docker Desktop must actually be running.** Having `docker.exe` on PATH is
+  not enough — `docker compose up -d` fails with a named-pipe error
+  (`open //./pipe/dockerDesktopLinuxEngine`) until the Desktop app is started.
+- **Port 5432**: the macOS IPv6 note in
+  [If port 5432 is already taken](#if-port-5432-is-already-taken) doesn't apply.
+  Check with `netstat -ano | findstr LISTENING | findstr :5432` — outbound
+  connections to a remote `:5432` are not a conflict. If a local Postgres
+  service does hold the port, set `POSTGRES_PORT` as described there.
+
+The workspace scripts themselves are cross-platform — no `NODE_ENV=x` prefixes
+or shell-isms — so everything past `npm ci` behaves the same. The Husky
+`commit-msg` hook runs under Git for Windows' bundled bash.
 
 ### The `.env` file
 
@@ -120,6 +159,26 @@ npm run db:seed             # idempotent — safe to re-run
 ```
 
 `db:seed` creates one membership for each of the six roles and is safe to run repeatedly.
+
+### Demo data — `SEED_DEMO=1`
+
+The default seed deliberately populates only `settings`, `auth.user` and
+`app_user`: CI runs `db:migrate && db:seed` before the integration tier, so
+whatever it writes **is** the shared test fixture, and widening it breaks tests
+that assume those six role holders are the only ones. To fill the other
+thirteen tables with a coherent demo club — five teams, three events across the
+status lifecycle, workstreams, a Kanban board, channels of every kind, threaded
+and file messages, one AI run, one expense per status, notifications and audit
+rows — opt in:
+
+```bash
+SEED_DEMO=1 npm run db:seed          # PowerShell: $env:SEED_DEMO=1; npm run db:seed
+```
+
+It adds no `app_user` rows and is idempotent (ids are derived from slugs, every
+insert is `ON CONFLICT DO NOTHING`), so the integration suite still passes with
+it loaded. Ignored when `NODE_ENV=production`. See
+`backend/src/db/seed-demo.ts`.
 
 ### Browse the database — Drizzle Studio
 

@@ -22,7 +22,7 @@ afterAll(async () => {
 
 it("rejects inviting a role above the actor tier", async () => {
   getSession.mockResolvedValue({
-    user: { id: "seed-marketing_director", email: "marketing_director@example.com" },
+    user: { id: "seed-director", email: "director@example.com" },
   });
 
   const response = await request(app)
@@ -38,7 +38,7 @@ it("rejects inviting a role above the actor tier", async () => {
 
 it("creates a lower-tier invite", async () => {
   getSession.mockResolvedValue({
-    user: { id: "seed-marketing_director", email: "marketing_director@example.com" },
+    user: { id: "seed-director", email: "director@example.com" },
   });
 
   const response = await request(app)

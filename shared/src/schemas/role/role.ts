@@ -5,7 +5,7 @@ export const roleSchema = z.enum([
   "vice_president",
   "treasurer",
   "secretary",
-  "marketing_director",
+  "director",
   "officer",
 ]);
 
@@ -20,7 +20,7 @@ export const ROLE_TIER = {
   vice_president: 2,
   treasurer: 2,
   secretary: 2,
-  marketing_director: 1,
+  director: 1,
   officer: 0,
 } as const satisfies Record<Role, Tier>;
 

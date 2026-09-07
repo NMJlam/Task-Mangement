@@ -25,16 +25,18 @@ describe("PATCH /api/members/:id/role", () => {
 
   beforeEach(async () => {
     getSession.mockReset();
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-role-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-role-%'`);
   });
 
   afterAll(async () => {
+    await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-role-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-role-%'`);
     await closeNodeDb();
   });
 
   it("rejects granting a role above the actor tier", async () => {
-    const actor = await member("actor", "marketing_director");
+    const actor = await member("actor", "director");
     const target = await member("target", "officer");
     getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
 
@@ -46,7 +48,7 @@ describe("PATCH /api/members/:id/role", () => {
   });
 
   it("rejects changing a member above the actor tier", async () => {
-    const actor = await member("actor", "marketing_director");
+    const actor = await member("actor", "director");
     const target = await member("target", "president");
     getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
 
@@ -64,7 +66,7 @@ describe("PATCH /api/members/:id/role", () => {
 
     const response = await request(app)
       .patch(`/api/members/${target.id}/role`)
-      .send({ role: "marketing_director" });
+      .send({ role: "director" });
 
     expect(response.status).toBe(403);
   });

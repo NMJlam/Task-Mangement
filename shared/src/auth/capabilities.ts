@@ -2,7 +2,7 @@ import type { Role } from "../schemas/role/role.js";
 
 export const CAPABILITIES = {
   "member:role-change": ["president", "vice_president"],
-  "invite:create": ["president", "secretary", "marketing_director"],
+  "invite:create": ["president", "secretary", "director"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;
