@@ -13,6 +13,7 @@ import {
   type OverdueTasksQuery,
   type TaskListResponse,
   type TaskResponse,
+  type TaskStatus,
   type UpdateTask,
 } from "@ctp/shared";
 import { and, asc, desc, eq, inArray, lt, ne, type SQL } from "drizzle-orm";
@@ -34,24 +35,21 @@ export const tasksRouter = Router();
  * role-bound power actually exists (plan.md, watch-out 4).
  */
 
-type Reference = { teamId?: string; assigneeId?: string | null };
+type Reference = { teamId?: string | null; assignee?: string | null };
 
 /**
  * Resolve the foreign keys before writing.
  *
- * `tasks.team_id` IS FK-constrained, so an unknown id would surface as an opaque
- * 500 from Postgres; `tasks.assignee_id` is NOT (its FK died with the legacy
- * `users` table), so an unknown id would silently store a dangling reference.
- * Both are checked here so either way the caller gets a 422 naming the field.
+ * Both `task.team_id` and `task.assignee` are FK-constrained, so an unknown id
+ * would otherwise surface as an opaque 500 from Postgres. Checking them here
+ * turns either into a 422 that names the offending field.
  */
 async function findBadReference(
   db: ReturnType<typeof getDb>,
   references: Reference[],
 ): Promise<{ code: string; message: string } | undefined> {
   const teamIds = [...new Set(references.map((reference) => reference.teamId).filter(isId))];
-  const assigneeIds = [
-    ...new Set(references.map((reference) => reference.assigneeId).filter(isId)),
-  ];
+  const assignees = [...new Set(references.map((reference) => reference.assignee).filter(isId))];
 
   if (teamIds.length > 0) {
     const found = await db.select({ id: teams.id }).from(teams).where(inArray(teams.id, teamIds));
@@ -59,12 +57,12 @@ async function findBadReference(
     if (missing) return { code: "TEAM_NOT_FOUND", message: `No team with id ${missing}.` };
   }
 
-  if (assigneeIds.length > 0) {
+  if (assignees.length > 0) {
     const found = await db
       .select({ id: appUsers.id })
       .from(appUsers)
-      .where(inArray(appUsers.id, assigneeIds));
-    const missing = assigneeIds.find((id) => !found.some((row) => row.id === id));
+      .where(inArray(appUsers.id, assignees));
+    const missing = assignees.find((id) => !found.some((row) => row.id === id));
     if (missing) return { code: "ASSIGNEE_NOT_FOUND", message: `No member with id ${missing}.` };
   }
 
@@ -73,6 +71,15 @@ async function findBadReference(
 
 function isId(value: string | null | undefined): value is string {
   return typeof value === "string";
+}
+
+/**
+ * `completed_at` is derived from status, never supplied by the client: the
+ * table enforces `(status = 'done') = (completed_at IS NOT NULL)`, so writing a
+ * status without its timestamp trips the CHECK and 500s.
+ */
+function completionOf(status: TaskStatus): { completedAt: Date | null } {
+  return { completedAt: status === "done" ? new Date() : null };
 }
 
 function notFound(res: Response): void {
@@ -92,7 +99,8 @@ tasksRouter.get(
       const filters = [
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.status ? eq(tasks.status, query.status) : undefined,
-        query.assigneeId ? eq(tasks.assigneeId, query.assigneeId) : undefined,
+        query.priority ? eq(tasks.priority, query.priority) : undefined,
+        query.assignee ? eq(tasks.assignee, query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
       const rows = await getDb()
@@ -128,7 +136,7 @@ tasksRouter.get(
         lt(tasks.dueAt, new Date()),
         ne(tasks.status, "done"),
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
-        query.assigneeId ? eq(tasks.assigneeId, query.assigneeId) : undefined,
+        query.assignee ? eq(tasks.assignee, query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
       const rows = await getDb()
@@ -153,7 +161,7 @@ tasksRouter.post(
   authenticate,
   authorise(0),
   validate(createTaskSchema),
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
       const input = res.locals.validated as CreateTask;
       const db = getDb();
@@ -163,9 +171,16 @@ tasksRouter.post(
         return;
       }
 
+      // `creator` is stamped from the session, never the body, so a caller
+      // cannot attribute work to someone else.
       const [task] = await db
         .insert(tasks)
-        .values({ id: newId(), ...input })
+        .values({
+          id: newId(),
+          creator: req.user!.id,
+          ...input,
+          ...completionOf(input.status),
+        })
         .returning();
 
       res.status(201).json({ task: task! } satisfies TaskResponse);
@@ -182,7 +197,7 @@ tasksRouter.post(
   authenticate,
   authorise(1),
   validate(bulkCreateTasksSchema),
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
       const input = res.locals.validated as BulkCreateTasks;
       const db = getDb();
@@ -196,7 +211,14 @@ tasksRouter.post(
       // and works identically on the node and Neon HTTP drivers.
       const rows = await db
         .insert(tasks)
-        .values(input.tasks.map((task) => ({ id: newId(), ...task })))
+        .values(
+          input.tasks.map((task) => ({
+            id: newId(),
+            creator: req.user!.id,
+            ...task,
+            ...completionOf(task.status),
+          })),
+        )
         .returning();
 
       res.status(201).json({ tasks: rows } satisfies TaskListResponse);
@@ -250,9 +272,14 @@ tasksRouter.patch(
         return;
       }
 
+      // No `updated_at` trigger exists, so the route owns the timestamp.
       const [task] = await db
         .update(tasks)
-        .set(patch)
+        .set({
+          ...patch,
+          ...(patch.status ? completionOf(patch.status) : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(tasks.id, req.params.id!))
         .returning();
 
@@ -280,7 +307,7 @@ tasksRouter.patch(
       const { status } = res.locals.validated as ChangeTaskStatus;
       const [task] = await getDb()
         .update(tasks)
-        .set({ status })
+        .set({ status, ...completionOf(status), updatedAt: new Date() })
         .where(eq(tasks.id, req.params.id!))
         .returning();
 
