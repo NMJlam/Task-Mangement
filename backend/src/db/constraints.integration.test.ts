@@ -203,6 +203,15 @@ describe("event constraints", () => {
       ),
     ).toBe("event_ends_after_start_check");
   });
+
+  it("rejects a negative attendance estimate", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "event" ("id", "title", "starts_at", "attendance_estimate")
+         VALUES ('${newId()}', 'E', now(), -1)`,
+      ),
+    ).toBe("event_attendance_estimate_non_negative_check");
+  });
 });
 
 describe("task constraints", () => {
