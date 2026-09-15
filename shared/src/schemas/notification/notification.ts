@@ -14,6 +14,8 @@ export const notificationKindSchema = z.enum([
   "expense_decided",
   "invite_accepted",
   "event_created",
+  "event_date_changed",
+  "event_cancelled",
 ]);
 
 export type NotificationKind = z.infer<typeof notificationKindSchema>;
