@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { events } from "./event.js";
 import { teams } from "./team.js";
@@ -40,5 +40,8 @@ export const workstreams = pgTable(
     // Required as the target of task's composite foreign key, and correct in its
     // own right: one deliverable per team per event.
     unique("workstream_one_per_team_per_event").on(table.eventId, table.teamId),
+    // The `GET /api/events` teamId filter is an EXISTS leading with team_id;
+    // the unique index above leads with event_id and doesn't serve it.
+    index("workstream_team_idx").on(table.teamId),
   ],
 );
