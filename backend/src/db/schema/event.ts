@@ -4,12 +4,14 @@ import {
   bigint,
   check,
   index,
+  integer,
   pgTable,
   smallint,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appUsers } from "./app-user.js";
 import { notBlank, sqlEnumValues } from "./sql-enum.js";
 
 /**
@@ -21,7 +23,11 @@ import { notBlank, sqlEnumValues } from "./sql-enum.js";
  * delete impossible, and a soft-delete flag that leaks from one query is worse
  * than a hard delete.
  *
- * No `creator` column — audit_log records who created it.
+ * `owner` is NOT the `creator` audit_log would give you — it is an
+ * AUTHORISATION input (the `PATCH` rule is "lead+ or owner"), so it must be a
+ * live, queryable column rather than a fact buried in an append-only,
+ * actor-nullable log. `ON DELETE SET NULL`: a departed owner leaves the event
+ * editable by lead+ only, never orphaned.
  *
  * TODO(R9): location, recurrence, attendees. Attendees may turn out to be
  * `workstream` plus `team_member` rather than a column — check before adding one.
@@ -31,6 +37,8 @@ export const events = pgTable(
   {
     id: uuid("id").primaryKey(),
     title: text("title").notNull(),
+    description: text("description"),
+    venue: text("venue"),
 
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
@@ -41,7 +49,11 @@ export const events = pgTable(
     // number from the pool; conflating them is how overspend goes unnoticed.
     allocationCents: bigint("allocation_cents", { mode: "number" }).notNull().default(0),
 
+    attendanceEstimate: integer("attendance_estimate"),
+
     minTier: smallint("min_tier").notNull().default(0),
+
+    owner: uuid("owner").references(() => appUsers.id, { onDelete: "set null" }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -59,6 +71,10 @@ export const events = pgTable(
     check(
       "event_ends_after_start_check",
       sql`${table.endsAt} IS NULL OR ${table.endsAt} >= ${table.startsAt}`,
+    ),
+    check(
+      "event_attendance_estimate_non_negative_check",
+      sql`${table.attendanceEstimate} IS NULL OR ${table.attendanceEstimate} >= 0`,
     ),
   ],
 );
