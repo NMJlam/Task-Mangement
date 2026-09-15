@@ -3,6 +3,10 @@ import type { Role } from "../schemas/role/role.js";
 export const CAPABILITIES = {
   "member:role-change": ["president", "vice_president"],
   "invite:create": ["president", "secretary", "director"],
+  // Tier 2 also contains the VP, treasurer and secretary — cancelling an
+  // event releases its allocation (Rule 2), and that call is the president's
+  // alone, not "management's". A tier check cannot express "one of tier 2".
+  "event:cancel": ["president"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;
