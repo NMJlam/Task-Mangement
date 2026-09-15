@@ -1,12 +1,19 @@
 import {
   calendarQuerySchema,
+  can,
+  changeEventStatusSchema,
+  createEventSchema,
   eventCursorSchema,
   eventParamsSchema,
   getEventQuerySchema,
   listEventsQuerySchema,
+  updateEventSchema,
   type CalendarItem,
   type CalendarQuery,
   type CalendarResponse,
+  type ChangeEventStatus,
+  type ChangeEventStatusResponse,
+  type CreateEvent,
   type EventBudget,
   type EventDetail,
   type EventProgress,
@@ -18,15 +25,90 @@ import {
   type ListEventsResponse,
   type TaskCounts,
   type Tier,
+  type UpdateEvent,
 } from "@ctp/shared";
-import { and, asc, eq, exists, gte, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, gt, gte, lte, ne, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
-import { channels, events, tasks, workstreams } from "../../db/schema/index.js";
+import { newId } from "../../db/id.js";
+import {
+  appUsers,
+  auditLog,
+  channels,
+  events,
+  notifications,
+  tasks,
+  teams,
+  workstreams,
+} from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
-import { computeProgress } from "./service.js";
+import {
+  allowedFromStatuses,
+  allocateToEvent,
+  assertEventDates,
+  assertNoTierEscalation,
+  BudgetExceededError,
+  cancelBlockers,
+  releaseAllocation,
+  computeProgress,
+  ValidationError,
+  wrapBlockers,
+  type Queryable,
+  type Tx,
+} from "./service.js";
 
 export const eventsRouter = Router();
+
+function validationErrorResponse(res: Response, error: ValidationError): void {
+  res.status(422).json({
+    error: { code: "VALIDATION_ERROR", message: "Request validation failed", fields: error.fields },
+  });
+}
+
+async function audit(
+  tx: Queryable,
+  actorId: string,
+  action: string,
+  eventId: string,
+  changes: Record<string, unknown>,
+): Promise<void> {
+  await tx.insert(auditLog).values({
+    id: newId(),
+    actorId,
+    action,
+    entityType: "event",
+    entityId: eventId,
+    changes,
+  });
+}
+
+/** Fans a notification out to every distinct assignee of the event's tasks. */
+async function notifyAssignees(
+  tx: Tx,
+  eventId: string,
+  kind: "event_date_changed" | "event_cancelled",
+  body: string,
+): Promise<void> {
+  const assigneeRows = await tx
+    .selectDistinct({ assignee: tasks.assignee })
+    .from(tasks)
+    .where(and(eq(tasks.eventId, eventId), ne(tasks.status, "done")));
+  const assignees = assigneeRows
+    .map((row) => row.assignee)
+    .filter((id): id is string => id !== null);
+  if (assignees.length === 0) return;
+
+  await tx.insert(notifications).values(
+    assignees.map((userId) => ({
+      id: newId(),
+      userId,
+      kind,
+      body,
+      entityType: "event",
+      entityId: eventId,
+    })),
+  );
+}
 
 function notFound(res: Response): void {
   // Deliberately the same body for "doesn't exist" and "exists but your tier
@@ -397,6 +479,367 @@ eventsRouter.get(
       items.sort((a, b) => dateOf(a) - dateOf(b));
 
       res.status(200).json({ items } satisfies CalendarResponse);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Helpers shared by the writes below ───────────────────────────────────────
+
+/** Fetches the full response shape (owner, budget, taskCounts, ...) for one event. */
+async function fetchEventDetail(eventId: string): Promise<EventDetail | undefined> {
+  const result = await getDb().execute<EventRow>(
+    sql`${EVENT_ROW_SELECT} WHERE e.id = ${eventId} LIMIT 1`,
+  );
+  const row = result.rows[0];
+  return row ? toDetail(row) : undefined;
+}
+
+async function findTeam(
+  teamId: string,
+): Promise<{ id: string; name: string; lead: string | null } | undefined> {
+  const [team] = await getDb().select().from(teams).where(eq(teams.id, teamId)).limit(1);
+  return team;
+}
+
+// ── POST /api/events ──────────────────────────────────────────────────────────
+
+eventsRouter.post(
+  "/events",
+  authenticate,
+  authorise(1),
+  validate(createEventSchema),
+  async (req, res, next) => {
+    try {
+      const input = res.locals.validated as CreateEvent;
+      try {
+        assertEventDates({ startsAt: input.startsAt, endsAt: input.endsAt ?? null });
+      } catch (error) {
+        if (error instanceof ValidationError) return validationErrorResponse(res, error);
+        throw error;
+      }
+
+      if (input.teamId) {
+        const team = await findTeam(input.teamId);
+        if (!team) {
+          res.status(422).json({
+            error: { code: "TEAM_NOT_FOUND", message: `No team with id ${input.teamId}.` },
+          });
+          return;
+        }
+      }
+
+      const eventId = newId();
+      const minTier = input.minTier ?? 0;
+
+      try {
+        await getDb().transaction(async (tx) => {
+          await tx.insert(events).values({
+            id: eventId,
+            title: input.title,
+            description: input.description ?? null,
+            venue: input.venue ?? null,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt ?? null,
+            attendanceEstimate: input.attendanceEstimate ?? null,
+            minTier,
+            owner: req.user!.id,
+          });
+
+          if (input.teamId) {
+            await tx.insert(workstreams).values({ id: newId(), eventId, teamId: input.teamId });
+          }
+
+          // team_id NULL + a non-blank name are both CHECKs on an
+          // event-kind channel; min_tier mirrors the event's.
+          await tx
+            .insert(channels)
+            .values({ id: newId(), eventId, kind: "event", name: input.title, minTier });
+
+          if (input.allocationCents) {
+            await allocateToEvent(tx, eventId, input.allocationCents);
+          }
+
+          await audit(tx, req.user!.id, "event.created", eventId, { title: input.title });
+        });
+      } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          res.status(409).json({ error: { code: "BUDGET_EXCEEDED", message: error.message } });
+          return;
+        }
+        throw error;
+      }
+
+      const event = await fetchEventDetail(eventId);
+      res.status(201).json({ event: event! } satisfies EventResponse);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── PATCH /api/events/:id ─────────────────────────────────────────────────────
+
+eventsRouter.patch(
+  "/events/:id",
+  authenticate,
+  authorise(0),
+  validate(eventParamsSchema, "params"),
+  validate(updateEventSchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id!;
+      const input = res.locals.validated as UpdateEvent;
+      const db = getDb();
+
+      const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+      if (!event) {
+        notFound(res);
+        return;
+      }
+
+      // Owner-or-tier is a per-resource rule: it needs the loaded row, which
+      // middleware never has. authorise() cannot express it.
+      if (req.user!.tier < 1 && event.owner !== req.user!.id) {
+        res.status(403).json({
+          error: { code: "FORBIDDEN", message: "Only the owner or lead+ can edit this event." },
+        });
+        return;
+      }
+
+      const mergedStartsAt = input.startsAt ?? event.startsAt;
+      const mergedEndsAt = input.endsAt !== undefined ? input.endsAt : event.endsAt;
+      try {
+        assertEventDates({ startsAt: mergedStartsAt, endsAt: mergedEndsAt });
+      } catch (error) {
+        if (error instanceof ValidationError) return validationErrorResponse(res, error);
+        throw error;
+      }
+
+      const datesTouched = input.startsAt !== undefined || input.endsAt !== undefined;
+      const warnings: string[] = [];
+
+      try {
+        await db.transaction(async (tx) => {
+          if (input.minTier !== undefined && input.minTier > event.minTier) {
+            const assigneeTiers = await tx
+              .select({ assigneeTier: appUsers.tier })
+              .from(tasks)
+              .innerJoin(appUsers, eq(appUsers.id, tasks.assignee))
+              .where(eq(tasks.eventId, id));
+            assertNoTierEscalation(input.minTier, assigneeTiers);
+          }
+
+          if (
+            input.allocationCents !== undefined &&
+            input.allocationCents !== event.allocationCents
+          ) {
+            await allocateToEvent(tx, id, input.allocationCents);
+          }
+
+          const { allocationCents: _omitAlloc, ...columnPatch } = input;
+          await tx
+            .update(events)
+            .set({ ...columnPatch, updatedAt: new Date() })
+            .where(eq(events.id, id));
+
+          if (datesTouched) {
+            const boundary = mergedEndsAt ?? mergedStartsAt;
+            const overhangResult = await tx
+              .select({ count: sql<number>`count(*)::int` })
+              .from(tasks)
+              .where(and(eq(tasks.eventId, id), gt(tasks.dueAt, boundary)));
+            const overhang = Number(overhangResult[0]?.count ?? 0);
+            if (overhang > 0) {
+              warnings.push(
+                `${overhang} task${overhang === 1 ? "" : "s"} now fall${overhang === 1 ? "s" : ""} after the event date`,
+              );
+            }
+            await notifyAssignees(tx, id, "event_date_changed", `"${event.title}" date changed.`);
+          }
+
+          await audit(tx, req.user!.id, "event.updated", id, input);
+        });
+      } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          res.status(409).json({ error: { code: "BUDGET_EXCEEDED", message: error.message } });
+          return;
+        }
+        if (error instanceof ValidationError) return validationErrorResponse(res, error);
+        throw error;
+      }
+
+      const updated = await fetchEventDetail(id);
+      res.status(200).json({
+        event: updated!,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      } satisfies EventResponse);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── PATCH /api/events/:id/status ─────────────────────────────────────────────
+
+eventsRouter.patch(
+  "/events/:id/status",
+  authenticate,
+  authorise(1),
+  validate(eventParamsSchema, "params"),
+  validate(changeEventStatusSchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id!;
+      const { status: target } = res.locals.validated as ChangeEventStatus;
+      const db = getDb();
+
+      if (target === "wrapped") {
+        const blockers = await wrapBlockers(db, id);
+        if (blockers.length > 0) {
+          const [current] = await db
+            .select({ status: events.status })
+            .from(events)
+            .where(eq(events.id, id))
+            .limit(1);
+          if (!current) {
+            notFound(res);
+            return;
+          }
+          res
+            .status(409)
+            .json({ id, status: current.status, blockers } satisfies ChangeEventStatusResponse);
+          return;
+        }
+      }
+
+      const fromStatuses = allowedFromStatuses(target);
+      const result = await db.execute<{ id: string; status: EventStatus }>(sql`
+        UPDATE "event" SET status = ${target}, updated_at = now()
+        WHERE id = ${id} AND status IN (${sql.join(
+          fromStatuses.map((s) => sql`${s}`),
+          sql`, `,
+        )})
+        RETURNING id, status
+      `);
+
+      const updated = result.rows[0];
+      if (updated) {
+        await audit(db, req.user!.id, "event.status_changed", id, { to: target });
+        res.status(200).json({
+          id: updated.id,
+          status: updated.status,
+          blockers: [],
+        } satisfies ChangeEventStatusResponse);
+        return;
+      }
+
+      // Zero rows: either this is a harmless double-click (current already
+      // equals target) or a genuinely illegal hop. Same guarded update,
+      // different meaning — disambiguate by re-reading the current row.
+      const [current] = await db
+        .select({ status: events.status })
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+      if (!current) {
+        notFound(res);
+        return;
+      }
+      if (current.status === target) {
+        res
+          .status(200)
+          .json({ id, status: current.status, blockers: [] } satisfies ChangeEventStatusResponse);
+        return;
+      }
+      res.status(409).json({
+        error: {
+          code: "INVALID_TRANSITION",
+          message: `Cannot move an event from ${current.status} to ${target}.`,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── DELETE /api/events/:id ────────────────────────────────────────────────────
+//
+// Cancelling is president OR the director who leads the Events team, for an
+// event that team actually contributes to. The Events-team lead can be tier
+// 1, so the router floor is authorise(1) rather than authorise(2) — the
+// president-vs-everyone-else split is a handler-level check instead of the
+// whole gate. "The Events team" is identified by team.name = 'Events', the
+// same name-based portfolio convention team.ts uses for "Marketing Director"
+// — there is no dedicated schema column for it, so renaming that team breaks
+// this check silently.
+
+eventsRouter.delete(
+  "/events/:id",
+  authenticate,
+  authorise(1),
+  validate(eventParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id!;
+      const db = getDb();
+
+      const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+      if (!event) {
+        notFound(res);
+        return;
+      }
+
+      const isPresident = can(req.user!.role, "event:cancel");
+      let isEventsTeamLead = false;
+      if (!isPresident) {
+        const [eventsTeam] = await db.select().from(teams).where(eq(teams.name, "Events")).limit(1);
+        if (eventsTeam?.lead === req.user!.id) {
+          const [workstream] = await db
+            .select({ id: workstreams.id })
+            .from(workstreams)
+            .where(and(eq(workstreams.eventId, id), eq(workstreams.teamId, eventsTeam.id)))
+            .limit(1);
+          isEventsTeamLead = Boolean(workstream);
+        }
+      }
+
+      if (!isPresident && !isEventsTeamLead) {
+        res.status(403).json({
+          error: {
+            code: "FORBIDDEN",
+            message: "Only the president or the Events-team lead can cancel this event.",
+          },
+        });
+        return;
+      }
+
+      if (event.status === "cancelled") {
+        res.status(204).end();
+        return;
+      }
+
+      const blockers = await cancelBlockers(db, id);
+      if (blockers.length > 0) {
+        res
+          .status(409)
+          .json({ error: { code: "APPROVED_EXPENSES_PENDING", message: blockers[0]! } });
+        return;
+      }
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(events)
+          .set({ status: "cancelled", updatedAt: new Date() })
+          .where(and(eq(events.id, id), ne(events.status, "cancelled")));
+        await releaseAllocation(tx, id);
+        await notifyAssignees(tx, id, "event_cancelled", `"${event.title}" was cancelled.`);
+        await audit(tx, req.user!.id, "event.cancelled", id, { from: event.status });
+      });
+
+      res.status(204).end();
     } catch (error) {
       next(error);
     }

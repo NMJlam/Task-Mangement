@@ -214,7 +214,16 @@ export const eventDetailSchema = eventSummarySchema.extend({
 
 export type EventDetail = z.infer<typeof eventDetailSchema>;
 
-export const eventResponseSchema = z.object({ event: eventDetailSchema });
+/**
+ * `warnings` is populated only by `PATCH /api/events/:id` when a date move
+ * leaves task due dates on the wrong side of the event — the route never
+ * moves them itself, it surfaces the count and lets the user decide. Absent
+ * (not empty) on every other response, including a no-op-free `GET`.
+ */
+export const eventResponseSchema = z.object({
+  event: eventDetailSchema,
+  warnings: z.array(z.string()).optional(),
+});
 export type EventResponse = z.infer<typeof eventResponseSchema>;
 
 // ── GET /api/events/:id/progress ─────────────────────────────────────────────

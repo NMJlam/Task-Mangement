@@ -13,6 +13,15 @@ import type * as schema from "../../db/schema/index.js";
 export type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];
 
 /**
+ * Either an open transaction or the plain top-level db handle. Money-rule
+ * functions (`allocateToEvent`, `releaseAllocation`) always need the former —
+ * they must run inside the same transaction as the write they guard — but the
+ * read-only blocker checks are single statements with nothing to roll back,
+ * so callers may pass either.
+ */
+export type Queryable = Tx | NodePgDatabase<typeof schema>;
+
+/**
  * Renders the same `VALIDATION_ERROR` 422 body the `validate()` middleware
  * produces (`shared/apiErrorSchema`), so a route-level `catch` can turn either
  * one into an identical response regardless of which layer rejected the
@@ -85,7 +94,7 @@ export async function releaseAllocation(tx: Tx, eventId: string): Promise<void> 
 }
 
 /** Pending-expense blockers for the `PATCH /:id/status` wrap guard (409). */
-export async function wrapBlockers(tx: Tx, eventId: string): Promise<string[]> {
+export async function wrapBlockers(tx: Queryable, eventId: string): Promise<string[]> {
   const result = await tx.execute<{ count: number }>(sql`
     SELECT count(*)::int AS count FROM "expense"
     WHERE event_id = ${eventId} AND status = 'pending'
@@ -94,6 +103,43 @@ export async function wrapBlockers(tx: Tx, eventId: string): Promise<string[]> {
   return count > 0
     ? [`${count} pending expense${count === 1 ? "" : "s"} must be resolved before wrapping`]
     : [];
+}
+
+/**
+ * Approved-but-unpaid-expense blockers for `DELETE /:id` (cancel). Distinct
+ * from `wrapBlockers`: an approved expense here means someone still needs to
+ * pay it or reject it — cancelling out from under that decision is the thing
+ * being refused, not the pending-expense case wrapping guards against.
+ */
+export async function cancelBlockers(tx: Queryable, eventId: string): Promise<string[]> {
+  const result = await tx.execute<{ count: number }>(sql`
+    SELECT count(*)::int AS count FROM "expense"
+    WHERE event_id = ${eventId} AND status = 'approved'
+  `);
+  const count = Number(result.rows[0]?.count ?? 0);
+  return count > 0
+    ? [
+        `${count} approved expense${count === 1 ? "" : "s"} must be paid or rejected before cancelling`,
+      ]
+    : [];
+}
+
+// ── Status transitions ───────────────────────────────────────────────────────
+
+/**
+ * `cancelled` has exactly one door (`DELETE`) and is never a legal target
+ * here. `planning` is reachable only by restoring a cancelled event; a
+ * freshly-created event starts in `planning` via `POST`, not this endpoint.
+ */
+const STATUS_TRANSITIONS = {
+  planning: ["cancelled"],
+  live: ["planning", "wrapped"],
+  wrapped: ["live"],
+} as const satisfies Record<"planning" | "live" | "wrapped", readonly string[]>;
+
+/** The current statuses a guarded update to `target` is allowed to move from. */
+export function allowedFromStatuses(target: "planning" | "live" | "wrapped"): readonly string[] {
+  return STATUS_TRANSITIONS[target];
 }
 
 // ── Cross-field validation ────────────────────────────────────────────────────
