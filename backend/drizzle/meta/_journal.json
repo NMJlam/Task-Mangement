@@ -15,6 +15,13 @@
       "when": 1789471388522,
       "tag": "0001_calm_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789475769659,
+      "tag": "0002_common_jetstream",
+      "breakpoints": true
     }
   ]
 }
