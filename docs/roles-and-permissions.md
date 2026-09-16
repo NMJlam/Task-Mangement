@@ -6,6 +6,7 @@ disagree, the code wins and this page has a bug — fix it in the same PR.
 - Role → tier: `ROLE_TIER` in `shared/src/schemas/role/role.ts`
 - Role → powers: `CAPABILITIES` in `shared/src/auth/capabilities.ts`
 - Per route: the `authorise(...)` and `can(...)` calls in `backend/src/routes/`
+- Request and response shapes: [api-endpoints.md](api-endpoints.md)
 - Try the rules by hand: [setup.md — test endpoints in the browser](setup.md#test-endpoints-by-hand-in-the-browser-dev-only)
 - Design intent: [schema spec §4 and §8](superpowers/specs/2026-08-27-database-schema-design.md);
   diagram: [`auth-rbac-architecture.drawio`](auth-rbac-architecture.drawio)

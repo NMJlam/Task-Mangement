@@ -43,6 +43,20 @@ it("sends the chosen method, path and body, then reports the status", async () =
   );
 });
 
+it("reveals and re-hides the password", () => {
+  useSession.mockReturnValue({ data: null });
+
+  render(<ScratchPage />);
+  const password = screen.getByLabelText("Password");
+  expect(password).toHaveAttribute("type", "password");
+
+  fireEvent.click(screen.getByRole("button", { name: /show password/i }));
+  expect(password).toHaveAttribute("type", "text");
+
+  fireEvent.click(screen.getByRole("button", { name: /hide password/i }));
+  expect(password).toHaveAttribute("type", "password");
+});
+
 it("omits the body when the textarea is empty", async () => {
   const fetchMock = vi.fn().mockResolvedValue({ status: 204, text: async () => "" });
   vi.stubGlobal("fetch", fetchMock);

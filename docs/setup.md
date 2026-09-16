@@ -234,6 +234,9 @@ enable password sign-in instead:
    add a JSON body if the route takes one, press **Send**. The session cookie
    goes with every request.
 
+Every endpoint, with its inputs and responses, is in
+[`api-endpoints.md`](api-endpoints.md).
+
 Re-run step 4 with a different role (`officer`, `director`, …) to exercise the
 tier rules in [`roles-and-permissions.md`](roles-and-permissions.md); `tier` is
 derived from `role`, so there is nothing else to keep in sync.
