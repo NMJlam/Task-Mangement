@@ -34,7 +34,10 @@ of truth. If this page disagrees with them, this page is wrong.
 - **Dates** are ISO 8601 strings both ways, e.g. `"2026-10-01T09:00:00.000Z"`.
 - **Enums:** role `president | vice_president | treasurer | secretary | director | officer`,
   task status `todo | in_progress | blocked | done`,
-  task priority `low | medium | high | urgent`.
+  task priority `low | medium | high | urgent`,
+  event status `planning | live | wrapped | cancelled`,
+  event risk `on_track | at_risk | critical`.
+- **Money is always integer cents**, never a float.
 
 ## Getting a session — `/api/auth/*` (Better Auth)
 
@@ -258,6 +261,244 @@ Things worth knowing before you test:
 - **Overdue** means past `dueAt` and not `done`. Tasks with no due date never
   appear.
 - A missing task is `404 TASK_NOT_FOUND` on every `/tasks/:id` route.
+
+## Events
+
+An event is the unit of club work: tasks, a channel, a team workstream and a
+slice of the budget all hang off it. `cancelled` **is** the soft delete — there
+is no `deleted_at`, and `DELETE /api/events/:id` is the only door into it.
+
+An event object (`EventDetail` — `EventSummary` is this minus the last four
+fields):
+
+```json
+{
+  "id": "<uuid>",
+  "title": "O-Week Booth",
+  "status": "planning",
+  "startsAt": "2026-10-01T09:00:00.000Z",
+  "endsAt": null,
+  "venue": "Campus Centre",
+  "minTier": 0,
+  "owner": { "id": "<uuid>", "name": "Ada" },
+  "taskCounts": { "todo": 3, "inProgress": 1, "blocked": 0, "done": 2 },
+  "overdueCount": 1,
+  "budget": { "allocationCents": 50000, "committedCents": 12000, "spentCents": 0 },
+  "description": null,
+  "attendanceEstimate": 200,
+  "createdAt": "2026-09-16T00:00:00.000Z",
+  "updatedAt": "2026-09-16T00:00:00.000Z"
+}
+```
+
+- **`taskCounts` has exactly four keys** and they total the event's tasks.
+  `overdueCount` is a sibling, not a fifth key — an overdue task is _also_
+  `todo`, `inProgress` or `blocked`, so folding it in would double-count.
+- **`committedCents` is `approved` + `paid`; `spentCents` is `paid` only.** Burn
+  rate is `committedCents / allocationCents`.
+- **`minTier` hides, it doesn't forbid.** An event above your tier answers
+  `404 EVENT_NOT_FOUND` on every route below — never `403`, which would confirm
+  it exists.
+
+| Endpoint                          | Who                                | Success          |
+| --------------------------------- | ---------------------------------- | ---------------- |
+| `GET /api/events`                 | tier 0                             | `200` page below |
+| `GET /api/events/:id`             | tier 0                             | `200 { event }`  |
+| `GET /api/events/:id/progress`    | tier 0                             | `200` progress   |
+| `POST /api/events`                | tier 1                             | `201 { event }`  |
+| `PATCH /api/events/:id`           | owner, or tier 1                   | `200 { event }`  |
+| `PATCH /api/events/:id/status`    | tier 1                             | `200` status     |
+| `DELETE /api/events/:id` (cancel) | president, or the Events-team lead | `204`            |
+
+### `GET /api/events` · tier 0
+
+Query: `?teamId&status&from&to&ownerId&limit&cursor`. `limit` is 1–100
+(default **25**). Newest first (`startsAt DESC`).
+
+```json
+{ "items": [], "nextCursor": "MjAyNi0xMC0wMVQ...|<uuid>" }
+```
+
+- **`status` opts in.** Omit it and `cancelled` events are excluded; pass
+  `?status=cancelled` and you get exactly those.
+- **`cursor` is opaque** — base64 of `startsAt|id`, because `starts_at` isn't
+  unique and a date-only cursor drops or repeats rows. Pass `nextCursor` back
+  verbatim; a garbled one is `422 INVALID_CURSOR`, not a silent reset.
+  `nextCursor` is `null` on the last page.
+- `teamId` matches events the team has a **workstream** on.
+
+### `GET /api/events/:id` · tier 0
+
+Query: `?include=tasks,channel` — comma-separated. An unknown member is a `422`,
+not a silent drop.
+
+| Include    | Adds                                                        |
+| ---------- | ----------------------------------------------------------- |
+| `tasks`    | `tasks: []` — up to 50, board order, filtered by your tier  |
+| `channel`  | `channelId` — omitted entirely if the event has no channel  |
+| `expenses` | Accepted by the schema but **not implemented** — `TODO(R9)` |
+
+`404 EVENT_NOT_FOUND` if it doesn't exist _or_ its `minTier` is above yours.
+
+### `GET /api/events/:id/progress` · tier 0
+
+No inputs.
+
+```json
+{
+  "percentComplete": 33,
+  "overdueCount": 1,
+  "daysUntil": 15,
+  "budgetBurn": 0.24,
+  "risk": "at_risk",
+  "riskReasons": ["1 overdue task"]
+}
+```
+
+- `percentComplete` is `done / total` rounded. **`blocked` counts in the
+  denominator, never the numerator.** No tasks at all reads `0`.
+- `budgetBurn` is `committedCents / allocationCents`, or **`null`** when nothing
+  is allocated — not `0`, which would read as "on budget".
+- `daysUntil` is whole calendar days in `CLUB_TIMEZONE` (default
+  `Australia/Melbourne`), not UTC — an evening event is off by one otherwise.
+  Negative once the event has passed.
+- `risk` is `critical` when over budget, or overdue work with ≤ 3 days left;
+  `at_risk` when anything is overdue, or spend is running ahead of the planning
+  runway; `on_track` otherwise. The rule lives in `computeProgress`
+  (`routes/events/service.ts`) so every surface agrees.
+
+### `POST /api/events` · tier 1
+
+Only `title` and `startsAt` are required.
+
+```json
+{
+  "title": "O-Week Booth",
+  "description": "Recruitment stall",
+  "venue": "Campus Centre",
+  "startsAt": "2026-10-01T09:00:00.000Z",
+  "endsAt": "2026-10-01T17:00:00.000Z",
+  "attendanceEstimate": 200,
+  "allocationCents": 50000,
+  "minTier": 0,
+  "teamId": "<uuid>"
+}
+```
+
+Creates the event in `planning`, **stamps you as owner**, opens its event
+channel, and — if `teamId` is given — its first workstream. All in one
+transaction.
+
+| Response               | When                                                               |
+| ---------------------- | ------------------------------------------------------------------ |
+| `201 { "event": … }`   | Created.                                                           |
+| `409 BUDGET_EXCEEDED`  | `allocationCents` would push club-wide allocation past the budget. |
+| `422 TEAM_NOT_FOUND`   | Unknown `teamId`.                                                  |
+| `422 VALIDATION_ERROR` | Blank title, or `endsAt` before `startsAt`.                        |
+
+`teamId` seeds a workstream row, it is not a column on the event — which is why
+`PATCH` drops it.
+
+### `PATCH /api/events/:id` · owner, or tier 1
+
+Body: any subset of the create body minus `teamId` and `status`. **At least one
+field** — `{}` is a `422`.
+
+```json
+{ "event": {}, "warnings": ["2 tasks now fall after the event date"] }
+```
+
+| Response               | When                                                     |
+| ---------------------- | -------------------------------------------------------- |
+| `200 { "event": … }`   | Updated. `warnings` present only for the case below.     |
+| `403 FORBIDDEN`        | Tier 0 and not the owner.                                |
+| `404 EVENT_NOT_FOUND`  | No such event, or above your tier.                       |
+| `409 BUDGET_EXCEEDED`  | New `allocationCents` breaks the club budget.            |
+| `422 VALIDATION_ERROR` | `endsAt` before `startsAt`, or the `minTier` rule below. |
+
+- **Dates are validated merged, not per-body.** `PATCH { startsAt }` is checked
+  against the event's _stored_ `endsAt`.
+- **Moving a date notifies, it doesn't reschedule.** Tasks left due after the
+  new date come back in `warnings`; every assignee of an unfinished task gets an
+  `event_date_changed` notification. The route never moves a due date for you.
+- **Raising `minTier` is blocked** if it would hide the event from someone
+  already assigned a task on it: `422`, field `minTier`.
+
+### `PATCH /api/events/:id/status` · tier 1
+
+Body: `{ "status": "live" }` — one of `planning | live | wrapped`. **Not
+`cancelled`**; that is `DELETE`, because cancelling must also release budget.
+
+Legal moves: `planning → live`, `live → wrapped`, `wrapped → live`, and
+`cancelled → planning` (restore).
+
+```json
+{ "id": "<uuid>", "status": "wrapped", "blockers": [] }
+```
+
+| Response                              | When                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `200 { id, status, blockers: [] }`    | Moved. Setting the status it already has is a no-op `200`.                      |
+| `409 { id, status, blockers: [ … ] }` | Wrapping with pending expenses — note this 409 is **not** the `ApiError` shape. |
+| `409 INVALID_TRANSITION`              | Illegal hop, e.g. `planning → wrapped`.                                         |
+| `404 EVENT_NOT_FOUND`                 | No such event.                                                                  |
+
+### `DELETE /api/events/:id` · president, or the Events-team lead
+
+Cancels — it does **not** delete. Sets `cancelled`, releases the unspent
+allocation back to the pool (committed spend stays allocated), and notifies
+every assignee of an unfinished task.
+
+| Response                        | When                                                            |
+| ------------------------------- | --------------------------------------------------------------- |
+| `204`                           | Cancelled. Cancelling an already-cancelled event is also `204`. |
+| `403 FORBIDDEN`                 | Tier 1+ but neither the president nor the Events-team lead.     |
+| `404 EVENT_NOT_FOUND`           | No such event.                                                  |
+| `409 APPROVED_EXPENSES_PENDING` | Approved-but-unpaid expenses — pay or reject them first.        |
+
+The Events-team exception is matched on `team.name = 'Events'` and requires the
+event to have a workstream on that team. **Renaming the team silently removes
+the exception.**
+
+## Calendar
+
+### `GET /api/calendar` · tier 0
+
+Query: `?from&to` (**both required**), plus `?teamId` and
+`?include=events,tasks` (default: both).
+
+```json
+{
+  "items": [
+    {
+      "kind": "event",
+      "id": "<uuid>",
+      "title": "O-Week Booth",
+      "startsAt": "2026-10-01T09:00:00.000Z",
+      "endsAt": null,
+      "status": "planning"
+    },
+    {
+      "kind": "task",
+      "id": "<uuid>",
+      "title": "Book the venue",
+      "dueAt": "2026-09-28T09:00:00.000Z",
+      "eventId": "<uuid>",
+      "assigneeId": "<uuid>"
+    }
+  ]
+}
+```
+
+One list discriminated on `kind`, sorted by date across both types. Events are
+ranged on `startsAt`, tasks on `dueAt`; both are filtered by your tier, and
+cancelled events never appear.
+
+- **`teamId` excludes standing tasks.** `task.team_id` is nullable — committee
+  work belonging to no team can't match a team filter.
+- **No clash detection.** Deliberately absent: "clash" has no agreed definition
+  (same-day vs. interval overlap) and `endsAt` is nullable, so half the rows
+  have no interval to overlap. There is no `clashes` field.
 
 ## Cron
 

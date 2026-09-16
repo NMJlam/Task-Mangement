@@ -79,6 +79,9 @@ export const tasks = pgTable(
       .on(table.dueAt)
       .where(sql`${table.status} <> 'done' AND ${table.dueAt} IS NOT NULL`),
 
+    // The GET /api/calendar task range read, filtered by team.
+    index("task_team_due_idx").on(table.teamId, table.dueAt),
+
     check("task_title_not_blank_check", notBlank(table.title)),
     check(
       "task_status_check",

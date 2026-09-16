@@ -39,6 +39,21 @@ Assembled in app order: **`log → authenticate → authorise → validate → h
 `@ctp/shared`** and 422s with the shared `ApiError` shape. `app.ts` does not call
 `listen()` — `dev-server.ts`, Vitest, and `api/index.ts` all import the same app.
 
+Authorisation has two middleware, one per axis: `authorise(minTier)` for rank,
+`authoriseCapability(cap)` for powers that belong to a named office (tier 2 also
+holds the VP, treasurer and secretary — `event:cancel` is the president's
+alone). Neither sees the row, so **per-resource** rules ("the owner, or tier 1")
+are handler checks gated at the lowest tier that could pass.
+
+## Service layer
+
+A route gets a `service.ts` only once it owns rules that outlive the request —
+money, state machines, cross-field invariants. `routes/events/service.ts` is the
+reference: framework-free (no `req`/`res`), takes a `Tx`, throws typed errors the
+route maps to status codes. That split is what lets the rules be unit-tested with
+no database. Most routes don't need one; `routes/example/` is still the default
+shape.
+
 ## Database
 
 Two factories in `backend/src/db/client.ts`:

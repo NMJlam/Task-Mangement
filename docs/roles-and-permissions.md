@@ -24,14 +24,19 @@ treasurer. Only their capabilities differ.
 
 ## Roles
 
-| Role             | Tier | Capabilities                          |
-| ---------------- | ---- | ------------------------------------- |
-| `president`      | 2    | `member:role-change`, `invite:create` |
-| `vice_president` | 2    | `member:role-change`                  |
-| `secretary`      | 2    | `invite:create`                       |
-| `treasurer`      | 2    | —                                     |
-| `director`       | 1    | `invite:create`                       |
-| `officer`        | 0    | —                                     |
+| Role             | Tier | Capabilities                                          |
+| ---------------- | ---- | ----------------------------------------------------- |
+| `president`      | 2    | `member:role-change`, `invite:create`, `event:cancel` |
+| `vice_president` | 2    | `member:role-change`                                  |
+| `secretary`      | 2    | `invite:create`                                       |
+| `treasurer`      | 2    | —                                                     |
+| `director`       | 1    | `invite:create`                                       |
+| `officer`        | 0    | —                                                     |
+
+`event:cancel` is the clearest case for the capability axis: tier 2 also holds
+the VP, treasurer and secretary, but cancelling releases budget (rule 7), and
+that call is the president's alone. "One specific role in tier 2" is not a
+tier threshold, so `authoriseCapability("event:cancel")` expresses it instead.
 
 ## Endpoints
 
@@ -44,6 +49,11 @@ signed-in account with club membership: 401 without a session, 403
 | `GET /api/health`                                                        | public     | —                                                                        |
 | `GET /api/me`, `GET /api/members`, `GET /api/teams`                      | tier 0     | —                                                                        |
 | `GET /api/tasks`, `/api/tasks/overdue`, `/api/tasks/:id`                 | tier 0     | —                                                                        |
+| `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`         | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                              |
+| `GET /api/calendar`                                                      | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                 |
+| `PATCH /api/events/:id`                                                  | tier 0     | You own the event, **or** tier 1. Rule 8 caps `minTier`.                 |
+| `POST /api/events`, `PATCH /api/events/:id/status`                       | tier 1     | Wrapping needs no pending expenses: 409 — rule 7                         |
+| `DELETE /api/events/:id` (cancel)                                        | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
 | `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status` | tier 0     | —                                                                        |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                          | tier 1     | —                                                                        |
 | `PUT`, `DELETE /api/teams/:teamId/members/:userId`                       | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                         |
@@ -68,6 +78,20 @@ signed-in account with club membership: 401 without a session, 403
 5. **Team lead is not a role.** It's the `team.lead` column, and the lead's
    authority comes from their tier. A director's portfolio ("Marketing
    Director") is derived from the team they lead, never stored.
+6. **`min_tier` hides, it doesn't forbid.** An event above your tier answers
+   404 `EVENT_NOT_FOUND`, never 403 — a 403 would confirm it exists. The same
+   filter runs on `GET /api/calendar` and on the tasks embedded in
+   `GET /api/events/:id?include=tasks`. (Spec §8 rules 3–5.)
+7. **Cancelling is the president's, and it releases money.** `DELETE
+/api/events/:id` is the _only_ door into `cancelled` — `PATCH
+/:id/status` cannot reach it — because cancelling must also return the
+   unspent allocation to the pool. Approved-but-unpaid expenses block it:
+   409 `APPROVED_EXPENSES_PENDING`. The one exception to president-only is the
+   director leading the **Events** team, and only for an event that team has a
+   workstream on.
+8. **Raising `minTier` can't hide a task from its own assignee.** `PATCH
+/api/events/:id` 422s if the new floor would put the event out of reach of
+   someone already assigned work on it.
 
 ## Deliberate, but easy to trip over
 
@@ -79,15 +103,26 @@ signed-in account with club membership: 401 without a session, 403
   target.
 - An officer who is set as a team's lead still can't add or remove its members.
   Staffing starts at tier 1.
+- An **officer can edit an event they own** — `PATCH /api/events/:id` is tier 0
+  plus an owner check, not tier 1. Creating one is still tier 1, so an officer
+  only ever owns an event someone handed them.
+- The Events-team exception is matched on `team.name = 'Events'`, the same
+  name-based convention as a director's portfolio. **Renaming that team
+  silently removes the exception** and leaves cancelling president-only.
 
 ## Not built yet
 
-- **Hiding content by tier.** `task`, `event` and `channel` have a `min_tier`
-  column ("tier answers what can I see"), but no route filters on it yet, so
-  every member sees every task. Spec §8 rules 3–5.
+- **Hiding tasks by tier.** `event` filters on `min_tier` everywhere (rule 6),
+  and so do the tasks reached _through_ an event or the calendar. But
+  `GET /api/tasks` itself still doesn't, so a task read directly is visible to
+  every member regardless of its `min_tier`. `channel` has the column and no
+  reads at all yet. Spec §8 rules 3–5.
 - **Budget powers.** Spec §4 gives budget authority to `treasurer` and
-  `president` by name. No expense routes exist yet; when they do, that's a
-  `CAPABILITIES` entry, not a tier gate.
+  `president` by name. The club-wide allocation cap _is_ enforced — see
+  `allocateToEvent` in `routes/events/service.ts`, which locks the settings row
+  and 409s `BUDGET_EXCEEDED` — but it's a money rule, not a role gate. No
+  expense routes exist yet; when they do, approving spend is a `CAPABILITIES`
+  entry, not a tier gate.
 
 ## Open question
 

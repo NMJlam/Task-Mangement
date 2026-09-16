@@ -11,6 +11,8 @@ export * from "./schemas/role/role.js";
 export * from "./schemas/team/team.js";
 export * from "./schemas/task/task.js";
 export * from "./schemas/event/event.js";
+export * from "./schemas/calendar/calendar.js";
+export * from "./schemas/audit/audit.js";
 export * from "./schemas/expense/expense.js";
 export * from "./schemas/channel/channel.js";
 export * from "./schemas/notification/notification.js";
