@@ -28,5 +28,13 @@ export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
 /** Postgres URL Better Auth stores users/sessions in (Docker local, Neon prod). */
 export const DATABASE_URL = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL || "";
 
+/**
+ * Local-only escape hatch: enables Better Auth email+password sign-in so the
+ * API can be exercised by hand without Google credentials (see
+ * plan-dev-harness.md). Opt-in by exact value, so an unset or empty variable
+ * leaves production with exactly one sign-in path.
+ */
+export const DEV_PASSWORD_AUTH = process.env.DEV_PASSWORD_AUTH === "1";
+
 /** Local dev port for dev-server.ts. Not used on Vercel (it imports app directly). */
 export const PORT = Number(process.env.PORT ?? 3001);

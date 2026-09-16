@@ -24,6 +24,16 @@ const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
+  // Dev-only manual API harness. The dynamic import sits in the dead branch
+  // of a production build, so Vite drops the page from the bundle.
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: "/scratch",
+          lazy: async () => ({ Component: (await import("./routes/scratch")).ScratchPage }),
+        },
+      ]
+    : []),
 ]);
 
 const rootEl = document.getElementById("root");
