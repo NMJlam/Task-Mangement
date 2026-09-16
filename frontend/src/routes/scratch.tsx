@@ -36,7 +36,7 @@ export function ScratchPage() {
   const [method, setMethod] = useState<Method>("GET");
   const [path, setPath] = useState("/api/me");
   const [body, setBody] = useState("");
-  const [result, setResult] = useState<{ status: number; text: string } | null>(null);
+  const [result, setResult] = useState<{ label: string; text: string } | null>(null);
 
   async function authenticate(mode: "sign-in" | "sign-up") {
     setAuthError("");
@@ -49,12 +49,22 @@ export function ScratchPage() {
 
   async function send() {
     const trimmed = body.trim();
-    const response = await fetch(path, {
-      method,
-      credentials: "include",
-      ...(trimmed ? { headers: { "content-type": "application/json" }, body: trimmed } : {}),
-    });
-    setResult({ status: response.status, text: formatBody(await response.text()) });
+    // fetch throws outright on a GET carrying a body, which is easy to hit by
+    // switching method after a POST without clearing the textarea.
+    const sendsBody = trimmed !== "" && method !== "GET";
+    try {
+      const response = await fetch(path, {
+        method,
+        credentials: "include",
+        ...(sendsBody ? { headers: { "content-type": "application/json" }, body: trimmed } : {}),
+      });
+      setResult({ label: `Response ${response.status}`, text: formatBody(await response.text()) });
+    } catch (error) {
+      setResult({
+        label: "Request failed",
+        text: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   return (
@@ -169,7 +179,7 @@ export function ScratchPage() {
 
       {result && (
         <section>
-          <h2 className="text-sm font-medium">{`Response ${result.status}`}</h2>
+          <h2 className="text-sm font-medium">{result.label}</h2>
           <pre className="mt-1 max-h-96 overflow-auto rounded-md border p-3 text-xs">
             {result.text}
           </pre>

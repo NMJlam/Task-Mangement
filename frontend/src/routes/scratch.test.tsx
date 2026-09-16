@@ -43,6 +43,28 @@ it("sends the chosen method, path and body, then reports the status", async () =
   );
 });
 
+it("never attaches a leftover body to a GET", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ status: 200, text: async () => "{}" });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<ScratchPage />);
+  fireEvent.change(screen.getByLabelText(/json body/i), { target: { value: '{"name":"Media"}' } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  await waitFor(() => expect(screen.getByText("Response 200")).toBeInTheDocument());
+  expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("body");
+});
+
+it("shows a failed request instead of rendering nothing", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Failed to fetch")));
+
+  render(<ScratchPage />);
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  await waitFor(() => expect(screen.getByText("Request failed")).toBeInTheDocument());
+  expect(screen.getByText("Failed to fetch")).toBeInTheDocument();
+});
+
 it("reveals and re-hides the password", () => {
   useSession.mockReturnValue({ data: null });
 
