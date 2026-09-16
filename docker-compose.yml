@@ -3,7 +3,9 @@
 # touch a shared db or burn Neon's free-tier quota (RR3). See docs/local-setup.md.
 services:
   postgres:
-    image: postgres:16
+    # 16-bookworm, not 16: the current 16 tag rebased onto debian trixie, whose
+    # binaries fail with "exec format error" under Docker Desktop's WSL2 kernel.
+    image: postgres:16-bookworm
     container_name: ctp-postgres
     restart: unless-stopped
     environment:
