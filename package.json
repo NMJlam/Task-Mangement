@@ -33,6 +33,7 @@
     "db:generate": "npm run db:generate --workspace @ctp/backend",
     "db:migrate": "npm run db:migrate --workspace @ctp/backend",
     "db:seed": "npm run db:seed --workspace @ctp/backend",
+    "db:dev-member": "npm run db:dev-member --workspace @ctp/backend --",
     "db:studio": "npm run db:studio --workspace @ctp/backend",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit && npm run test:integration && npm run test:e2e",
     "prepare": "husky"

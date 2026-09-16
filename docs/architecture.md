@@ -79,12 +79,13 @@ backend/src/
   env.ts               typed runtime/auth environment access
   auth/auth.ts         self-hosted Better Auth account/session configuration
   config/load-env.ts   resolves the repo-root .env deterministically
+  config/club.ts       club-wide constants (CLUB_TIMEZONE)
   middleware/          ONE FOLDER PER CONCERN; index.ts is the barrel
     index.ts             re-exports the chain (log → authenticate → authorise → validate)
     log/log.ts           request logging
     auth/                authN + authZ grouped (two halves of one concern)
       authenticate.ts      session → invite claim → app_user membership (401/403 fail-closed)
-      authorise.ts         tier middleware factory
+      authorise.ts         authorise(minTier) + authoriseCapability(capability)
     validate/            body/query validation — code + its colocated unit test
       validate.ts
       validate.test.ts
@@ -96,7 +97,15 @@ backend/src/
     health/health.ts     GET /api/health
     me/me.ts             GET /api/me membership identity
     members/members.ts   guarded role changes
+    teams/teams.ts       teams + team staffing
     invites/invites.ts   invite creation
+    tasks/tasks.ts       task CRUD, overdue, bulk
+    events/              events + calendar — the feature with a service layer
+      events.ts            the Router + handlers
+      service.ts           money/status/progress rules, framework-free
+      service.test.ts      unit — the rules, no DB
+      service.integration.test.ts   integration — the rules against real SQL
+      events.integration.test.ts    integration — the endpoints
     cron/cron.ts         cron endpoints (secret-guarded)
   db/
     client.ts          nodeDb() / httpDb() / getDb() factories
@@ -134,9 +143,42 @@ handler`**.
   parsed value on `res.locals.validated`.
 
 `authenticate` validates the Better Auth session, resolves `public.app_user`,
-and fails closed with 401/403. `authorise(minTier)` enforces the tier axis after
-authentication; feature routes call the shared `can()` helper for discrete
-capabilities.
+and fails closed with 401/403. Authorisation then has **two** middleware, one
+per axis:
+
+- **`authorise(minTier)`** — rank. Lets that tier and above through.
+- **`authoriseCapability(cap)`** — office. For powers a tier can't express,
+  like `event:cancel`: tier 2 also holds the VP, treasurer and secretary, but
+  only the president may cancel an event.
+
+Neither can express a **per-resource** rule, because middleware runs before the
+row is loaded. "The owner, or tier 1" (`PATCH /api/events/:id`) is therefore a
+check inside the handler against the fetched row, gated at the lowest tier that
+could pass. Who passes which gate, per role and per endpoint:
+[`roles-and-permissions.md`](roles-and-permissions.md).
+
+## Service layer — when a route grows one
+
+Most routes are thin enough to hold their logic inline; `routes/example/` is
+still the shape to copy. A feature earns a `service.ts` once it owns **rules
+that outlive the request** — money, state machines, cross-field invariants —
+and `routes/events/` is the worked example.
+
+What belongs there, using events as the reference:
+
+- **Rules more than one caller must agree on.** `computeProgress` defines risk
+  once, so the dashboard, a digest and a report can never disagree.
+- **Invariants that must hold inside the same transaction as the write.**
+  `allocateToEvent` locks the settings row (`SELECT … FOR UPDATE`) before
+  checking the club budget — split it from the write and two concurrent
+  allocations both pass.
+- **Cross-field validation a zod schema can't do.** `assertEventDates` checks
+  the _merged_ row, because a `PATCH` body alone has nothing to compare against.
+
+It stays framework-free: no `req`, no `res`, no Express. It takes a `Tx` or a
+`Queryable` and throws typed errors (`ValidationError`, `BudgetExceededError`)
+that the route maps to status codes. That's what lets the pure half be
+unit-tested with no database at all.
 
 ## Database
 
@@ -186,6 +228,8 @@ job runs it:
 shared/src/schemas/example-form/example-form.test.ts      unit        — a schema / type
 shared/src/schemas/audit-fixture/audit-fixture.test.ts    unit        — a schema / type
 backend/src/middleware/validate/validate.test.ts          unit        — a middleware in isolation
+backend/src/routes/events/service.test.ts                 unit        — a service rule (no DB)
+backend/src/routes/events/service.integration.test.ts     integration — a service rule against real SQL
 backend/src/routes/example/example.integration.test.ts    integration — an endpoint (supertest + DB)
 frontend/src/routes/health.test.tsx                       unit        — a component (RTL)
 ```

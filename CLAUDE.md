@@ -16,7 +16,8 @@ frontend/    Vite + React 19 SPA. src/{components,components/ui,lib,hooks,routes
 backend/     Express 4. src/{app.ts,middleware,routes,db,config}
 shared/      zod schemas + inferred types — imported by BOTH sides
 e2e/         Playwright specs (incl. axe scan)
-docs/        setup.md, architecture.md, contributing.md, stack-versions.md, accessibility.md
+docs/        setup.md, architecture.md, roles-and-permissions.md, api-endpoints.md,
+             contributing.md, stack-versions.md, accessibility.md
 ```
 
 ## Structural rules (enforced, not by discipline)
@@ -37,6 +38,21 @@ Assembled in app order: **`log → authenticate → authorise → validate → h
 `routes/example/example.ts`). `validate(schema, part)` takes a zod schema **from
 `@ctp/shared`** and 422s with the shared `ApiError` shape. `app.ts` does not call
 `listen()` — `dev-server.ts`, Vitest, and `api/index.ts` all import the same app.
+
+Authorisation has two middleware, one per axis: `authorise(minTier)` for rank,
+`authoriseCapability(cap)` for powers that belong to a named office (tier 2 also
+holds the VP, treasurer and secretary — `event:cancel` is the president's
+alone). Neither sees the row, so **per-resource** rules ("the owner, or tier 1")
+are handler checks gated at the lowest tier that could pass.
+
+## Service layer
+
+A route gets a `service.ts` only once it owns rules that outlive the request —
+money, state machines, cross-field invariants. `routes/events/service.ts` is the
+reference: framework-free (no `req`/`res`), takes a `Tx`, throws typed errors the
+route maps to status codes. That split is what lets the rules be unit-tested with
+no database. Most routes don't need one; `routes/example/` is still the default
+shape.
 
 ## Database
 

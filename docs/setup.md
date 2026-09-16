@@ -214,6 +214,36 @@ Then confirm what landed in the database, either in **Drizzle Studio**
 npx tsx -e "import {nodeDb} from './src/db/client.js'; import {auditLog} from './src/db/schema/index.js'; console.log(await nodeDb().select().from(auditLog))"
 ```
 
+### Test endpoints by hand in the browser (dev only)
+
+Google is the only sign-in method, so with no OAuth credentials you cannot hold
+a session in a browser and every protected route answers 401. For local work,
+enable password sign-in instead:
+
+1. Set `DEV_PASSWORD_AUTH=1` in `.env` — local only, never on Vercel.
+2. `npm run dev`, then open <http://localhost:5173/scratch>.
+3. Type an email and password, press **Sign up**. You now have a session but no
+   membership, so `GET /api/me` answers 403 `NO_MEMBERSHIP`.
+4. Grant membership, choosing the role you want to test as:
+
+   ```bash
+   npm run db:dev-member -- dev@example.com president
+   ```
+
+5. Send requests from the page: pick a method, type a path such as `/api/teams`,
+   add a JSON body if the route takes one, press **Send**. The session cookie
+   goes with every request.
+
+Every endpoint, with its inputs and responses, is in
+[`api-endpoints.md`](api-endpoints.md).
+
+Re-run step 4 with a different role (`officer`, `director`, …) to exercise the
+tier rules in [`roles-and-permissions.md`](roles-and-permissions.md); `tier` is
+derived from `role`, so there is nothing else to keep in sync.
+
+The page is registered only in dev builds and never reaches a production bundle.
+See `plan-dev-harness.md` for why the role change is a CLI and not an endpoint.
+
 ## Repo-owner checklist (GitHub / Vercel UI — can't be scripted here)
 
 - [ ] Push to a remote and set the default branch to `main`.

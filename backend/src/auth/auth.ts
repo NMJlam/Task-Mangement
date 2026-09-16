@@ -4,6 +4,7 @@ import {
   BETTER_AUTH_SECRET,
   BETTER_AUTH_URL,
   DATABASE_URL,
+  DEV_PASSWORD_AUTH,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
 } from "../env.js";
@@ -37,6 +38,9 @@ export const auth = betterAuth({
   // The browser reaches these routes at BETTER_AUTH_URL/api/auth/* (via the Vite
   // dev proxy in dev, same-origin in prod), so cookies are first-party.
   trustedOrigins: [BETTER_AUTH_URL],
+  // Off unless DEV_PASSWORD_AUTH=1, which is set in local .env files only.
+  // Google stays the sole sign-in method everywhere else.
+  emailAndPassword: { enabled: DEV_PASSWORD_AUTH },
   socialProviders: {
     google: {
       clientId: GOOGLE_CLIENT_ID,
