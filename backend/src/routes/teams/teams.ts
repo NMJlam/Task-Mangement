@@ -36,13 +36,18 @@ export const teamsRouter = Router();
 const MANAGEMENT_TIER = 2;
 
 /**
- * `pg` puts the SQLSTATE on `error.code` and Drizzle re-throws it untouched.
- * Two of them are ordinary outcomes here, not failures, so they get translated
- * rather than reaching the 500 handler.
+ * `pg` puts the SQLSTATE on `error.code`, but Drizzle wraps the driver error in
+ * a DrizzleQueryError and hangs the original off `cause` — so walk the chain.
+ * Two of these states are ordinary outcomes here, not failures, so they get
+ * translated rather than reaching the 500 handler.
  */
 function sqlState(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  return typeof error.code === "string" ? error.code : undefined;
+  let cursor: unknown = error;
+  while (typeof cursor === "object" && cursor !== null) {
+    if ("code" in cursor && typeof cursor.code === "string") return cursor.code;
+    cursor = (cursor as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 const UNIQUE_VIOLATION = "23505";

@@ -53,3 +53,21 @@ it("creates a lower-tier invite", async () => {
   expect(response.body.invite).toMatchObject({ email, role: "officer", status: "pending" });
   expect(await db.select().from(invites).where(eq(invites.email, email))).toHaveLength(1);
 });
+
+it("rejects a role without the invite capability, whatever its tier", async () => {
+  // Tier 2 clears both tier checks for an officer invite, so only can() can refuse.
+  getSession.mockResolvedValue({
+    user: { id: "seed-vice_president", email: "vice_president@example.com" },
+  });
+
+  const response = await request(app)
+    .post("/api/invites")
+    .send({
+      email,
+      role: "officer",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+  expect(response.status).toBe(403);
+  expect(response.body.error.code).toBe("FORBIDDEN");
+});

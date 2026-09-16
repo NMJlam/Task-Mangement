@@ -87,14 +87,25 @@ describe("/api/teams (integration)", () => {
     expect(mine.body.teams.map((t: { id: string }) => t.id)).toEqual([staffed.id]);
   });
 
-  it("refuses team creation below management tier", async () => {
-    signIn(await member("director", "director"));
+  it("401s without a session", async () => {
+    const response = await request(app).get("/api/teams");
 
-    const response = await request(app)
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses create, rename and delete below management tier", async () => {
+    signIn(await member("director", "director"));
+    const existing = await team("guarded");
+
+    const created = await request(app)
       .post("/api/teams")
       .send({ name: `${PREFIX}new` });
+    const renamed = await request(app)
+      .patch(`/api/teams/${existing.id}`)
+      .send({ name: `${PREFIX}renamed` });
+    const deleted = await request(app).delete(`/api/teams/${existing.id}`);
 
-    expect(response.status).toBe(403);
+    expect([created.status, renamed.status, deleted.status]).toEqual([403, 403, 403]);
   });
 
   it("creates a team and rejects a duplicate name", async () => {
@@ -115,18 +126,23 @@ describe("/api/teams (integration)", () => {
 
   it("rejects a lead that is not a member", async () => {
     signIn(await member("president", "president"));
+    const existing = await team("unled");
 
-    const response = await request(app)
+    const created = await request(app)
       .post("/api/teams")
       .send({ name: `${PREFIX}orphan`, lead: newId() });
+    const updated = await request(app).patch(`/api/teams/${existing.id}`).send({ lead: newId() });
 
-    expect(response.status).toBe(422);
-    expect(response.body.error.fields.lead).toBeDefined();
+    for (const response of [created, updated]) {
+      expect(response.status).toBe(422);
+      expect(response.body.error.fields.lead).toBeDefined();
+    }
   });
 
-  it("renames a team", async () => {
+  it("renames a team, but not onto a taken name", async () => {
     signIn(await member("president", "president"));
     const existing = await team("before");
+    const taken = await team("taken");
 
     const response = await request(app)
       .patch(`/api/teams/${existing.id}`)
@@ -134,6 +150,33 @@ describe("/api/teams (integration)", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.team.name).toBe(`${PREFIX}after`);
+
+    const clash = await request(app).patch(`/api/teams/${existing.id}`).send({ name: taken.name });
+    expect(clash.status).toBe(409);
+    expect(clash.body.error.code).toBe("TEAM_NAME_TAKEN");
+  });
+
+  it("sets a lead and clears it", async () => {
+    signIn(await member("president", "president"));
+    const director = await member("director", "director");
+    const existing = await team("led");
+
+    const set = await request(app).patch(`/api/teams/${existing.id}`).send({ lead: director.id });
+    expect(set.status).toBe(200);
+    expect(set.body.team.lead).toBe(director.id);
+
+    const cleared = await request(app).patch(`/api/teams/${existing.id}`).send({ lead: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.team.lead).toBeNull();
+  });
+
+  it("rejects an empty patch", async () => {
+    signIn(await member("president", "president"));
+    const existing = await team("unchanged");
+
+    const response = await request(app).patch(`/api/teams/${existing.id}`).send({});
+
+    expect(response.status).toBe(422);
   });
 
   it("refuses to delete a team with recorded spend, but deletes a free one", async () => {
@@ -156,7 +199,27 @@ describe("/api/teams (integration)", () => {
     expect(deleted.status).toBe(204);
   });
 
-  it("lets a lead staff their own team but not another", async () => {
+  it("404s for a team that does not exist", async () => {
+    const president = await member("president", "president");
+    signIn(president);
+    const missing = newId();
+
+    const responses = [
+      await request(app)
+        .patch(`/api/teams/${missing}`)
+        .send({ name: `${PREFIX}ghost` }),
+      await request(app).delete(`/api/teams/${missing}`),
+      await request(app).put(`/api/teams/${missing}/members/${president.id}`),
+      await request(app).delete(`/api/teams/${missing}/members/${president.id}`),
+    ];
+
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("TEAM_NOT_FOUND");
+    }
+  });
+
+  it("lets a lead add and remove members on their own team only", async () => {
     const lead = await member("lead", "director");
     const officer = await member("officer", "officer");
     const own = await team("own", lead.id);
@@ -168,6 +231,32 @@ describe("/api/teams (integration)", () => {
 
     const refused = await request(app).put(`/api/teams/${other.id}/members/${officer.id}`);
     expect(refused.status).toBe(403);
+
+    // Seat them on the other team directly, so the refused DELETE has something to protect.
+    await db.insert(teamMembers).values({ teamId: other.id, userId: officer.id });
+
+    const removed = await request(app).delete(`/api/teams/${own.id}/members/${officer.id}`);
+    expect(removed.status).toBe(204);
+
+    const kept = await request(app).delete(`/api/teams/${other.id}/members/${officer.id}`);
+    expect(kept.status).toBe(403);
+
+    const links = await db.select().from(teamMembers);
+    expect(links.filter((link) => link.userId === officer.id).map((link) => link.teamId)).toEqual([
+      other.id,
+    ]);
+  });
+
+  it("refuses staffing to tier 0, even on a team they lead", async () => {
+    // Leading the team passes the lead check, so only the tier gate can 403 here.
+    const officer = await member("officer", "officer");
+    const led = await team("officer-led", officer.id);
+    signIn(officer);
+
+    const added = await request(app).put(`/api/teams/${led.id}/members/${officer.id}`);
+    const removed = await request(app).delete(`/api/teams/${led.id}/members/${officer.id}`);
+
+    expect([added.status, removed.status]).toEqual([403, 403]);
   });
 
   it("adds and removes a member idempotently", async () => {

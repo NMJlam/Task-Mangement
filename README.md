@@ -28,6 +28,7 @@ Full setup, scripts, and workflows: **[`docs/setup.md`](docs/setup.md)**.
 ## Documentation
 
 - **Setup & developer workflow** — [`docs/setup.md`](docs/setup.md)
+- **Roles & permissions** (who can do what) — [`docs/roles-and-permissions.md`](docs/roles-and-permissions.md)
 - **Architecture & where code goes** — [`docs/architecture.md`](docs/architecture.md)
 - **Contributing** (commits, branches, PRs, testing) — [`docs/contributing.md`](docs/contributing.md)
 - Versions & deviations — [`docs/stack-versions.md`](docs/stack-versions.md)

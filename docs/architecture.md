@@ -136,7 +136,8 @@ handler`**.
 `authenticate` validates the Better Auth session, resolves `public.app_user`,
 and fails closed with 401/403. `authorise(minTier)` enforces the tier axis after
 authentication; feature routes call the shared `can()` helper for discrete
-capabilities.
+capabilities. Who passes which gate, per role and per endpoint:
+[`roles-and-permissions.md`](roles-and-permissions.md).
 
 ## Database
 

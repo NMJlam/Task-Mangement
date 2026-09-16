@@ -16,7 +16,8 @@ frontend/    Vite + React 19 SPA. src/{components,components/ui,lib,hooks,routes
 backend/     Express 4. src/{app.ts,middleware,routes,db,config}
 shared/      zod schemas + inferred types — imported by BOTH sides
 e2e/         Playwright specs (incl. axe scan)
-docs/        setup.md, architecture.md, contributing.md, stack-versions.md, accessibility.md
+docs/        setup.md, architecture.md, roles-and-permissions.md, contributing.md,
+             stack-versions.md, accessibility.md
 ```
 
 ## Structural rules (enforced, not by discipline)

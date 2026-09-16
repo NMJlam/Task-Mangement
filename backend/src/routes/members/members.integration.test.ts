@@ -209,4 +209,15 @@ describe("/api/members (integration)", () => {
     expect(response.status).toBe(204);
     expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(0);
   });
+
+  it("refuses member removal below tier 2", async () => {
+    const actor = await member("actor", "director");
+    const leaving = await member("leaving", "officer");
+    getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+    const response = await request(app).delete(`/api/members/${leaving.id}`);
+
+    expect(response.status).toBe(403);
+    expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(1);
+  });
 });
