@@ -10,6 +10,8 @@ import { z } from "zod";
 export const notificationKindSchema = z.enum([
   "task_assigned",
   "task_due",
+  // A comment or a file on a task you are assigned or created (R9).
+  "task_commented",
   "mention",
   "expense_decided",
   "invite_accepted",
