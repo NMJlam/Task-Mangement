@@ -15,6 +15,7 @@ export * from "./schemas/calendar/calendar.js";
 export * from "./schemas/audit/audit.js";
 export * from "./schemas/expense/expense.js";
 export * from "./schemas/channel/channel.js";
+export * from "./schemas/thread/thread.js";
 export * from "./schemas/notification/notification.js";
 export * from "./schemas/health/health.js";
 export * from "./schemas/example-form/example-form.js";
