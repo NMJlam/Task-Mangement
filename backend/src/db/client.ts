@@ -1,6 +1,6 @@
 import "../config/load-env.js";
-import { neon } from "@neondatabase/serverless";
-import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
+import { Pool as NeonPool } from "@neondatabase/serverless";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema/index.js";
@@ -25,25 +25,39 @@ function isLocalUrl(url: string): boolean {
 }
 
 /**
- * Request-path driver: Neon's serverless HTTP driver. This is the path that
- * actually ships to Vercel, and the one RR9's connection-pool mitigation rests
- * on (HTTP has no long-lived pool to exhaust under serverless fan-out).
+ * Request-path driver: Neon's serverless (WebSocket) driver. This is the path
+ * that ships to Vercel. It uses the Pool-based neon-serverless driver, NOT the
+ * neon-HTTP driver, because the driver has to match node-postgres's semantics:
+ * routes run interactive transactions (branch on a row, throw mid-tx on
+ * BudgetExceededError) and read raw `db.execute().rows` — both of which the
+ * neon-HTTP driver does not support (it has no interactive transactions and
+ * returns rows as a bare array with no `.rows`). This is what lets getDb() hand
+ * every route one concrete type. The pool is cached per process, so warm Fluid
+ * Compute invocations reuse it (RR9).
  *
- * It CANNOT talk to a local Postgres — it speaks Neon's HTTP endpoint only — so
- * we fail loudly and actionably if handed a localhost URL, rather than dying
- * obscurely at first query. A teammate will hit this in week one.
+ * It CANNOT talk to a local Postgres — point it at Neon — so we fail loudly and
+ * actionably if handed a localhost URL, rather than dying obscurely at first
+ * query. A teammate will hit this in week one.
+ *
+ * ponytail: assumes a global WebSocket (Node 22+, the Vercel default). If a
+ * runtime lacks one, set neonConfig.webSocketConstructor = ws.
  */
+let neonPool: NeonPool | undefined;
+let cachedNeonDb: ReturnType<typeof drizzleNeon> | undefined;
+
 export function httpDb() {
   const url = requireUrl("DATABASE_URL");
   if (isLocalUrl(url)) {
     throw new Error(
-      "httpDb() was given a local DATABASE_URL. The Neon HTTP driver cannot " +
-        "talk to Docker Postgres. Point DATABASE_URL at a Neon dev branch for " +
-        "request-path / RR9 work, or use nodeDb() for local dev, migrations, " +
-        "seeding and tests. See docs/setup.md.",
+      "httpDb() was given a local DATABASE_URL. The Neon serverless driver " +
+        "cannot talk to Docker Postgres. Point DATABASE_URL at a Neon dev " +
+        "branch for request-path / RR9 work, or use nodeDb() for local dev, " +
+        "migrations, seeding and tests. See docs/setup.md.",
     );
   }
-  return drizzleHttp(neon(url), { schema });
+  neonPool ??= new NeonPool({ connectionString: url });
+  cachedNeonDb ??= drizzleNeon(neonPool, { schema });
+  return cachedNeonDb;
 }
 
 /**
@@ -56,11 +70,11 @@ export function httpDb() {
  */
 export function getDb(): ReturnType<typeof nodeDb> {
   const url = process.env.DATABASE_URL_POOLED || requireUrl("DATABASE_URL");
-  // Both drivers implement the same drizzle query builder, so routes are typed
-  // against the node driver (the local/test path) for one concrete DB type; the
-  // Neon HTTP driver is swapped in at runtime in production and is structurally
-  // compatible for query building.
-  return (isLocalUrl(url) ? nodeDb() : httpDb()) as unknown as ReturnType<typeof nodeDb>;
+  // Both are Pool-based drivers with the SAME query-builder, transaction and
+  // raw-execute (.rows) semantics, so routes are typed against the node driver
+  // (the local/test path) for one concrete DB type; the Neon serverless driver
+  // is swapped in at runtime in production and behaves identically for our use.
+  return (isLocalUrl(url) ? nodeDb() : httpDb()) as ReturnType<typeof nodeDb>;
 }
 
 /**

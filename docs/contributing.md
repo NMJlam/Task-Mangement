@@ -191,12 +191,13 @@ describe("POST /api/example/audit (integration)", () => {
 **Isolation rule:** clean only the rows or tables your test writes. Never truncate
 shared seed tables — other tests and Drizzle Studio may depend on them.
 
-> **These tests exercise the `pg`/`nodeDb` driver, not the Neon HTTP driver that
-> ships to production.** Drizzle presents the same query API for both, so CRUD is
-> covered — but genuinely Neon-specific behaviour (RR9 connection pooling, the
-> Sprint-1 load test) is **verified separately** against a real Neon dev branch
-> and preview deploy, per [`stack-versions.md`](stack-versions.md). Don't assume
-> integration tests cover the Neon path.
+> **These tests exercise the `pg`/`nodeDb` driver, not the Neon serverless driver
+> that ships to production.** Both are Pool-based and share transaction + raw
+> `.execute().rows` semantics, so CRUD *and* transactions are covered — but
+> genuinely Neon-specific behaviour (RR9 connection pooling, the Sprint-1 load
+> test) is **verified separately** against a real Neon dev branch and preview
+> deploy, per [`stack-versions.md`](stack-versions.md). Don't assume integration
+> tests cover the Neon path.
 
 ### When to reach for E2E
 

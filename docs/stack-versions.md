@@ -117,5 +117,7 @@ These could not be verified locally because no Vercel/Neon remote exists yet:
   Dev/tests keep resolving `@ctp/shared` from source via the Vite alias
   (frontend) and a matching vitest alias (backend), so no build is needed in
   dev. The root `build`/`typecheck` scripts build packages first (`build:packages`).
-- **Neon HTTP driver / RR9 / Sprint-1 load test.** `httpDb()` needs a real Neon
-  connection string; it throws on a localhost URL by design.
+- **Neon serverless driver / RR9 / Sprint-1 load test.** `httpDb()` needs a real
+  Neon connection string; it throws on a localhost URL by design. It uses the
+  Pool-based `neon-serverless` (WebSocket) driver, not `neon-http`, so it supports
+  the interactive transactions the event routes rely on.
