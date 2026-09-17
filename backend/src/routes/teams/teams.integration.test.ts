@@ -1,11 +1,11 @@
 import type { Role } from "@ctp/shared";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { expenses, teamMembers, teams } from "../../db/schema/index.js";
+import { channels, expenses, teamMembers, teams } from "../../db/schema/index.js";
 
 const getSession = vi.hoisted(() => vi.fn());
 vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
@@ -116,6 +116,12 @@ describe("/api/teams (integration)", () => {
       .send({ name: `${PREFIX}media` });
     expect(created.status).toBe(201);
     expect(created.body.team.memberIds).toEqual([]);
+    // The team's thread opens with it, so its tasks have somewhere to be discussed.
+    const thread = await db
+      .select({ kind: channels.kind, name: channels.name })
+      .from(channels)
+      .where(eq(channels.teamId, created.body.team.id));
+    expect(thread).toEqual([{ kind: "team", name: `${PREFIX}media` }]);
 
     const duplicate = await request(app)
       .post("/api/teams")
