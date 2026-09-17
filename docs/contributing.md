@@ -193,7 +193,7 @@ shared seed tables — other tests and Drizzle Studio may depend on them.
 
 > **These tests exercise the `pg`/`nodeDb` driver, not the Neon serverless driver
 > that ships to production.** Both are Pool-based and share transaction + raw
-> `.execute().rows` semantics, so CRUD *and* transactions are covered — but
+> `.execute().rows` semantics, so CRUD _and_ transactions are covered — but
 > genuinely Neon-specific behaviour (RR9 connection pooling, the Sprint-1 load
 > test) is **verified separately** against a real Neon dev branch and preview
 > deploy, per [`stack-versions.md`](stack-versions.md). Don't assume integration
