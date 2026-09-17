@@ -222,16 +222,16 @@ A task object:
 }
 ```
 
-| Endpoint                      | Who    | Input                                           | Success                                |
-| ----------------------------- | ------ | ----------------------------------------------- | -------------------------------------- |
-| `GET /api/tasks`              | tier 0 | `?teamId&status&priority&assignee&limit&offset` | `200 { tasks: [] }`, newest first      |
-| `GET /api/tasks/overdue`      | tier 0 | `?teamId&assignee&limit&offset`                 | `200 { tasks: [] }`, soonest due first |
-| `GET /api/tasks/:id`          | tier 0 | —                                               | `200 { task }`                         |
-| `POST /api/tasks`             | tier 0 | body below                                      | `201 { task }`                         |
-| `POST /api/tasks/bulk`        | tier 1 | `{ "tasks": [ … ] }`, 1–100                     | `201 { tasks: [] }`                    |
-| `PATCH /api/tasks/:id`        | tier 0 | any subset of the create body                   | `200 { task }`                         |
-| `PATCH /api/tasks/:id/status` | tier 0 | `{ "status": "done" }`                          | `200 { task }`                         |
-| `DELETE /api/tasks/:id`       | tier 1 | —                                               | `204`                                  |
+| Endpoint                      | Who    | Input                                                   | Success                                |
+| ----------------------------- | ------ | ------------------------------------------------------- | -------------------------------------- |
+| `GET /api/tasks`              | tier 0 | `?eventId&teamId&status&priority&assignee&limit&offset` | `200 { tasks: [] }`, newest first      |
+| `GET /api/tasks/overdue`      | tier 0 | `?eventId&teamId&assignee&limit&offset`                 | `200 { tasks: [] }`, soonest due first |
+| `GET /api/tasks/:id`          | tier 0 | —                                                       | `200 { task }`                         |
+| `POST /api/tasks`             | tier 0 | body below                                              | `201 { task }`                         |
+| `POST /api/tasks/bulk`        | tier 1 | `{ "tasks": [ … ] }`, 1–100                             | `201 { tasks: [] }`                    |
+| `PATCH /api/tasks/:id`        | tier 0 | any subset of the create body                           | `200 { task }`                         |
+| `PATCH /api/tasks/:id/status` | tier 0 | `{ "status": "done" }`                                  | `200 { task }`                         |
+| `DELETE /api/tasks/:id`       | tier 1 | —                                                       | `204`                                  |
 
 `limit` is 1–100 (default 50), `offset` defaults to 0. Both `422` if out of
 range.
@@ -241,6 +241,7 @@ Create body — only `title` is required:
 ```json
 {
   "title": "Book the venue",
+  "eventId": "<uuid>",
   "teamId": "<uuid>",
   "assignee": "<uuid>",
   "status": "todo",
@@ -252,8 +253,16 @@ Create body — only `title` is required:
 Things worth knowing before you test:
 
 - **`creator` is stamped from your session.** Sending one in the body is ignored.
-- **An unknown `teamId` or `assignee` is a `422`**, with code `TEAM_NOT_FOUND` or
-  `ASSIGNEE_NOT_FOUND` — not a `404`, because it's your input that's wrong.
+- **An unknown `eventId`, `teamId` or `assignee` is a `422`**, with code
+  `EVENT_NOT_FOUND`, `TEAM_NOT_FOUND` or `ASSIGNEE_NOT_FOUND` — not a `404`,
+  because it's your input that's wrong. A cancelled event, or one above your
+  tier, is `EVENT_NOT_FOUND` too.
+- **An event plus a team puts that team on the event.** A task naming both
+  creates the team's workstream on the event if it has none — there is no
+  separate call. The event then shows under `GET /api/events?teamId=`, and the
+  team can no longer be deleted (`409 TEAM_IN_USE`). On `PATCH` the pair is your
+  patch laid over the stored task, so changing only `teamId` is fine;
+  `"eventId": null` unlinks.
 - **`completedAt` is derived from `status`.** Moving to `done` stamps it; moving
   out clears it. You never send it.
 - **`PATCH` needs at least one field**; `{}` is a `422`.
@@ -396,8 +405,8 @@ transaction.
 | `422 TEAM_NOT_FOUND`   | Unknown `teamId`.                                                  |
 | `422 VALIDATION_ERROR` | Blank title, or `endsAt` before `startsAt`.                        |
 
-`teamId` seeds a workstream row, it is not a column on the event — which is why
-`PATCH` drops it.
+`teamId` seeds a workstream row (so does a task naming the event and a team), it
+is not a column on the event — which is why `PATCH` drops it.
 
 ### `PATCH /api/events/:id` · owner, or tier 1
 
