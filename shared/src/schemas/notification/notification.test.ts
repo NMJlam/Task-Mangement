@@ -62,6 +62,15 @@ describe("listNotificationsQuerySchema", () => {
     ).toMatchObject({ unreadOnly: true, limit: 10, offset: 20 });
   });
 
+  it("parses unreadOnly=false as false", () => {
+    expect(listNotificationsQuerySchema.parse({ unreadOnly: "false" }).unreadOnly).toBe(false);
+    expect(listNotificationsQuerySchema.parse({ unreadOnly: "0" }).unreadOnly).toBe(false);
+  });
+
+  it("rejects a non-boolean unreadOnly", () => {
+    expect(listNotificationsQuerySchema.safeParse({ unreadOnly: "maybe" }).success).toBe(false);
+  });
+
   it("rejects a limit above the cap", () => {
     expect(listNotificationsQuerySchema.safeParse({ limit: "500" }).success).toBe(false);
   });
