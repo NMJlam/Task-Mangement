@@ -104,7 +104,7 @@ The backend exposes three factories in `backend/src/db/client.ts`:
 
 - **`nodeDb()`** — the `pg` client. **Default for all local work**: migrations,
   seeding, schema iteration, unit/integration tests. Points at Docker Postgres.
-- **`httpDb()`** — Neon's serverless HTTP driver. The path that ships to
+- **`httpDb()`** — Neon's serverless (WebSocket) driver. The path that ships to
   production and the one RR9's mitigation rests on. It **cannot** talk to Docker
   Postgres and **throws immediately** if `DATABASE_URL` looks like localhost.
 - **`getDb()`** — picks `nodeDb()` for a local URL and `httpDb()` for a Neon URL.

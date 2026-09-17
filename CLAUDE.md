@@ -59,8 +59,10 @@ shape.
 Two factories in `backend/src/db/client.ts`:
 
 - `nodeDb()` (`pg`) — local dev, migrations, seeding, tests → Docker Postgres.
-- `httpDb()` (Neon HTTP) — request path in production (RR9) → Neon only; **throws**
-  on a localhost URL.
+- `httpDb()` (Neon serverless / WebSocket) — request path in production (RR9) →
+  Neon only; **throws** on a localhost URL. It uses the Pool-based serverless
+  driver (not neon-http) so it shares `nodeDb()`'s transaction + `.rows`
+  semantics — routes run the same code against either.
 
 Never import the wrong one into a route. Better Auth owns accounts in
 `auth.user`; `public.app_user` stores invite-gated club membership and RBAC.
