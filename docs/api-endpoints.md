@@ -36,7 +36,8 @@ of truth. If this page disagrees with them, this page is wrong.
   task status `todo | in_progress | blocked | done`,
   task priority `low | medium | high | urgent`,
   event status `planning | live | wrapped | cancelled`,
-  event risk `on_track | at_risk | critical`.
+  event risk `on_track | at_risk | critical`,
+  thread kind `team | event | group | dm | ai`.
 - **Money is always integer cents**, never a float.
 
 ## Getting a session — `/api/auth/*` (Better Auth)
@@ -158,6 +159,9 @@ and need not be a member of the team.
 | `409 TEAM_NAME_TAKEN`                    | Name already exists.                      |
 | `422 VALIDATION_ERROR`                   | Blank name, or `lead` is not a member id. |
 
+Creating a team also opens its [thread](#threads), where comments on the team's
+standing tasks land.
+
 ### `PATCH /api/teams/:id` · tier 2
 
 Body: `{ "name": "Media" }`, `{ "lead": "<uuid>" }`, `{ "lead": null }` to clear,
@@ -270,6 +274,8 @@ Things worth knowing before you test:
 - **Overdue** means past `dueAt` and not `done`. Tasks with no due date never
   appear.
 - A missing task is `404 TASK_NOT_FOUND` on every `/tasks/:id` route.
+- **Comments and files** on a task are messages — see
+  [`POST /api/tasks/:id/comments`](#post-apitasksidcomments-and-attachments--tier-0).
 
 ## Events
 
@@ -508,6 +514,145 @@ cancelled events never appear.
 - **No clash detection.** Deliberately absent: "clash" has no agreed definition
   (same-day vs. interval overlap) and `endsAt` is nullable, so half the rows
   have no interval to overlap. There is no `clashes` field.
+
+## Threads
+
+A thread is a `channel` row, so the `channelId` that
+`GET /api/events/:id?include=channel` returns is a thread id. Replying to a
+message is a different thing — that's `parentId`, below.
+
+Who sees a thread depends on its `kind`:
+
+| Kind          | Opened by                 | You see it when                                                     |
+| ------------- | ------------------------- | ------------------------------------------------------------------- |
+| `team`        | `POST /api/teams`         | its `minTier` ≤ yours                                               |
+| `event`       | `POST /api/events`        | its `minTier` ≤ yours **and** you can see the event (not cancelled) |
+| `group`, `dm` | `POST /api/threads`       | you're a member                                                     |
+| `ai`          | the assistant (not built) | you're a member                                                     |
+
+A thread you can't see is `404 THREAD_NOT_FOUND` on every route below — never
+`403`, which would confirm it exists.
+
+A thread object:
+
+```json
+{
+  "id": "<uuid>",
+  "kind": "group",
+  "name": "Logistics",
+  "teamId": null,
+  "eventId": null,
+  "minTier": 0,
+  "createdAt": "2026-09-17T00:00:00.000Z",
+  "memberIds": ["<uuid>", "<uuid>"],
+  "lastReadAt": "2026-09-17T09:00:00.000Z",
+  "unreadCount": 2,
+  "lastMessageAt": "2026-09-17T10:00:00.000Z"
+}
+```
+
+- **`memberIds` is only filled on `group`, `dm` and `ai` threads.** It is always
+  `[]` on `team` and `event` threads, because `minTier` decides who is in them.
+- **`unreadCount` counts messages after your `lastReadAt`, never your own.** On a
+  team or event thread you've never marked read, `lastReadAt` is `null` and every
+  message counts.
+- **`name` is `null` only on a `dm`** — show the other member's name.
+
+A message object:
+
+```json
+{
+  "id": "<uuid>",
+  "channelId": "<thread uuid>",
+  "taskId": null,
+  "parentId": null,
+  "author": "<uuid>",
+  "body": "Venue is confirmed.",
+  "fileKey": null,
+  "fileName": null,
+  "fileSizeBytes": null,
+  "fileMime": null,
+  "aiRunId": null,
+  "createdAt": "2026-09-17T10:00:00.000Z",
+  "editedAt": null
+}
+```
+
+`author` is stamped from your session; names come from `GET /api/members`.
+
+| Endpoint                          | Who    | Input                    | Success                                          |
+| --------------------------------- | ------ | ------------------------ | ------------------------------------------------ |
+| `GET /api/threads`                | tier 0 | `?kind`                  | `200 { threads: [] }`, latest activity first     |
+| `POST /api/threads`               | tier 0 | body below               | `201 { thread }` — `200` for a dm that exists    |
+| `GET /api/threads/:id/messages`   | tier 0 | `?q&before&limit`        | `200 { messages: [], nextCursor }`, newest first |
+| `POST /api/threads/:id/messages`  | tier 0 | `{ "body", "parentId" }` | `201 { message }`                                |
+| `POST /api/threads/:id/read`      | tier 0 | —                        | `200 { thread }`, with `unreadCount: 0`          |
+| `POST /api/tasks/:id/comments`    | tier 0 | `{ "body", "parentId" }` | `201 { message }`                                |
+| `POST /api/tasks/:id/attachments` | tier 0 | body below               | `201 { message }`                                |
+
+### `POST /api/threads` · tier 0
+
+Starts a conversation. You're always a member, so leave yourself out.
+
+```json
+{ "kind": "dm", "memberId": "<uuid>" }
+```
+
+```json
+{ "kind": "group", "name": "Logistics", "memberIds": ["<uuid>"] }
+```
+
+- **One dm per pair.** Starting one that already exists, from either side,
+  returns it with `200`.
+- **Only `group` and `dm`.** Any other `kind` is a `422`: team and event threads
+  open with their team or event.
+- `422 MEMBER_NOT_FOUND` for an unknown member id, and `422 VALIDATION_ERROR`
+  for a dm with yourself.
+
+### `GET /api/threads/:id/messages` · tier 0
+
+`limit` is 1–100 (default 50).
+
+- **Page back with `before`.** Pass the `nextCursor` you got — a message id —
+  as `?before=`. It is `null` on the last page. A `before` that isn't a message
+  in this thread is `422 INVALID_CURSOR`.
+- **`q` searches message text**, case-insensitive. `%` and `_` match themselves.
+- Replies come back in the same list; group them by `parentId`.
+
+### `POST /api/threads/:id/messages` · tier 0
+
+**Replies are one level deep.** `parentId` must be a message in this thread
+that isn't itself a reply, or it's a `422` on field `parentId`.
+
+### `POST /api/tasks/:id/comments` and `/attachments` · tier 0
+
+A comment is a message with `taskId` set, posted in the task's thread, so it
+shows up in the thread as well as belonging to the task.
+
+- **Which thread:** the event's thread if the task has an `eventId`, otherwise
+  its team's thread. A task on an event is always discussed in the event's
+  thread, never its team's.
+- **It notifies** the task's assignee and creator (not you) with a
+  `task_commented` notification.
+- `409 NO_THREAD` — the task has no event and no team.
+- `404 TASK_NOT_FOUND` — no such task, or its thread is hidden from you.
+
+A comment takes the same body as a message, `parentId` included. An attachment
+takes this — only the caption `body` is optional:
+
+```json
+{
+  "fileKey": "tasks/<uuid>/run-sheet.pdf",
+  "fileName": "run-sheet.pdf",
+  "fileSizeBytes": 2048,
+  "fileMime": "application/pdf",
+  "body": "Run sheet v3"
+}
+```
+
+**No file storage exists yet.** This records a file that has already been
+uploaded under `fileKey`. It never receives the file itself, and reads return the
+key, not a download link. `fileSizeBytes` must be between 1 byte and 25 MB.
 
 ## Notifications
 
