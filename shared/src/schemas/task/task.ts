@@ -62,11 +62,15 @@ export const taskParamsSchema = z.object({ id: z.uuid() });
 
 /**
  * `creator` is not accepted from the client — the route stamps it from the
- * session, so a caller cannot attribute work to someone else. `boardOrder`,
- * `minTier` and `eventId` keep their column defaults until the board and
- * workstream endpoints land (R8).
+ * session, so a caller cannot attribute work to someone else. `boardOrder` and
+ * `minTier` keep their column defaults until the board endpoints land (R8).
+ *
+ * `eventId` links the task to an event. Paired with a `teamId`, the route
+ * declares that team's workstream on the event if it has none yet — see
+ * `backend/src/routes/tasks/service.ts`.
  */
 export const createTaskSchema = z.object({
+  eventId: z.uuid().nullish(),
   teamId: z.uuid().nullish(),
   title: titleSchema,
   status: taskStatusSchema.default("todo"),
@@ -85,6 +89,7 @@ export type CreateTask = z.infer<typeof createTaskSchema>;
  */
 export const updateTaskSchema = z
   .object({
+    eventId: z.uuid().nullish(),
     teamId: z.uuid().nullish(),
     title: titleSchema.optional(),
     status: taskStatusSchema.optional(),
@@ -124,6 +129,7 @@ const paginationShape = {
 };
 
 export const listTasksQuerySchema = z.object({
+  eventId: z.uuid().optional(),
   teamId: z.uuid().optional(),
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
@@ -136,6 +142,7 @@ export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 /** Overdue is derived (`status <> 'done' AND due_at < now()`), never stored,
  * so this query takes no `status` filter. */
 export const overdueTasksQuerySchema = z.object({
+  eventId: z.uuid().optional(),
   teamId: z.uuid().optional(),
   assignee: z.uuid().optional(),
   ...paginationShape,

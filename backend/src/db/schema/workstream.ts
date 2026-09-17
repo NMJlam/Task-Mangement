@@ -14,6 +14,11 @@ import { teams } from "./team.js";
  *
  * NO min_tier COLUMN. A workstream is visible exactly when its event is
  * (rule 16) — one fact, not two.
+ *
+ * Rows are created by `POST /api/events` (its `teamId`) or on first use by a
+ * task naming the event and a team (`routes/tasks/service.ts`). There is no
+ * workstream endpoint — `brief`, `lead` and `due_at` are seed-only until one
+ * is needed.
  */
 export const workstreams = pgTable(
   "workstream",
