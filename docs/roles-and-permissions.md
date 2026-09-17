@@ -33,6 +33,24 @@ treasurer. Only their capabilities differ.
 | `director`       | 1    | `invite:create`                                       |
 | `officer`        | 0    | —                                                     |
 
+## Groups
+
+| Group          | Who                                                                      |
+| -------------- | ------------------------------------------------------------------------ |
+| **Management** | Tier 2: `president`, `vice_president`, `treasurer`, `secretary`          |
+| **Directors**  | Tier 1: `director`                                                       |
+| **Officers**   | Tier 0: `officer`, each under the director who leads the team they're on |
+
+**The Exec team is management plus directors, led by the president.** It is an
+ordinary `team` row, not a rank: being on it grants nothing, and every
+permission on this page still comes from tier and role. So:
+
+- Its membership is kept by hand. Promoting an officer to director doesn't add
+  them to Exec, and demoting a director doesn't remove them — update the team at
+  the same time.
+- Its team channel is `min_tier = 1`, so every director can see it even before
+  their team membership catches up.
+
 `event:cancel` is the clearest case for the capability axis: tier 2 also holds
 the VP, treasurer and secretary, but cancelling releases budget (rule 7), and
 that call is the president's alone. "One specific role in tier 2" is not a

@@ -11,7 +11,7 @@ import { teams } from "./team.js";
  *   team, event    -> min_tier: everyone at that tier or above
  *   group, dm, ai  -> membership: a chan_member row is required
  *
- * Mixing them makes both incoherent. A private exec channel is a 'group';
+ * Mixing them makes both incoherent. A private management channel is a 'group';
  * "directors and up" is a 'team' channel with min_tier = 1.
  *
  * The AI assistant needs no tables of its own — it is kind = 'ai', a dedicated

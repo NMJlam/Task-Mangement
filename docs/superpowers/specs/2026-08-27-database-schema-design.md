@@ -308,7 +308,7 @@ Two visibility mechanisms, and `kind` decides which applies:
 | `team`, `event`     | `min_tier` — everyone at that tier or above  |
 | `group`, `dm`, `ai` | membership — a `chan_member` row is required |
 
-Mixing them makes both incoherent. A private exec channel is a `group`;
+Mixing them makes both incoherent. A private management channel is a `group`;
 "directors and up" is a `team` channel with `min_tier = 1`.
 
 ```
