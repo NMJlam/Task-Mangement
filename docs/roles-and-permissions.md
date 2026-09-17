@@ -44,24 +44,25 @@ tier threshold, so `authoriseCapability("event:cancel")` expresses it instead.
 signed-in account with club membership: 401 without a session, 403
 `NO_MEMBERSHIP` without membership.
 
-| Endpoint                                                                 | Minimum    | Also requires                                                            |
-| ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------ |
-| `GET /api/health`                                                        | public     | —                                                                        |
-| `GET /api/me`, `GET /api/members`, `GET /api/teams`                      | tier 0     | —                                                                        |
-| `GET /api/tasks`, `/api/tasks/overdue`, `/api/tasks/:id`                 | tier 0     | —                                                                        |
-| `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`         | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                              |
-| `GET /api/calendar`                                                      | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                 |
-| `PATCH /api/events/:id`                                                  | tier 0     | You own the event, **or** tier 1. Rule 8 caps `minTier`.                 |
-| `POST /api/events`, `PATCH /api/events/:id/status`                       | tier 1     | Wrapping needs no pending expenses: 409 — rule 7                         |
-| `DELETE /api/events/:id` (cancel)                                        | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
-| `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status` | tier 0     | —                                                                        |
-| `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                          | tier 1     | —                                                                        |
-| `PUT`, `DELETE /api/teams/:teamId/members/:userId`                       | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                         |
-| `POST /api/invites`                                                      | tier 1     | `invite:create`; the invited role's tier ≤ yours                         |
-| `PATCH /api/members/:id/role`                                            | tier 1     | `member:role-change`; new role and target both ≤ your tier; rule 3 below |
-| `POST /api/teams`, `PATCH`, `DELETE /api/teams/:id`                      | tier 2     | —                                                                        |
-| `DELETE /api/members/:id`                                                | tier 2     | Rules 3 and 4 below                                                      |
-| Cron routes (`routes/cron/cron.ts`)                                      | no session | `Authorization: Bearer <CRON_SECRET>`                                    |
+| Endpoint                                                                                           | Minimum    | Also requires                                                            |
+| -------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
+| `GET /api/health`                                                                                  | public     | —                                                                        |
+| `GET /api/me`, `GET /api/members`, `GET /api/teams`                                                | tier 0     | —                                                                        |
+| `GET /api/tasks`, `/api/tasks/overdue`, `/api/tasks/:id`                                           | tier 0     | —                                                                        |
+| `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`                                   | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                              |
+| `GET /api/calendar`                                                                                | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                 |
+| `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all` | tier 0     | Always scoped to the caller's own feed — no admin view                   |
+| `PATCH /api/events/:id`                                                                            | tier 0     | You own the event, **or** tier 1. Rule 8 caps `minTier`.                 |
+| `POST /api/events`, `PATCH /api/events/:id/status`                                                 | tier 1     | Wrapping needs no pending expenses: 409 — rule 7                         |
+| `DELETE /api/events/:id` (cancel)                                                                  | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
+| `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status`                           | tier 0     | —                                                                        |
+| `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                                                    | tier 1     | —                                                                        |
+| `PUT`, `DELETE /api/teams/:teamId/members/:userId`                                                 | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                         |
+| `POST /api/invites`                                                                                | tier 1     | `invite:create`; the invited role's tier ≤ yours                         |
+| `PATCH /api/members/:id/role`                                                                      | tier 1     | `member:role-change`; new role and target both ≤ your tier; rule 3 below |
+| `POST /api/teams`, `PATCH`, `DELETE /api/teams/:id`                                                | tier 2     | —                                                                        |
+| `DELETE /api/members/:id`                                                                          | tier 2     | Rules 3 and 4 below                                                      |
+| Cron routes (`routes/cron/cron.ts`)                                                                | no session | `Authorization: Bearer <CRON_SECRET>`                                    |
 
 ## Rules
 

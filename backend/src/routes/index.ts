@@ -6,6 +6,7 @@ import { healthRouter } from "./health/health.js";
 import { invitesRouter } from "./invites/invites.js";
 import { meRouter } from "./me/me.js";
 import { membersRouter } from "./members/members.js";
+import { notificationsRouter } from "./notifications/notifications.js";
 import { tasksRouter } from "./tasks/tasks.js";
 import { teamsRouter } from "./teams/teams.js";
 
@@ -24,6 +25,7 @@ apiRouter.use(teamsRouter);
 apiRouter.use(invitesRouter);
 apiRouter.use(tasksRouter);
 apiRouter.use(eventsRouter);
+apiRouter.use(notificationsRouter);
 // Mounted under a path prefix so the cron-secret guard is scoped to /api/cron/*.
 apiRouter.use("/cron", cronRouter);
 apiRouter.use(exampleRouter);
