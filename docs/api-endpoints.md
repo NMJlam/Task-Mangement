@@ -509,6 +509,53 @@ cancelled events never appear.
   (same-day vs. interval overlap) and `endsAt` is nullable, so half the rows
   have no interval to overlap. There is no `clashes` field.
 
+## Notifications
+
+Always scoped to the caller — there is no `userId` filter or admin view.
+
+### `GET /api/notifications` · tier 0
+
+Query: `?unreadOnly=<bool>&limit=<1-100, default 50>&offset=<default 0>`
+
+```json
+{
+  "notifications": [
+    {
+      "id": "<uuid>",
+      "userId": "<uuid>",
+      "kind": "event_date_changed",
+      "body": "Founders' Day moved to Oct 12.",
+      "entityType": "event",
+      "entityId": "<uuid>",
+      "readAt": null,
+      "createdAt": "2026-09-01T00:00:00.000Z"
+    }
+  ],
+  "unreadCount": 3
+}
+```
+
+Newest first. `entityType`/`entityId` are a deep-link target (no lookup), and
+travel together or not at all.
+
+### `PATCH /api/notifications/:id/read` · tier 0
+
+No body. Idempotent — marking an already-read notification as read is a no-op
+`200`, not an error.
+
+| Response                      | When                                     |
+| ----------------------------- | ---------------------------------------- |
+| `200 { "notification": {…} }` | Marked read (or already was).            |
+| `404 NOTIFICATION_NOT_FOUND`  | No such notification, or it isn't yours. |
+
+### `PATCH /api/notifications/read-all` · tier 0
+
+No body. Marks every unread notification belonging to the caller as read.
+
+```json
+{ "count": 3 }
+```
+
 ## Cron
 
 `GET /api/cron/warm` → `{ "ok": true }` and `GET /api/cron/reminders` →
