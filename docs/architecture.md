@@ -100,6 +100,9 @@ backend/src/
     teams/teams.ts       teams + team staffing
     invites/invites.ts   invite creation
     tasks/tasks.ts       task CRUD, overdue, bulk
+    threads/             threads, messages, read state, task comments + files
+      threads.ts           the Router + handlers
+      service.ts           visibility, unread counts, reply rule
     events/              events + calendar — the feature with a service layer
       events.ts            the Router + handlers
       service.ts           money/status/progress rules, framework-free

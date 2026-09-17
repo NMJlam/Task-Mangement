@@ -74,6 +74,9 @@ signed-in account with club membership: 401 without a session, 403
 | `DELETE /api/events/:id` (cancel)                                        | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
 | `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status` | tier 0     | —                                                                        |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                          | tier 1     | —                                                                        |
+| `GET`, `POST /api/threads`                                               | tier 0     | Lists only threads you can see — rule 9                                  |
+| `GET`, `POST /api/threads/:id/messages`, `POST /api/threads/:id/read`    | tier 0     | The thread must be visible to you, else 404 — rule 9                     |
+| `POST /api/tasks/:id/comments`, `POST /api/tasks/:id/attachments`        | tier 0     | The task's thread must be visible to you, else 404 — rule 9              |
 | `PUT`, `DELETE /api/teams/:teamId/members/:userId`                       | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                         |
 | `POST /api/invites`                                                      | tier 1     | `invite:create`; the invited role's tier ≤ yours                         |
 | `PATCH /api/members/:id/role`                                            | tier 1     | `member:role-change`; new role and target both ≤ your tier; rule 3 below |
@@ -110,6 +113,11 @@ signed-in account with club membership: 401 without a session, 403
 8. **Raising `minTier` can't hide a task from its own assignee.** `PATCH
 /api/events/:id` 422s if the new floor would put the event out of reach of
    someone already assigned work on it.
+9. **Threads hide by tier or by membership.** A `team` or `event` thread follows
+   its `min_tier`, and an event's thread also needs the event to be visible to
+   you. A `group` or `dm` needs you to be a member. Anything else is a 404
+   `THREAD_NOT_FOUND` — or `TASK_NOT_FOUND` when you reach the thread through a
+   task — never a 403.
 
 ## Deliberate, but easy to trip over
 
@@ -133,8 +141,7 @@ signed-in account with club membership: 401 without a session, 403
 - **Hiding tasks by tier.** `event` filters on `min_tier` everywhere (rule 6),
   and so do the tasks reached _through_ an event or the calendar. But
   `GET /api/tasks` itself still doesn't, so a task read directly is visible to
-  every member regardless of its `min_tier`. `channel` has the column and no
-  reads at all yet. Spec §8 rules 3–5.
+  every member regardless of its `min_tier`. Spec §8 rules 3–5.
 - **Budget powers.** Spec §4 gives budget authority to `treasurer` and
   `president` by name. The club-wide allocation cap _is_ enforced — see
   `allocateToEvent` in `routes/events/service.ts`, which locks the settings row
