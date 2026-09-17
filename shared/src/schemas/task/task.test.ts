@@ -3,10 +3,12 @@ import {
   bulkCreateTasksSchema,
   createTaskSchema,
   listTasksQuerySchema,
+  overdueTasksQuerySchema,
   updateTaskSchema,
 } from "./task.js";
 
 const teamId = "018f3a4b-0000-7000-8000-000000000001";
+const eventId = "018f3a4b-0000-7000-8000-000000000002";
 
 describe("createTaskSchema", () => {
   it("trims the title and defaults status and priority", () => {
@@ -41,6 +43,18 @@ describe("createTaskSchema", () => {
   it("rejects a non-uuid teamId", () => {
     expect(createTaskSchema.safeParse({ teamId: "team-1", title: "Ok" }).success).toBe(false);
   });
+
+  it("accepts an eventId, alone or paired with a teamId", () => {
+    expect(createTaskSchema.parse({ eventId, title: "Ok" }).eventId).toBe(eventId);
+    expect(createTaskSchema.parse({ eventId, teamId, title: "Ok" })).toMatchObject({
+      eventId,
+      teamId,
+    });
+  });
+
+  it("rejects a non-uuid eventId", () => {
+    expect(createTaskSchema.safeParse({ eventId: "oweek", title: "Ok" }).success).toBe(false);
+  });
 });
 
 describe("updateTaskSchema", () => {
@@ -54,6 +68,11 @@ describe("updateTaskSchema", () => {
 
   it("rejects an empty patch", () => {
     expect(updateTaskSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts eventId as the only field, including null to unlink", () => {
+    expect(updateTaskSchema.parse({ eventId })).toEqual({ eventId });
+    expect(updateTaskSchema.parse({ eventId: null })).toEqual({ eventId: null });
   });
 });
 
@@ -82,5 +101,16 @@ describe("listTasksQuerySchema", () => {
 
   it("rejects a limit above the cap", () => {
     expect(listTasksQuerySchema.safeParse({ limit: "500" }).success).toBe(false);
+  });
+
+  it("accepts an eventId filter and rejects a non-uuid one", () => {
+    expect(listTasksQuerySchema.parse({ eventId }).eventId).toBe(eventId);
+    expect(listTasksQuerySchema.safeParse({ eventId: "oweek" }).success).toBe(false);
+  });
+});
+
+describe("overdueTasksQuerySchema", () => {
+  it("accepts an eventId filter", () => {
+    expect(overdueTasksQuerySchema.parse({ eventId }).eventId).toBe(eventId);
   });
 });

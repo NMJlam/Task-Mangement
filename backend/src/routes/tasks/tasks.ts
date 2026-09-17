@@ -14,14 +14,17 @@ import {
   type TaskListResponse,
   type TaskResponse,
   type TaskStatus,
+  type Tier,
   type UpdateTask,
 } from "@ctp/shared";
 import { and, asc, desc, eq, inArray, lt, ne, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, tasks, teams } from "../../db/schema/index.js";
+import { appUsers, events, tasks, teams } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
+import { visibleEvents } from "../events/service.js";
+import { ensureWorkstreams, mergeLink, workstreamKeys } from "./service.js";
 
 export const tasksRouter = Router();
 
@@ -35,21 +38,36 @@ export const tasksRouter = Router();
  * role-bound power actually exists (plan.md, watch-out 4).
  */
 
-type Reference = { teamId?: string | null; assignee?: string | null };
+type Reference = { eventId?: string | null; teamId?: string | null; assignee?: string | null };
 
 /**
  * Resolve the foreign keys before writing.
  *
- * Both `task.team_id` and `task.assignee` are FK-constrained, so an unknown id
- * would otherwise surface as an opaque 500 from Postgres. Checking them here
- * turns either into a 422 that names the offending field.
+ * `task.event_id`, `task.team_id` and `task.assignee` are all FK-constrained, so
+ * an unknown id would otherwise surface as an opaque 500 from Postgres. Checking
+ * them here turns each into a 422 that names the offending field.
+ *
+ * An event must also be one the caller can see. Above their tier or cancelled
+ * (the soft delete) reads as missing, as on every event route — a different
+ * code would confirm the event exists.
  */
 async function findBadReference(
   db: ReturnType<typeof getDb>,
   references: Reference[],
+  tier: Tier,
 ): Promise<{ code: string; message: string } | undefined> {
+  const eventIds = [...new Set(references.map((reference) => reference.eventId).filter(isId))];
   const teamIds = [...new Set(references.map((reference) => reference.teamId).filter(isId))];
   const assignees = [...new Set(references.map((reference) => reference.assignee).filter(isId))];
+
+  if (eventIds.length > 0) {
+    const found = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(inArray(events.id, eventIds), visibleEvents(tier)));
+    const missing = eventIds.find((id) => !found.some((row) => row.id === id));
+    if (missing) return { code: "EVENT_NOT_FOUND", message: `No event with id ${missing}.` };
+  }
 
   if (teamIds.length > 0) {
     const found = await db.select({ id: teams.id }).from(teams).where(inArray(teams.id, teamIds));
@@ -97,6 +115,7 @@ tasksRouter.get(
     try {
       const query = res.locals.validated as ListTasksQuery;
       const filters = [
+        query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.status ? eq(tasks.status, query.status) : undefined,
         query.priority ? eq(tasks.priority, query.priority) : undefined,
@@ -135,6 +154,7 @@ tasksRouter.get(
       const filters = [
         lt(tasks.dueAt, new Date()),
         ne(tasks.status, "done"),
+        query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.assignee ? eq(tasks.assignee, query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
@@ -165,11 +185,13 @@ tasksRouter.post(
     try {
       const input = res.locals.validated as CreateTask;
       const db = getDb();
-      const bad = await findBadReference(db, [input]);
+      const bad = await findBadReference(db, [input], req.user!.tier);
       if (bad) {
         res.status(422).json({ error: bad });
         return;
       }
+
+      await ensureWorkstreams(db, workstreamKeys([input]));
 
       // `creator` is stamped from the session, never the body, so a caller
       // cannot attribute work to someone else.
@@ -201,11 +223,13 @@ tasksRouter.post(
     try {
       const input = res.locals.validated as BulkCreateTasks;
       const db = getDb();
-      const bad = await findBadReference(db, input.tasks);
+      const bad = await findBadReference(db, input.tasks, req.user!.tier);
       if (bad) {
         res.status(422).json({ error: bad });
         return;
       }
+
+      await ensureWorkstreams(db, workstreamKeys(input.tasks));
 
       // One multi-row INSERT rather than a transaction: it is atomic on its own
       // and works identically on the node and Neon HTTP drivers.
@@ -266,10 +290,26 @@ tasksRouter.patch(
     try {
       const patch = res.locals.validated as UpdateTask;
       const db = getDb();
-      const bad = await findBadReference(db, [patch]);
+      const bad = await findBadReference(db, [patch], req.user!.tier);
       if (bad) {
         res.status(422).json({ error: bad });
         return;
+      }
+
+      // Moving either side of the link can land the task on a pair with no
+      // workstream — a new team on the same event is the common case — so work
+      // out the link the row will end up with and declare it before the update.
+      if (patch.eventId !== undefined || patch.teamId !== undefined) {
+        const [stored] = await db
+          .select({ eventId: tasks.eventId, teamId: tasks.teamId })
+          .from(tasks)
+          .where(eq(tasks.id, req.params.id!))
+          .limit(1);
+        if (!stored) {
+          notFound(res);
+          return;
+        }
+        await ensureWorkstreams(db, workstreamKeys([mergeLink(stored, patch)]));
       }
 
       // No `updated_at` trigger exists, so the route owns the timestamp.

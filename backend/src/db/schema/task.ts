@@ -103,6 +103,10 @@ export const tasks = pgTable(
     // SQL default, so a NULL in either column skips the check entirely — which
     // is what keeps standing tasks and event-wide tasks legal.
     //
+    // The task routes declare the workstream on first use
+    // (`routes/tasks/service.ts`), so the API never trips this; only a direct
+    // insert can.
+    //
     // NOTE: this is ON DELETE CASCADE, so deleting a workstream would take its
     // tasks with it. Rule 10 guards that in the service layer.
     foreignKey({

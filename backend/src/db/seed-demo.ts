@@ -59,6 +59,8 @@ function demoId(slug: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(18, 20)}-${h.slice(20, 32)}`;
 }
 
+// Exec is management (tier 2) plus directors, led by the president. It is a
+// team, not a rank — see docs/roles-and-permissions.md "Groups".
 const TEAMS = [
   { slug: "exec", name: "Exec", lead: "president" },
   { slug: "media", name: "Media", lead: "director" },
@@ -107,6 +109,7 @@ export async function seedDemo(): Promise<void> {
       { teamId: team("exec"), userId: member("vice_president") },
       { teamId: team("exec"), userId: member("treasurer") },
       { teamId: team("exec"), userId: member("secretary") },
+      { teamId: team("exec"), userId: member("director") },
       { teamId: team("media"), userId: member("director") },
       { teamId: team("media"), userId: member("officer") },
       { teamId: team("marketing"), userId: member("vice_president") },
@@ -216,7 +219,8 @@ export async function seedDemo(): Promise<void> {
   await db
     .insert(channels)
     .values([
-      { id: channel("exec"), teamId: team("exec"), kind: "team", name: "exec", minTier: 2 },
+      // Directors are on Exec, so its channel opens at tier 1, not 2.
+      { id: channel("exec"), teamId: team("exec"), kind: "team", name: "exec", minTier: 1 },
       { id: channel("media"), teamId: team("media"), kind: "team", name: "media" },
       { id: channel("marketing"), teamId: team("marketing"), kind: "team", name: "marketing" },
       {
