@@ -8,6 +8,7 @@ import { meRouter } from "./me/me.js";
 import { membersRouter } from "./members/members.js";
 import { tasksRouter } from "./tasks/tasks.js";
 import { teamsRouter } from "./teams/teams.js";
+import { threadsRouter } from "./threads/threads.js";
 
 /**
  * All routes, mounted under /api by app.ts.
@@ -24,6 +25,7 @@ apiRouter.use(teamsRouter);
 apiRouter.use(invitesRouter);
 apiRouter.use(tasksRouter);
 apiRouter.use(eventsRouter);
+apiRouter.use(threadsRouter);
 // Mounted under a path prefix so the cron-secret guard is scoped to /api/cron/*.
 apiRouter.use("/cron", cronRouter);
 apiRouter.use(exampleRouter);
