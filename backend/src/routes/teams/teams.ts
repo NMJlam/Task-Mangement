@@ -15,7 +15,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, teamMembers, teams } from "../../db/schema/index.js";
+import { appUsers, channels, teamMembers, teams } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 
 export const teamsRouter = Router();
@@ -169,12 +169,21 @@ teamsRouter.post(
         return;
       }
 
-      const [team] = await getDb()
-        .insert(teams)
-        .values({ id: newId(), ...input })
-        .returning();
+      const team = await getDb().transaction(async (tx) => {
+        const [row] = await tx
+          .insert(teams)
+          .values({ id: newId(), ...input })
+          .returning();
+        // A team's thread opens with the team, as an event's does with the
+        // event. Comments on the team's standing tasks land there
+        // (routes/threads). Tier 0: a team is not a rank.
+        await tx
+          .insert(channels)
+          .values({ id: newId(), teamId: row!.id, kind: "team", name: row!.name });
+        return row!;
+      });
 
-      res.status(201).json({ team: withMembers(team!, []) } satisfies TeamResponse);
+      res.status(201).json({ team: withMembers(team, []) } satisfies TeamResponse);
     } catch (error) {
       if (sqlState(error) === UNIQUE_VIOLATION) {
         nameTaken(res);
