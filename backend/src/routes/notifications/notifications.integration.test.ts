@@ -93,6 +93,18 @@ describe("/api/notifications (integration)", () => {
       expect(response.body.notifications).toHaveLength(1);
       expect(response.body.notifications[0].body).toBe("unread");
     });
+
+    it("returns read and unread when unreadOnly=false", async () => {
+      const actor = await member("actor");
+      await notify(actor.id, "read", new Date());
+      await notify(actor.id, "unread");
+      signInAs(actor);
+
+      const response = await request(app).get("/api/notifications?unreadOnly=false");
+
+      expect(response.status).toBe(200);
+      expect(response.body.notifications).toHaveLength(2);
+    });
   });
 
   describe("PATCH /api/notifications/:id/read", () => {

@@ -53,7 +53,8 @@ export const notificationParamsSchema = z.object({ id: z.uuid() });
  * behalf, so the route derives the recipient from the session, not the query.
  */
 export const listNotificationsQuerySchema = z.object({
-  unreadOnly: z.coerce.boolean().default(false),
+  // Not z.coerce.boolean(): Boolean("false") is true.
+  unreadOnly: z.stringbool().default(false),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
