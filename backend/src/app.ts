@@ -1,5 +1,5 @@
 import { toNodeHandler } from "better-auth/node";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import { auth } from "./auth/auth.js";
 import { log } from "./middleware/index.js";
 import { apiRouter } from "./routes/index.js";
@@ -39,5 +39,17 @@ app.use(express.json());
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.use("/api", apiRouter);
+
+// Keep API failures inside the shared JSON contract. Express's default error
+// handler returns HTML, which makes every frontend res.json() hide the real
+// failure behind "Unexpected token '<'".
+const internalError: ErrorRequestHandler = (error, _req, res, _next) => {
+  console.error(error);
+  res.status(500).json({
+    error: { code: "INTERNAL_ERROR", message: "An unexpected server error occurred." },
+  });
+};
+
+app.use(internalError);
 
 export default app;

@@ -43,6 +43,22 @@ describe("EventsPage", () => {
     );
     expect(screen.queryByText(/no upcoming events/i)).not.toBeInTheDocument();
   });
+
+  it("shows an actionable error when the API returns an HTML error page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: vi.fn().mockRejectedValue(new SyntaxError("Unexpected token '<'")),
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load events: Failed to load events. Refresh the page to try again.",
+    );
+  });
 });
 
 function renderPage() {
