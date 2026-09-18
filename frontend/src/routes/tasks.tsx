@@ -14,6 +14,8 @@ import { useTasks } from "@/hooks/use-tasks";
 export function TasksPage() {
   const tasks = useTasks();
   const events = useEvents();
+  // The roster is one club-sized page, so the assignment editor searches it in
+  // memory rather than asking the server for matches (see dashboard-search.tsx).
   const members = useMembers();
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : undefined;
@@ -93,22 +95,18 @@ export function TasksPage() {
           Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.
         </p>
       )}
-      {tasks.state.status === "ok" && taskItems.length === 0 && (
-        <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No tasks yet. Add the first task above.
-          </CardContent>
-        </Card>
-      )}
-      {tasks.state.status === "ok" && taskItems.length > 0 && (
+      {tasks.state.status === "ok" && (
         <section aria-label="Task board" className="mt-8">
           <TaskBoard
             tasks={taskItems}
             members={memberItems}
             events={eventItems}
-            busyTaskId={tasks.busy}
+            busyId={tasks.busy}
+            error={tasks.mutationError}
+            emptyMessage="No tasks yet. Add the first task above."
             onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
             onEventChange={(task, eventId) => void tasks.changeEvent(task, eventId)}
+            onUpdate={(task, patch) => void tasks.updateTask(task, patch)}
           />
         </section>
       )}

@@ -19,8 +19,9 @@ export function useEvent(id: string | undefined) {
     setState({ status: "loading" });
 
     // `channel` is asked for by name — `channelId` is absent without it, and the
-    // Thread tab has nothing to read.
-    fetch(`/api/events/${id}?include=tasks,channel`, { credentials: "include" })
+    // Thread tab has nothing to read. `tasks` is NOT: the Tasks tab reads
+    // `/api/tasks?eventId=`, and the summary counts come from this row.
+    fetch(`/api/events/${id}?include=channel`, { credentials: "include" })
       .then(async (res) => {
         if (res.status === 404) return { status: "not_found" as const };
         if (!res.ok) throw new Error("Failed to load event");
