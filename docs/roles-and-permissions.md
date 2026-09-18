@@ -24,14 +24,14 @@ treasurer. Only their capabilities differ.
 
 ## Roles
 
-| Role             | Tier | Capabilities                                          |
-| ---------------- | ---- | ----------------------------------------------------- |
-| `president`      | 2    | `member:role-change`, `invite:create`, `event:cancel` |
-| `vice_president` | 2    | `member:role-change`                                  |
-| `secretary`      | 2    | `invite:create`                                       |
-| `treasurer`      | 2    | —                                                     |
-| `director`       | 1    | `invite:create`                                       |
-| `officer`        | 0    | —                                                     |
+| Role             | Tier | Capabilities                                                                              |
+| ---------------- | ---- | ----------------------------------------------------------------------------------------- |
+| `president`      | 2    | `member:role-change`, `invite:create`, `event:cancel`, `expense:approve`, `budget:manage` |
+| `vice_president` | 2    | `member:role-change`                                                                      |
+| `secretary`      | 2    | `invite:create`                                                                           |
+| `treasurer`      | 2    | `expense:approve`, `budget:manage`                                                        |
+| `director`       | 1    | `invite:create`                                                                           |
+| `officer`        | 0    | —                                                                                         |
 
 ## Groups
 
@@ -70,6 +70,9 @@ signed-in account with club membership: 401 without a session, 403
 | `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`                                   | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                              |
 | `GET /api/calendar`                                                                                | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                 |
 | `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all` | tier 0     | Always scoped to the caller's own feed — no admin view                   |
+| `GET /api/budget`, `GET /api/expenses`                                                             | tier 0     | Expense list is own + approved/paid; finance roles see all               |
+| `PATCH /api/budget`, `PUT /api/budget/allocations/:eventId`                                        | membership | `budget:manage`                                                          |
+| `POST`, `PATCH`, `DELETE /api/expenses…`, `POST /api/expenses/:id/decision`                        | membership | `expense:approve`; decisions cannot approve/reject your own claim        |
 | `PATCH /api/events/:id`                                                                            | tier 0     | You own the event, **or** tier 1. Rule 8 caps `minTier`.                 |
 | `POST /api/events`, `PATCH /api/events/:id/status`                                                 | tier 1     | Wrapping needs no pending expenses: 409 — rule 7                         |
 | `DELETE /api/events/:id` (cancel)                                                                  | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
@@ -143,12 +146,6 @@ signed-in account with club membership: 401 without a session, 403
   and so do the tasks reached _through_ an event or the calendar. But
   `GET /api/tasks` itself still doesn't, so a task read directly is visible to
   every member regardless of its `min_tier`. Spec §8 rules 3–5.
-- **Budget powers.** Spec §4 gives budget authority to `treasurer` and
-  `president` by name. The club-wide allocation cap _is_ enforced — see
-  `allocateToEvent` in `routes/events/service.ts`, which locks the settings row
-  and 409s `BUDGET_EXCEEDED` — but it's a money rule, not a role gate. No
-  expense routes exist yet; when they do, approving spend is a `CAPABILITIES`
-  entry, not a tier gate.
 
 ## Open question
 
