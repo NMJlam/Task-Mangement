@@ -7,7 +7,10 @@ it("marks the current page and exposes account actions", () => {
   const signOut = vi.fn().mockResolvedValue(undefined);
 
   render(
-    <MemoryRouter initialEntries={["/events"]}>
+    <MemoryRouter
+      initialEntries={["/events"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <AppShell
         member={{
           id: "019ff060-2362-7399-9032-b4bbcc3a25d5",

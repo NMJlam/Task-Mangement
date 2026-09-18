@@ -5,6 +5,7 @@ import { RequireAuth } from "./components/require-auth";
 import "./index.css";
 import { AiBreakdownPage } from "./routes/ai-breakdown";
 import { CalendarPage } from "./routes/calendar";
+import { DashboardPage } from "./routes/dashboard";
 import { EventDetailPage } from "./routes/event-detail";
 import { EventsPage } from "./routes/events";
 import { FinancePage } from "./routes/finance";
@@ -12,6 +13,7 @@ import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
 import { MembersPage } from "./routes/members";
 import { MessagesPage } from "./routes/messages";
+import { NewEventPage } from "./routes/new-event";
 import { NotificationsPage } from "./routes/notifications";
 import { SettingsPage } from "./routes/settings";
 import { TasksPage } from "./routes/tasks";
@@ -24,7 +26,7 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <RequireAuth>
-        <HealthPage />
+        <DashboardPage />
       </RequireAuth>
     ),
   },
@@ -41,6 +43,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <EventsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/events/new",
+    element: (
+      <RequireAuth minTier={1}>
+        <NewEventPage />
       </RequireAuth>
     ),
   },

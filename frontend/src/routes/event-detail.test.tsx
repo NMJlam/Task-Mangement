@@ -52,7 +52,10 @@ describe("EventDetailPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <MemoryRouter initialEntries={["/events/018f3a4b-0000-7000-8000-000000000001"]}>
+      <MemoryRouter
+        initialEntries={["/events/018f3a4b-0000-7000-8000-000000000001"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/events/:id" element={<EventDetailPage />} />
         </Routes>
