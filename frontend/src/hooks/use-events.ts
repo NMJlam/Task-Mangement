@@ -27,8 +27,8 @@ export function useEvents(query: { teamId?: string; status?: string } = {}): Eve
 
     fetch(`/api/events${qs ? `?${qs}` : ""}`, { credentials: "include" })
       .then(async (res) => {
-        const body: unknown = await res.json();
         if (!res.ok) throw new Error("Failed to load events");
+        const body: unknown = await res.json();
         return listEventsResponseSchema.parse(body);
       })
       .then((parsed) => {
