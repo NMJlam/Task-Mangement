@@ -68,4 +68,27 @@ describe("EventDetailPage", () => {
       { credentials: "include" },
     );
   });
+
+  it("shows an actionable error when the API returns an HTML error page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: vi.fn().mockRejectedValue(new SyntaxError("Unexpected token")),
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/events/018f3a4b-0000-7000-8000-000000000001"]}>
+        <Routes>
+          <Route path="/events/:id" element={<EventDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load the event: Failed to load event. Refresh the page to try again.",
+    );
+  });
 });

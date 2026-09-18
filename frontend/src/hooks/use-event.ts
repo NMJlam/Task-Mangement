@@ -19,9 +19,8 @@ export function useEvent(id: string | undefined): EventState {
     fetch(`/api/events/${id}?include=tasks`, { credentials: "include" })
       .then(async (res) => {
         if (res.status === 404) return { status: "not_found" as const };
-        const body: unknown = await res.json();
         if (!res.ok) throw new Error("Failed to load event");
-        const parsed = eventResponseSchema.parse(body);
+        const parsed = eventResponseSchema.parse(await res.json());
         return { status: "ok" as const, event: parsed.event, warnings: parsed.warnings };
       })
       .then((next) => {
