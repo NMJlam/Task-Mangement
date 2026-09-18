@@ -7,7 +7,7 @@ import { LoginPage } from "@/routes/login";
 const useAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-auth", () => ({ useAuth }));
 
-it("redirects guests without waiting for the session request", () => {
+it("keeps the auth check stable while the session request is pending", () => {
   useAuth.mockReturnValue({
     account: null,
     isLoading: true,
@@ -28,7 +28,8 @@ it("redirects guests without waiting for the session request", () => {
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("button", { name: /sign in with google/i })).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("Loading…");
+  expect(screen.queryByRole("button", { name: /sign in with google/i })).not.toBeInTheDocument();
 });
 
 it("hides capability-gated UI from roles without the capability", () => {

@@ -16,7 +16,7 @@ describe("HealthPage", () => {
   it("renders the heading and the shared-validation form", async () => {
     render(<HealthPage />);
     expect(screen.getByRole("heading", { name: /club task platform/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /submit/i })).toBeInTheDocument();
     // Let the useHealth effect resolve so the render is settled (no act warning).
     await waitFor(() => expect(screen.getByText(/backend ok/i)).toBeInTheDocument());
   });
