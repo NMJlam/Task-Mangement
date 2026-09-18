@@ -16,7 +16,7 @@ export function useEvent(id: string | undefined): EventState {
     let active = true;
     setState({ status: "loading" });
 
-    fetch(`/api/events/${id}`, { credentials: "include" })
+    fetch(`/api/events/${id}?include=tasks`, { credentials: "include" })
       .then(async (res) => {
         if (res.status === 404) return { status: "not_found" as const };
         const body: unknown = await res.json();

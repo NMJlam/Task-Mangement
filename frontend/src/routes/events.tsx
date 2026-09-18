@@ -1,4 +1,5 @@
 import { CalendarDays, MapPin } from "lucide-react";
+import { Link } from "react-router-dom";
 import { EventHealthStrip } from "@/components/event-health-strip";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -48,7 +49,14 @@ export function EventsPage() {
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold tracking-tight">{event.title}</h2>
+                    <h2 className="truncate text-lg font-semibold tracking-tight">
+                      <Link
+                        to={`/events/${event.id}`}
+                        className="rounded-sm hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                      >
+                        {event.title}
+                      </Link>
+                    </h2>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-1.5">
                         <CalendarDays aria-hidden="true" className="size-3.5" />

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventsPage } from "./events";
 
@@ -9,7 +10,7 @@ describe("EventsPage", () => {
 
   it("renders the empty state when there are no events", async () => {
     stubFetch({ items: [], nextCursor: null });
-    render(<EventsPage />);
+    renderPage();
 
     await waitFor(() => expect(screen.getByText(/no upcoming events/i)).toBeInTheDocument());
   });
@@ -33,12 +34,24 @@ describe("EventsPage", () => {
       ],
       nextCursor: null,
     });
-    render(<EventsPage />);
+    renderPage();
 
     await waitFor(() => expect(screen.getByText("AGM")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "AGM" })).toHaveAttribute(
+      "href",
+      "/events/018f3a4b-0000-7000-8000-000000000001",
+    );
     expect(screen.queryByText(/no upcoming events/i)).not.toBeInTheDocument();
   });
 });
+
+function renderPage() {
+  render(
+    <MemoryRouter>
+      <EventsPage />
+    </MemoryRouter>,
+  );
+}
 
 function stubFetch(body: unknown) {
   vi.stubGlobal(

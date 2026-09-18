@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { RequireAuth } from "./components/require-auth";
 import "./index.css";
 import { CalendarPage } from "./routes/calendar";
+import { EventDetailPage } from "./routes/event-detail";
 import { EventsPage } from "./routes/events";
 import { FinancePage } from "./routes/finance";
 import { HealthPage } from "./routes/health";
@@ -32,6 +33,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <EventsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/events/:id",
+    element: (
+      <RequireAuth>
+        <EventDetailPage />
       </RequireAuth>
     ),
   },
