@@ -53,8 +53,8 @@ export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
 /**
  * `reassignTo` is the handover target for the departing member's open tasks.
  * Optional in the schema, but the route rejects a removal that would strand
- * open work (rule 7) — `task.assignee` is ON DELETE SET NULL, so the database
- * will happily orphan them.
+ * open work (rule 7) — a `task_assignee` row is ON DELETE CASCADE, so the
+ * database would silently unassign them instead.
  */
 export const removeMemberQuerySchema = z.object({ reassignTo: z.uuid().optional() });
 

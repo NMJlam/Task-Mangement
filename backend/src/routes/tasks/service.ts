@@ -1,5 +1,6 @@
+import { inArray } from "drizzle-orm";
 import { newId } from "../../db/id.js";
-import { workstreams } from "../../db/schema/index.js";
+import { taskAssignees, workstreams } from "../../db/schema/index.js";
 import type { Queryable } from "../events/service.js";
 
 /**
@@ -17,6 +18,35 @@ import type { Queryable } from "../events/service.js";
 export interface TaskLink {
   eventId: string | null;
   teamId: string | null;
+}
+
+/**
+ * The one place a `task` row becomes a wire `Task`. The junction is a second
+ * table, so a bare `.select()` no longer satisfies `taskSchema` and a caller
+ * that forgot this would return a task with no `assigneeIds` at all. Shared by
+ * the task routes and the event routes that embed tasks.
+ *
+ * Reads links for the SELECTED task ids only — never the whole junction table:
+ * a list page's 50 rows are a filter, not a starting point for a scan.
+ */
+export async function assembleTasks<T extends { id: string }>(
+  db: Queryable,
+  rows: readonly T[],
+): Promise<(T & { assigneeIds: string[] })[]> {
+  if (rows.length === 0) return [];
+  const links = await db
+    .select()
+    .from(taskAssignees)
+    .where(
+      inArray(
+        taskAssignees.taskId,
+        rows.map((row) => row.id),
+      ),
+    );
+  return rows.map((row) => ({
+    ...row,
+    assigneeIds: links.filter((link) => link.taskId === row.id).map((link) => link.userId),
+  }));
 }
 
 export interface WorkstreamKey {

@@ -22,17 +22,36 @@ export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 
 /**
  * Task shapes for the R7 task endpoints. Mirrors the `task` table
- * (`backend/src/db/schema/task.ts`) column for column, so a bare `.select()`
- * satisfies `taskSchema` without a projection step.
+ * (`backend/src/db/schema/task.ts`) column for column, except for assignment:
+ * R3 makes a task multi-assignee, so the set lives in the `task_assignee`
+ * junction and every read assembles it — the route never returns a bare `.select()`.
  *
  * Field names follow the table, not the wire convention of the earlier draft:
- * the column is `assignee`, not `assignee_id`, because it pairs with `creator`
- * and the two answer different questions.
+ * the column is `creator`, not `creator_id`.
  */
 const titleSchema = z.string().trim().min(1, "Title is required").max(200);
 // Postgres accepts every UUID-shaped value, including legacy rows whose
 // version/variant bits predate the stricter RFC check in z.uuid().
 const storedTaskIdSchema = z.guid();
+
+/**
+ * Optional free-form detail. Normalised to `null` so "no description" has one
+ * representation instead of two (`null` and `""`), which is what lets the
+ * dialog test emptiness with a single check.
+ */
+const descriptionSchema = z
+  .string()
+  .trim()
+  .max(2000, "Description is too long")
+  .transform((value) => (value === "" ? null : value));
+
+/**
+ * Ownership is an unordered set (R3), so a repeated id is a client bug rather
+ * than a second assignment, and the array collapses to first-seen order. One
+ * schema for all three positions — response, create, update — so dedup cannot
+ * be forgotten on one path.
+ */
+const assigneeIdsSchema = z.array(z.uuid()).transform((ids) => [...new Set(ids)]);
 
 export const taskSchema = z.object({
   id: storedTaskIdSchema,
@@ -40,9 +59,10 @@ export const taskSchema = z.object({
   // cross-cutting work belongs to no team.
   eventId: z.uuid().nullable(),
   teamId: z.uuid().nullable(),
-  assignee: z.uuid().nullable(),
+  assigneeIds: assigneeIdsSchema,
   creator: z.uuid().nullable(),
   title: z.string(),
+  description: z.string().nullable(),
   status: taskStatusSchema,
   priority: taskPrioritySchema,
   dueAt: z.coerce.date().nullable(),
@@ -71,14 +91,18 @@ export const taskParamsSchema = z.object({ id: storedTaskIdSchema });
  * `eventId` links the task to an event. Paired with a `teamId`, the route
  * declares that team's workstream on the event if it has none yet — see
  * `backend/src/routes/tasks/service.ts`.
+ *
+ * `assigneeIds` defaults to `[]`: a task with no owner is legal, and the create
+ * body omits it more often than not.
  */
 export const createTaskSchema = z.object({
   eventId: z.uuid().nullish(),
   teamId: z.uuid().nullish(),
   title: titleSchema,
+  description: descriptionSchema.nullish(),
   status: taskStatusSchema.default("todo"),
   priority: taskPrioritySchema.default("medium"),
-  assignee: z.uuid().nullish(),
+  assigneeIds: assigneeIdsSchema.default([]),
   dueAt: z.coerce.date().nullish(),
 });
 
@@ -89,15 +113,20 @@ export type CreateTask = z.infer<typeof createTaskSchema>;
 /**
  * Every field optional, but at least one must be present — an empty patch is a
  * client bug, not a no-op, so it 422s rather than silently returning the row.
+ *
+ * `assigneeIds` is the one field where omission and emptiness differ: omitting
+ * it leaves the assignments alone, `[]` clears them. The route replaces the
+ * whole set, it never merges into it.
  */
 export const updateTaskSchema = z
   .object({
     eventId: z.uuid().nullish(),
     teamId: z.uuid().nullish(),
     title: titleSchema.optional(),
+    description: descriptionSchema.nullish(),
     status: taskStatusSchema.optional(),
     priority: taskPrioritySchema.optional(),
-    assignee: z.uuid().nullish(),
+    assigneeIds: assigneeIdsSchema.optional(),
     dueAt: z.coerce.date().nullish(),
   })
   .refine((patch) => Object.keys(patch).length > 0, {

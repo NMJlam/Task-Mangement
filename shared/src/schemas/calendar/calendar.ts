@@ -46,7 +46,9 @@ const calendarTaskItemSchema = z.object({
   title: z.string(),
   dueAt: z.coerce.date().nullable(),
   eventId: z.uuid().nullable(),
-  assigneeId: z.uuid().nullable(),
+  // Every assignee, not a representative one: the set has no order, so picking
+  // "the" assignee would invent a fact the database does not hold.
+  assigneeIds: z.array(z.uuid()),
 });
 
 /** Discriminated on `kind`, matching the response doc exactly — no `clashes`. */
