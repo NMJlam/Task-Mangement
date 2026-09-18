@@ -1,9 +1,9 @@
 import type { Message, RosterMember, Thread } from "@ctp/shared";
 import { Hash, MessageCircle, Paperclip, Send } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/common/page-header";
+import { UserAvatar } from "@/components/common/user-avatar";
 import { Button } from "@/components/ui/button";
-import { UserAvatar } from "@/components/user-avatar";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useThreadMessages, useThreads } from "@/hooks/use-threads";

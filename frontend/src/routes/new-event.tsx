@@ -2,7 +2,7 @@ import { createEventSchema } from "@ctp/shared";
 import { ArrowLeft, CalendarPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

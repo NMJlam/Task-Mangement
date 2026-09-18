@@ -1,32 +1,53 @@
-import type { Task, TaskStatus } from "@ctp/shared";
+import { can, type Message, type RosterMember } from "@ctp/shared";
 import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, UserRound } from "lucide-react";
-import type { ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
-import { EventHealthStrip } from "@/components/event-health-strip";
-import { PageHeader } from "@/components/page-header";
-import { PriorityDot } from "@/components/priority-dot";
-import { StatusBadge } from "@/components/status-badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useState, type ReactNode } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { PageHeader } from "@/components/common/page-header";
+import { StatusBadge } from "@/components/common/status-badge";
+import { UserAvatar } from "@/components/common/user-avatar";
+import { EventHealthStrip } from "@/components/events/event-health-strip";
+import { EventRiskPanel } from "@/components/events/event-risk-panel";
+import { TaskBoard } from "@/components/tasks/task-board";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEvent } from "@/hooks/use-event";
+import { useEventProgress } from "@/hooks/use-event-progress";
+import { useMe } from "@/hooks/use-me";
+import { useMembers } from "@/hooks/use-members";
+import { useThreadMessages } from "@/hooks/use-threads";
 import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "full",
   timeStyle: "short",
 });
-const shortDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const money = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" });
-
-const columns: { status: TaskStatus; label: string }[] = [
-  { status: "todo", label: "To Do" },
-  { status: "in_progress", label: "In Progress" },
-  { status: "blocked", label: "Blocked" },
-  { status: "done", label: "Done" },
-];
 
 export function EventDetailPage() {
   const { id } = useParams();
-  const state = useEvent(id);
+  const detail = useEvent(id);
+  const { state } = detail;
+  const progress = useEventProgress(id);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The open tab lives in the URL so a tab deep-links and Back steps through them.
+  const tab = searchParams.get("tab") ?? "overview";
+  // Both sit above the early returns: hook order must not change between renders.
+  // Each accepts an absent id and stays idle until there is one.
+  const messages = useThreadMessages(state.status === "ok" ? state.event.channelId : undefined);
+  const members = useMembers();
+  const memberItems = members.state.status === "ok" ? members.state.items : [];
+  const me = useMe();
+  const [confirming, setConfirming] = useState(false);
+  // `event:cancel` is the president's alone — tier 2 also holds the VP, treasurer
+  // and secretary, so a tier check cannot express this.
+  const canCancel = me.status === "ok" && can(me.user.role, "event:cancel");
+
+  function selectTab(next: string) {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", next);
+    setSearchParams(params);
+  }
 
   if (state.status === "loading") {
     return <PageState role="status">Loading Event…</PageState>;
@@ -55,7 +76,47 @@ export function EventDetailPage() {
         Events
       </Link>
 
-      <PageHeader title={event.title} actions={<StatusBadge status={event.status} />} />
+      <PageHeader
+        title={event.title}
+        actions={
+          <>
+            <StatusBadge status={event.status} />
+            {canCancel && event.status !== "cancelled" && (
+              <Button variant="outline" onClick={() => setConfirming(true)}>
+                Cancel Event
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {confirming && (
+        <Card className="mt-6 shadow-none">
+          <CardHeader>
+            <h2 className="font-semibold">Cancel this event?</h2>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Cancelling releases the unspent allocation and notifies everyone holding an open task.
+            The event stays readable, but it cannot be un-cancelled.
+          </CardContent>
+          <CardFooter className="gap-2">
+            <Button variant="outline" disabled={detail.busy} onClick={() => setConfirming(false)}>
+              Keep Event
+            </Button>
+            <Button
+              disabled={detail.busy}
+              onClick={() => void detail.cancelEvent().then((done) => done && setConfirming(false))}
+            >
+              {detail.busy ? "Cancelling…" : "Confirm Cancellation"}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+      {detail.mutationError && (
+        <p className="mt-4 text-sm text-destructive" role="alert">
+          {detail.mutationError}. Try again.
+        </p>
+      )}
 
       <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
@@ -76,86 +137,138 @@ export function EventDetailPage() {
         )}
       </div>
 
-      <div className="mt-8 grid items-start gap-4 lg:grid-cols-[1.4fr_0.6fr]">
-        <Card className="shadow-none">
-          <CardHeader>
-            <h2 className="text-lg font-semibold tracking-tight">About</h2>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {event.description || "No event description has been added yet."}
-            </p>
-            <div className="mt-6 border-t pt-5">
-              <h3 className="mb-3 text-sm font-medium">Delivery Progress</h3>
-              <EventHealthStrip
-                taskCounts={event.taskCounts}
-                overdueCount={event.overdueCount}
-                budget={event.budget}
-              />
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs value={tab} onValueChange={selectTab} className="mt-8">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="thread">Thread</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="rsvps">RSVPs</TabsTrigger>
+        </TabsList>
 
-        <Card className="shadow-none">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold tracking-tight">Event Budget</h2>
-              <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-3 text-sm">
-            <BudgetRow label="Allocated" cents={event.budget.allocationCents} />
-            <BudgetRow label="Committed" cents={event.budget.committedCents} />
-            <BudgetRow label="Paid" cents={event.budget.spentCents} />
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="overview">
+          <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_0.6fr]">
+            <Card className="shadow-none">
+              <CardHeader>
+                <h2 className="text-lg font-semibold tracking-tight">About</h2>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {event.description || "No event description has been added yet."}
+                </p>
+                {event.attendanceEstimate !== null && (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Expected attendance:{" "}
+                    <span className="font-medium text-foreground tabular-nums">
+                      {event.attendanceEstimate}
+                    </span>
+                  </p>
+                )}
+                <div className="mt-6 border-t pt-5">
+                  <h3 className="mb-3 text-sm font-medium">Delivery Progress</h3>
+                  <EventHealthStrip
+                    taskCounts={event.taskCounts}
+                    overdueCount={event.overdueCount}
+                    budget={event.budget}
+                  />
+                </div>
+                <div className="mt-6 border-t pt-5">
+                  {progress.status === "ok" ? (
+                    <EventRiskPanel progress={progress.progress} />
+                  ) : progress.status === "loading" ? (
+                    <p className="text-sm text-muted-foreground" role="status">
+                      Loading Risk…
+                    </p>
+                  ) : (
+                    // Deliberately soft: a missing verdict must not read as though
+                    // the event itself failed to load.
+                    <p className="text-sm text-muted-foreground">
+                      The risk verdict is unavailable right now.
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-      <section aria-labelledby="event-tasks-heading" className="mt-10">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 id="event-tasks-heading" className="text-xl font-semibold tracking-tight">
-            Tasks
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {tasks.length} task{tasks.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        {tasks.length === 0 ? (
-          <Card className="mt-3 border-dashed shadow-none">
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              No tasks are linked to this event yet.
+            <Card className="shadow-none">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-semibold tracking-tight">Event Budget</h2>
+                  <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                <BudgetRow label="Allocated" cents={event.budget.allocationCents} />
+                <BudgetRow label="Committed" cents={event.budget.committedCents} />
+                <BudgetRow label="Paid" cents={event.budget.spentCents} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="tasks">
+          <TaskBoard tasks={tasks} members={memberItems} />
+        </TabsContent>
+
+        <TabsContent value="thread">
+          <Card className="shadow-none">
+            <CardHeader>
+              <h2 className="text-lg font-semibold tracking-tight">Event Thread</h2>
+              <p className="text-sm text-muted-foreground">
+                Discussion attached to this event. Posting lives on Messages.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {!event.channelId ? (
+                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+                  This event has no thread yet.
+                </p>
+              ) : messages.state.status === "loading" ? (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Loading Thread…
+                </p>
+              ) : messages.state.status === "error" ? (
+                <p className="text-sm text-destructive" role="alert">
+                  Couldn&apos;t load the thread: {messages.state.message}. Refresh the page to try
+                  again.
+                </p>
+              ) : messages.state.status === "ok" && messages.state.items.length > 0 ? (
+                <ol className="grid gap-4">
+                  {[...messages.state.items].reverse().map((item) => (
+                    <li key={item.id}>
+                      <ThreadMessage message={item} members={memberItems} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+                  No messages in this thread yet.
+                </p>
+              )}
             </CardContent>
           </Card>
-        ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {columns.map((column) => {
-              const items = tasks.filter((task) => task.status === column.status);
-              return (
-                <section key={column.status} aria-labelledby={`${column.status}-heading`}>
-                  <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                    <h3 id={`${column.status}-heading`} className="text-sm font-semibold">
-                      {column.label}
-                    </h3>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {items.length}
-                    </span>
-                  </div>
-                  <div className="grid gap-2">
-                    {items.map((task) => (
-                      <TaskCard key={task.id} task={task} />
-                    ))}
-                    {items.length === 0 && (
-                      <div className="rounded-lg border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
-                        No tasks
-                      </div>
-                    )}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        </TabsContent>
+
+        {/* TODO(R11): file upload is Deferred — no storage endpoint exists yet. */}
+        <TabsContent value="files">
+          <Card className="border-dashed shadow-none">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              File attachments are not built yet. Documents and images will attach here once upload
+              ships.
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TODO(R4): RSVP tracker — no schema, table or endpoint exists yet. */}
+        <TabsContent value="rsvps">
+          <Card className="border-dashed shadow-none">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              RSVP tracking is not built yet. Attendance responses will appear here once the
+              endpoint ships.
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
@@ -173,29 +286,38 @@ function PageState({ children, role }: { children: ReactNode; role: "status" | "
   );
 }
 
+/**
+ * `messageSchema.author` is a member id, not a name — the roster resolves it,
+ * exactly as `MessageRow` does on the Messages page.
+ */
+function ThreadMessage({ message, members }: { message: Message; members: RosterMember[] }) {
+  const author = members.find((member) => member.id === message.author);
+  const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
+
+  return (
+    <article className="flex items-start gap-3 rounded-lg border p-4">
+      <UserAvatar name={name} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h3 className="text-sm font-semibold">{name}</h3>
+          <time
+            dateTime={message.createdAt.toISOString()}
+            className="text-xs text-muted-foreground"
+          >
+            {dateTime.format(message.createdAt)}
+          </time>
+        </div>
+        <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">{message.body}</p>
+      </div>
+    </article>
+  );
+}
+
 function BudgetRow({ label, cents }: { label: string; cents: number }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums">{money.format(cents / 100)}</span>
     </div>
-  );
-}
-
-function TaskCard({ task }: { task: Task }) {
-  return (
-    <Card className="gap-3 py-4 shadow-none">
-      <CardContent className="px-4">
-        <div className="flex items-start gap-2">
-          <span className="mt-1.5">
-            <PriorityDot priority={task.priority} />
-          </span>
-          <h4 className="text-sm leading-5 font-medium">{task.title}</h4>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          {task.dueAt ? `Due ${shortDate.format(task.dueAt)}` : "No due date"}
-        </p>
-      </CardContent>
-    </Card>
   );
 }

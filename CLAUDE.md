@@ -12,7 +12,9 @@ in committed code**. Deploys to Vercel + Neon; Docker Postgres is local-only.
 
 ```
 api/         Vercel serverless shim — ONE file (see rule below)
-frontend/    Vite + React 19 SPA. src/{components,components/ui,lib,hooks,routes}
+frontend/    Vite + React 19 SPA. src/{components,lib,hooks,routes}. Components are
+             grouped by feature — `ui/` (shadcn primitives), `common/`, `layout/`,
+             and one folder per domain (`events/`, `tasks/`, `members/`).
 backend/     Express 4. src/{app.ts,middleware,routes,db,config}
 shared/      zod schemas + inferred types — imported by BOTH sides
 e2e/         Playwright specs (incl. axe scan)

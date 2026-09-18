@@ -1,7 +1,7 @@
 import { CalendarDays, CheckSquare2 } from "lucide-react";
 import { useState } from "react";
-import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/common/page-header";
+import { StatusBadge } from "@/components/common/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCalendar } from "@/hooks/use-calendar";
 

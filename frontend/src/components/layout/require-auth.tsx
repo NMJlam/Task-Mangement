@@ -1,8 +1,8 @@
 import { can, type AuthUser, type Capability, type Tier } from "@ctp/shared";
 import { useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { AppShell } from "@/components/app-shell";
-import { RoleChangeConfirmation } from "@/components/role-change-confirmation";
+import { AppShell } from "@/components/layout/app-shell";
+import { RoleChangeConfirmation } from "@/components/members/role-change-confirmation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 

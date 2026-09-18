@@ -1,8 +1,8 @@
 import { Moon, ShieldCheck, Sun } from "lucide-react";
 import { useState } from "react";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/common/page-header";
+import { UserAvatar } from "@/components/common/user-avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { UserAvatar } from "@/components/user-avatar";
 import { useMe } from "@/hooks/use-me";
 import { cn } from "@/lib/utils";
 

@@ -1,11 +1,11 @@
 import { Activity, BadgeCheck } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useHealth } from "@/hooks/use-health";
 
 const ExampleForm = lazy(() =>
-  import("@/components/example-form").then(({ ExampleForm }) => ({ default: ExampleForm })),
+  import("@/components/common/example-form").then(({ ExampleForm }) => ({ default: ExampleForm })),
 );
 const Toaster = lazy(() =>
   import("@/components/ui/sonner").then(({ Toaster }) => ({ default: Toaster })),

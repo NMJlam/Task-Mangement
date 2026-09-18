@@ -1,8 +1,8 @@
 import { taskPrioritySchema, taskStatusSchema, type Task, type TaskStatus } from "@ctp/shared";
 import { ListPlus } from "lucide-react";
 import type { FormEvent } from "react";
-import { PageHeader } from "@/components/page-header";
-import { PriorityDot } from "@/components/priority-dot";
+import { PageHeader } from "@/components/common/page-header";
+import { PriorityDot } from "@/components/common/priority-dot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

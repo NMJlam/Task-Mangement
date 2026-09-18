@@ -9,14 +9,14 @@ import {
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { DashboardSearch } from "@/components/dashboard-search";
-import { EventHealthStrip } from "@/components/event-health-strip";
-import { PageHeader } from "@/components/page-header";
-import { PriorityDot } from "@/components/priority-dot";
-import { StatusBadge } from "@/components/status-badge";
+import { DashboardSearch } from "@/components/common/dashboard-search";
+import { PageHeader } from "@/components/common/page-header";
+import { PriorityDot } from "@/components/common/priority-dot";
+import { StatusBadge } from "@/components/common/status-badge";
+import { UserAvatar } from "@/components/common/user-avatar";
+import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { UserAvatar } from "@/components/user-avatar";
 import { useEvents } from "@/hooks/use-events";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
@@ -54,7 +54,7 @@ export function DashboardPage() {
   const nextWeek = new Date(today.getTime() + 7 * DAY_MS);
 
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
-  const eventItems = events.status === "ok" ? events.items : [];
+  const eventItems = events.state.status === "ok" ? events.state.items : [];
   const notificationItems = notifications.state.status === "ok" ? notifications.state.items : [];
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const memberId = me.status === "ok" ? me.user.id : undefined;
@@ -110,13 +110,13 @@ export function DashboardPage() {
   const loading =
     me.status === "loading" ||
     tasks.state.status === "loading" ||
-    events.status === "loading" ||
+    events.state.status === "loading" ||
     notifications.state.status === "loading" ||
     members.state.status === "loading";
   const failedSections = [
     me.status === "error" ? "your tasks" : undefined,
     tasks.state.status === "error" ? "tasks" : undefined,
-    events.status === "error" ? "events" : undefined,
+    events.state.status === "error" ? "events" : undefined,
     notifications.state.status === "error" ? "activity" : undefined,
     members.state.status === "error" ? "committee load" : undefined,
   ].filter((label): label is string => Boolean(label));
