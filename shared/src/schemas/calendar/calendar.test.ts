@@ -43,8 +43,20 @@ describe("calendarItemSchema", () => {
       title: "Book venue",
       dueAt: null,
       eventId: null,
-      assigneeId: null,
+      assigneeIds: [],
     });
     expect(task.kind).toBe("task");
+  });
+
+  it("carries every assignee of a task, not a representative one", () => {
+    const task = calendarItemSchema.parse({
+      kind: "task",
+      id: "018f3a4b-0000-7000-8000-000000000002",
+      title: "Book venue",
+      dueAt: null,
+      eventId: null,
+      assigneeIds: ["018f3a4b-0000-7000-8000-000000000003", "018f3a4b-0000-7000-8000-000000000004"],
+    });
+    expect(task.kind === "task" && task.assigneeIds).toHaveLength(2);
   });
 });

@@ -1,16 +1,41 @@
 import type { Task } from "@ctp/shared";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TaskBoard } from "./task-board";
+
+/**
+ * Only the provider is stood in for: it captures the board's `onDragEnd` so a
+ * test can hand it the operation a real drop would produce. jsdom has no layout,
+ * so dnd-kit's own collision detection could never report a drop here.
+ */
+const dnd = vi.hoisted(() => ({
+  onDragEnd: undefined as ((event: unknown) => void) | undefined,
+}));
+
+vi.mock("@dnd-kit/react", () => ({
+  DragDropProvider: ({
+    children,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    onDragEnd: (event: unknown) => void;
+  }) => {
+    dnd.onDragEnd = onDragEnd;
+    return <>{children}</>;
+  },
+  useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
 
 const task: Task = {
   id: "018f3a4b-0000-7000-8000-000000000002",
   eventId: "018f3a4b-0000-7000-8000-000000000001",
   teamId: null,
-  assignee: "018f3a4b-0000-7000-8000-00000000000a",
+  assigneeIds: ["018f3a4b-0000-7000-8000-00000000000a"],
   creator: null,
   title: "Confirm lighting",
+  description: null,
   status: "todo",
   priority: "high",
   dueAt: new Date("2026-07-10T09:00:00.000Z"),
@@ -35,14 +60,109 @@ const members = [
   },
 ];
 
+function drop(overrides: { targetId?: string; canceled?: boolean } = {}) {
+  act(() => {
+    dnd.onDragEnd?.({
+      canceled: overrides.canceled ?? false,
+      operation: {
+        source: { id: task.id, data: { title: task.title, status: task.status } },
+        target: overrides.targetId === undefined ? null : { id: overrides.targetId },
+      },
+    });
+  });
+}
+
 describe("TaskBoard", () => {
+  it("changes status when a card is dropped on another column", () => {
+    const onStatusChange = vi.fn();
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={onStatusChange}
+      />,
+    );
+
+    drop({ targetId: "in_progress" });
+
+    expect(onStatusChange).toHaveBeenCalledWith(task, "in_progress");
+  });
+
+  it("writes nothing for a cancelled drag, a same-column drop, or an unknown target", () => {
+    const onStatusChange = vi.fn();
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={onStatusChange}
+      />,
+    );
+
+    drop({ targetId: "in_progress", canceled: true });
+    drop({ targetId: "todo" });
+    drop({ targetId: "not-a-status" });
+    drop();
+
+    expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("gives the drag handle and the open action distinct accessible names", () => {
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Move Confirm lighting" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Confirm lighting" })).toBeInTheDocument();
+  });
+
+  // The column a card sits in is the only status control now.
+  it("renders no status selector", () => {
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/status for/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the supplied empty message", () => {
+    render(
+      <TaskBoard
+        tasks={[]}
+        emptyMessage="No tasks yet. Add the first task above."
+        onStatusChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No tasks yet. Add the first task above.")).toBeInTheDocument();
+  });
+
   it("opens a task's details in a modal and names the assignee", async () => {
     const user = userEvent.setup();
-    render(<TaskBoard tasks={[task]} members={members} />);
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /confirm lighting/i }));
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeInTheDocument();
@@ -53,9 +173,16 @@ describe("TaskBoard", () => {
 
   it("closes the modal on Escape", async () => {
     const user = userEvent.setup();
-    render(<TaskBoard tasks={[task]} members={members} />);
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
 
-    await user.click(screen.getByRole("button", { name: /confirm lighting/i }));
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
@@ -65,10 +192,83 @@ describe("TaskBoard", () => {
 
   it("says nobody is assigned rather than inventing a name", async () => {
     const user = userEvent.setup();
-    render(<TaskBoard tasks={[{ ...task, assignee: null }]} members={members} />);
+    render(
+      <TaskBoard
+        tasks={[{ ...task, assigneeIds: [] }]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
 
-    await user.click(screen.getByRole("button", { name: /confirm lighting/i }));
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
 
     expect(await screen.findByText("Unassigned")).toBeInTheDocument();
+  });
+
+  it("lists every assignee, and names an id the roster no longer holds", async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskBoard
+        tasks={[
+          {
+            ...task,
+            assigneeIds: [...task.assigneeIds, "018f3a4b-0000-7000-8000-00000000000f"],
+          },
+        ]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Former Member")).toBeInTheDocument();
+  });
+
+  // Assignment changes belong to the /tasks page; the event Tasks tab must stay
+  // read-only, which it does simply by not passing the callback.
+  it("offers no assignment editor without an onUpdate handler", async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/search members/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add member to/i })).not.toBeInTheDocument();
+  });
+
+  // With `onUpdate` given the dialog edits the task; the board supplies the task.
+  it("forwards a dialog patch for the open task when onUpdate is given", async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    render(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    const dialog = await screen.findByRole("dialog");
+    const field = screen.getByLabelText(/^description$/i);
+    fireEvent.change(field, { target: { value: "Chairs" } });
+    fireEvent.blur(field);
+
+    expect(onUpdate).toHaveBeenCalledWith(task, { description: "Chairs" });
+    expect(within(dialog).getByRole("button", { name: /add member to/i })).toBeInTheDocument();
   });
 });

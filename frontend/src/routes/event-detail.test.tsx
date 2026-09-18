@@ -1,8 +1,32 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventDetailPage } from "./event-detail";
+
+/**
+ * Stands in for the drag provider: jsdom has no layout, so dnd-kit's own
+ * collision detection can never report a drop here. The board still owns the
+ * decision — this only hands it the operation a real drop would produce.
+ */
+const dnd = vi.hoisted(() => ({
+  onDragEnd: undefined as ((event: unknown) => void) | undefined,
+}));
+
+vi.mock("@dnd-kit/react", () => ({
+  DragDropProvider: ({
+    children,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    onDragEnd: (event: unknown) => void;
+  }) => {
+    dnd.onDragEnd = onDragEnd;
+    return <>{children}</>;
+  },
+  useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
 
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000001";
 const CHANNEL_ID = "018f3a4b-0000-7000-8000-000000000003";
@@ -29,9 +53,10 @@ const eventFixture = {
       id: "018f3a4b-0000-7000-8000-000000000002",
       eventId: EVENT_ID,
       teamId: null,
-      assignee: null,
+      assigneeIds: [],
       creator: null,
       title: "Confirm lighting",
+      description: null,
       status: "todo",
       priority: "high",
       dueAt: "2026-07-10T09:00:00.000Z",
@@ -45,6 +70,9 @@ const eventFixture = {
   ],
 };
 
+const eventTask = eventFixture.tasks[0]!;
+const GLOBAL_TASK_ID = "018f3a4b-0000-7000-8000-0000000000ff";
+
 const progressFixture = {
   percentComplete: 0,
   overdueCount: 1,
@@ -57,14 +85,15 @@ const progressFixture = {
 describe("EventDetailPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("renders event details and asks for the channel alongside the tasks", async () => {
+  it("renders event details and asks only for the channel", async () => {
     const fetchMock = stubEvent();
     renderDetail();
 
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
     );
-    expect(fetchMock).toHaveBeenCalledWith(`/api/events/${EVENT_ID}?include=tasks,channel`, {
+    // `tasks` is deliberately NOT embedded: the Tasks tab reads /api/tasks.
+    expect(fetchMock).toHaveBeenCalledWith(`/api/events/${EVENT_ID}?include=channel`, {
       credentials: "include",
     });
   });
@@ -97,9 +126,9 @@ describe("EventDetailPage", () => {
     expect(screen.getByText("1 overdue task")).toBeInTheDocument();
   });
 
-  it("shows the task board only once the Tasks tab is chosen", async () => {
+  it("shows the event's own tasks only once the Tasks tab is chosen", async () => {
     const user = userEvent.setup();
-    stubEvent();
+    const fetchMock = stubEvent();
     renderDetail();
 
     await waitFor(() =>
@@ -110,6 +139,52 @@ describe("EventDetailPage", () => {
     await user.click(screen.getByRole("tab", { name: "Tasks" }));
 
     expect(await screen.findByText("Confirm lighting")).toBeInTheDocument();
+    // The event filter is what the board asks with; the unfiltered list holds a
+    // task this event does not own, and it must never appear.
+    expect(fetchMock).toHaveBeenCalledWith(`/api/tasks?eventId=${EVENT_ID}`, {
+      credentials: "include",
+    });
+    expect(screen.queryByText("Sweep the storeroom")).not.toBeInTheDocument();
+  });
+
+  it("changes an event task's status through the status endpoint", async () => {
+    const fetchMock = stubEvent();
+    renderDetail("?tab=tasks");
+
+    await screen.findByText("Confirm lighting");
+
+    act(() => {
+      dnd.onDragEnd?.({
+        canceled: false,
+        operation: {
+          source: { id: eventTask.id, data: { title: "Confirm lighting", status: "todo" } },
+          target: { id: "blocked" },
+        },
+      });
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${eventTask.id}/status`,
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+  });
+
+  // Task details are editable on /tasks alone; the event tab passes no onUpdate.
+  it("keeps the event task dialog read-only", async () => {
+    const user = userEvent.setup();
+    stubEvent();
+    renderDetail("?tab=tasks");
+
+    await user.click(await screen.findByRole("button", { name: "Open Confirm lighting" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Confirm lighting" })).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/^description$/i)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /add member to/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("takes the open tab from the URL", async () => {
@@ -224,7 +299,14 @@ function stubEvent({
   tier = 0,
   messages = [] as unknown[],
   members = [] as unknown[],
-}: { role?: string; tier?: number; messages?: unknown[]; members?: unknown[] } = {}) {
+  tasks = eventFixture.tasks,
+}: {
+  role?: string;
+  tier?: number;
+  messages?: unknown[];
+  members?: unknown[];
+  tasks?: unknown[];
+} = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (init?.method === "DELETE") return Promise.resolve({ ok: true, status: 204 });
     if (url === "/api/me") {
@@ -235,6 +317,18 @@ function stubEvent({
     if (url.includes("/progress")) return Promise.resolve(ok(progressFixture));
     if (url.includes("/messages")) return Promise.resolve(ok({ messages, nextCursor: null }));
     if (url.startsWith("/api/members")) return Promise.resolve(ok({ members }));
+    // The board's own request. Answering the unfiltered list with a task the
+    // event does not own is what proves the filter is really applied.
+    if (url === `/api/tasks?eventId=${EVENT_ID}`) return Promise.resolve(ok({ tasks }));
+    if (url === "/api/tasks") {
+      return Promise.resolve(
+        ok({
+          tasks: [
+            { ...eventTask, id: GLOBAL_TASK_ID, eventId: null, title: "Sweep the storeroom" },
+          ],
+        }),
+      );
+    }
     return Promise.resolve(ok({ event: eventFixture }));
   });
   vi.stubGlobal("fetch", fetchMock);
