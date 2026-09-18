@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { check, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { events } from "./event.js";
 import { sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 import { teams } from "./team.js";
 
 /**
@@ -67,5 +68,7 @@ export const channels = pgTable(
       "channel_named_unless_dm_check",
       sql`${table.kind} = 'dm' OR (${table.name} IS NOT NULL AND length(trim(${table.name})) > 0)`,
     ),
+
+    check("channel_uuid_shape_check", uuidShape(table.id, table.eventId, table.teamId)),
   ],
 );

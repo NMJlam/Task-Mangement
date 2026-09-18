@@ -1,6 +1,7 @@
-import { index, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { channels } from "./channel.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * Membership AND read state in one row. These are commonly two tables with an
@@ -27,5 +28,6 @@ export const chanMembers = pgTable(
     primaryKey({ columns: [table.channelId, table.userId] }),
     // Hot read: the sidebar's membership-gated channels plus every unread badge.
     index("chan_member_user_idx").on(table.userId),
+    check("chan_member_uuid_shape_check", uuidShape(table.channelId, table.userId)),
   ],
 );

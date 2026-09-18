@@ -20,6 +20,7 @@ import { aiRuns } from "./ai-run.js";
 import { appUsers } from "./app-user.js";
 import { events } from "./event.js";
 import { notBlank, sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 import { teams } from "./team.js";
 import { workstreams } from "./workstream.js";
 
@@ -107,5 +108,10 @@ export const tasks = pgTable(
       foreignColumns: [workstreams.eventId, workstreams.teamId],
       name: "task_within_declared_workstream",
     }).onDelete("cascade"),
+
+    check(
+      "task_uuid_shape_check",
+      uuidShape(table.id, table.eventId, table.teamId, table.creator, table.aiRunId),
+    ),
   ],
 );

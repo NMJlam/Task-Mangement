@@ -1,6 +1,7 @@
 import { check, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { notBlank } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * A team. A FLAT list — Exec, Media, Marketing, Sponsorship, Events — with no
@@ -24,5 +25,8 @@ export const teams = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("team_name_not_blank_check", notBlank(table.name))],
+  (table) => [
+    check("team_name_not_blank_check", notBlank(table.name)),
+    check("team_uuid_shape_check", uuidShape(table.id, table.lead)),
+  ],
 );

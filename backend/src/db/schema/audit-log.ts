@@ -1,5 +1,6 @@
-import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * Append-only audit trail (R12). `changes` is jsonb — a structured before/after
@@ -12,20 +13,26 @@ import { appUsers } from "./app-user.js";
  * No index yet — add (entity_type, entity_id, created_at DESC) only when a real
  * read path needs it.
  */
-export const auditLog = pgTable("audit_log", {
-  id: uuid("id").primaryKey(),
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey(),
 
-  // SET NULL so a departing member's trail survives as "former member".
-  // This FK was MISSING: the original migration pointed actor_id at a `users`
-  // table that a later migration dropped with CASCADE, silently taking the
-  // constraint with it and leaving the column referencing nothing.
-  actorId: uuid("actor_id").references(() => appUsers.id, { onDelete: "set null" }),
+    // SET NULL so a departing member's trail survives as "former member".
+    // This FK was MISSING: the original migration pointed actor_id at a `users`
+    // table that a later migration dropped with CASCADE, silently taking the
+    // constraint with it and leaving the column referencing nothing.
+    actorId: uuid("actor_id").references(() => appUsers.id, { onDelete: "set null" }),
 
-  // e.g. "task.updated" — TODO(R12): enumerate actions.
-  action: text("action").notNull(),
-  // Target entity type + id, e.g. { type: "task", id: <uuid> }.
-  entityType: text("entity_type").notNull(),
-  entityId: uuid("entity_id"),
-  changes: jsonb("changes"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+    // e.g. "task.updated" — TODO(R12): enumerate actions.
+    action: text("action").notNull(),
+    // Target entity type + id, e.g. { type: "task", id: <uuid> }.
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id"),
+    changes: jsonb("changes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("audit_log_uuid_shape_check", uuidShape(table.id, table.actorId, table.entityId)),
+  ],
+);

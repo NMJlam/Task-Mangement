@@ -9,6 +9,7 @@ import { bigint, check, index, pgTable, text, timestamp, uuid } from "drizzle-or
 import { appUsers } from "./app-user.js";
 import { events } from "./event.js";
 import { notBlank, sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 import { teams } from "./team.js";
 
 /**
@@ -97,6 +98,10 @@ export const expenses = pgTable(
     check(
       "expense_paid_at_matches_status_check",
       sql`(${table.status} = 'paid') = (${table.paidAt} IS NOT NULL)`,
+    ),
+    check(
+      "expense_uuid_shape_check",
+      uuidShape(table.id, table.eventId, table.teamId, table.submitter, table.decider),
     ),
   ],
 );

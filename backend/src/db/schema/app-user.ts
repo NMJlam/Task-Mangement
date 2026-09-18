@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { check, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { authUser } from "./auth.js";
 import { sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * The MEMBERSHIP record — one row per committee member. Better Auth owns real
@@ -57,5 +58,6 @@ export const appUsers = pgTable(
   // hot lookup: session user id -> member, on every request.
   (table) => [
     check("app_user_role_check", sql`${table.role} IN (${sqlEnumValues(roleSchema.options)})`),
+    check("app_user_uuid_shape_check", uuidShape(table.id)),
   ],
 );

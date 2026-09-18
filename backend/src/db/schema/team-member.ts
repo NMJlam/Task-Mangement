@@ -1,5 +1,6 @@
-import { index, pgTable, primaryKey, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgTable, primaryKey, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
+import { uuidShape } from "./sql-uuid.js";
 import { teams } from "./team.js";
 
 /**
@@ -21,5 +22,6 @@ export const teamMembers = pgTable(
     // Hot read: "which teams am I in", on every page load for the sidebar.
     // The primary key serves (team -> members); this serves (member -> teams).
     index("team_member_user_idx").on(table.userId),
+    check("team_member_uuid_shape_check", uuidShape(table.teamId, table.userId)),
   ],
 );

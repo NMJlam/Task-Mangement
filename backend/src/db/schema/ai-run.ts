@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { bigint, check, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { channels } from "./channel.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * One assistant invocation.
@@ -37,5 +38,8 @@ export const aiRuns = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("ai_run_cost_non_negative_check", sql`${table.costMicroUsd} >= 0`)],
+  (table) => [
+    check("ai_run_cost_non_negative_check", sql`${table.costMicroUsd} >= 0`),
+    check("ai_run_uuid_shape_check", uuidShape(table.id, table.channelId, table.userId)),
+  ],
 );
