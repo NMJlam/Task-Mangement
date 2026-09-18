@@ -26,6 +26,7 @@ export * from "./invite.js";
 export * from "./event.js";
 export * from "./workstream.js";
 export * from "./task.js";
+export * from "./task-assignee.js";
 
 // Communication
 export * from "./channel.js";
