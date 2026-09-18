@@ -11,6 +11,7 @@ import {
   events,
   messages,
   notifications,
+  taskAssignees,
   tasks,
   teams,
 } from "../../db/schema/index.js";
@@ -93,6 +94,11 @@ describe("/api/threads (integration)", () => {
       .values({ id: newId(), title: `${PREFIX}task`, ...values })
       .returning();
     return row!;
+  }
+
+  /** Writes a task's ownership, which lives in the junction since R3. */
+  async function assignTo(taskId: string, userIds: readonly string[]) {
+    await db.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
   }
 
   function ids(rows: { id: string }[]): string[] {
@@ -338,13 +344,11 @@ describe("/api/threads (integration)", () => {
     it("lands a comment in the event's thread and notifies the task's people", async () => {
       const officer = await member("officer", "officer");
       const director = await member("director", "director");
+      const secretary = await member("secretary", "secretary");
       const president = await member("president", "president");
       const { event, thread } = await eventThread();
-      const onEvent = await task({
-        eventId: event.id,
-        assignee: director.id,
-        creator: president.id,
-      });
+      const onEvent = await task({ eventId: event.id, creator: president.id });
+      await assignTo(onEvent.id, [director.id, secretary.id]);
       signIn(officer);
 
       const response = await request(app)
@@ -357,12 +361,37 @@ describe("/api/threads (integration)", () => {
         taskId: onEvent.id,
         author: officer.id,
       });
+      // Both holders are told, not just the first: a comment concerns them all.
       const sent = await db
         .select({ userId: notifications.userId, kind: notifications.kind })
         .from(notifications)
         .where(eq(notifications.entityId, onEvent.id));
-      expect(sent.map((row) => row.userId).sort()).toEqual([director.id, president.id].sort());
+      expect(sent.map((row) => row.userId).sort()).toEqual(
+        [director.id, secretary.id, president.id].sort(),
+      );
       expect(sent.every((row) => row.kind === "task_commented")).toBe(true);
+    });
+
+    it("tells a co-assignee who comments once, not once per link", async () => {
+      const officer = await member("officer", "officer");
+      const director = await member("director", "director");
+      const { event } = await eventThread();
+      // The author is also an assignee and the creator, so all three
+      // deduplication paths overlap in one row.
+      const onEvent = await task({ eventId: event.id, creator: officer.id });
+      await assignTo(onEvent.id, [officer.id, director.id]);
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/tasks/${onEvent.id}/comments`)
+        .send({ body: "Took a look." });
+
+      expect(response.status).toBe(201);
+      const sent = await db
+        .select({ userId: notifications.userId })
+        .from(notifications)
+        .where(eq(notifications.entityId, onEvent.id));
+      expect(sent.map((row) => row.userId)).toEqual([director.id]);
     });
 
     it("uses the team's thread for standing work, and 409s a task with neither", async () => {

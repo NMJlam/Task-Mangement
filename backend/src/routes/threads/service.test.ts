@@ -23,11 +23,17 @@ describe("replyProblem (rule 11)", () => {
 });
 
 describe("commentRecipients", () => {
-  it("notifies the assignee and creator once each, never the author", () => {
-    expect(commentRecipients({ assignee: "a", creator: "c" }, "x")).toEqual(["a", "c"]);
-    expect(commentRecipients({ assignee: "a", creator: "a" }, "x")).toEqual(["a"]);
-    expect(commentRecipients({ assignee: "a", creator: "c" }, "a")).toEqual(["c"]);
-    expect(commentRecipients({ assignee: null, creator: null }, "x")).toEqual([]);
+  it("notifies every assignee and the creator once each, never the author", () => {
+    expect(commentRecipients({ assigneeIds: ["a", "b"], creator: "c" }, "x")).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    // A member who is both assignee and creator hears once.
+    expect(commentRecipients({ assigneeIds: ["a", "a"], creator: "a" }, "x")).toEqual(["a"]);
+    // The author is dropped even when assigned.
+    expect(commentRecipients({ assigneeIds: ["a"], creator: "c" }, "a")).toEqual(["c"]);
+    expect(commentRecipients({ assigneeIds: [], creator: null }, "x")).toEqual([]);
   });
 });
 

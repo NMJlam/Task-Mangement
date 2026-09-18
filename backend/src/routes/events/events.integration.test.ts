@@ -5,7 +5,15 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, events, expenses, tasks, teams } from "../../db/schema/index.js";
+import {
+  appUsers,
+  events,
+  expenses,
+  notifications,
+  taskAssignees,
+  tasks,
+  teams,
+} from "../../db/schema/index.js";
 
 const getSession = vi.hoisted(() => vi.fn());
 vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
@@ -40,6 +48,22 @@ describe("/api/events", () => {
       .insert(events)
       .values({ id: newId(), title: "test-event-fixture", startsAt: new Date(), ...overrides })
       .returning();
+    return row!;
+  }
+
+  /** A task on `eventId`, owned by `userIds` through the junction. */
+  async function seedTask(
+    eventId: string,
+    userIds: readonly string[],
+    overrides: Partial<typeof tasks.$inferInsert> = {},
+  ) {
+    const [row] = await db
+      .insert(tasks)
+      .values({ id: newId(), eventId, title: "test-event-task", ...overrides })
+      .returning();
+    if (userIds.length > 0) {
+      await db.insert(taskAssignees).values(userIds.map((userId) => ({ taskId: row!.id, userId })));
+    }
     return row!;
   }
 
@@ -360,6 +384,114 @@ describe("/api/events", () => {
         .from(events)
         .where(sql`id = ${event.id}`);
       expect(row?.allocationCents).toBe(200);
+    });
+  });
+
+  /**
+   * The event routes reach task ownership through `task_assignee`, so these are
+   * the tests that would fail if one of them still read the dropped column.
+   */
+  describe("task assignment from the event side", () => {
+    it("notifies every assignee of the event's open work, once each", async () => {
+      const president = await member("president", "president");
+      const director = await member("director", "director");
+      const secretary = await member("secretary", "secretary");
+      const event = await seedEvent({ title: "test-event-assignee-fanout" });
+      // Two tasks, three links, two of them on one task and one member holding
+      // both: the fan-out must dedupe across the whole event, not per task.
+      await seedTask(event.id, [director.id, secretary.id]);
+      await seedTask(event.id, [director.id]);
+      // Done work is not "still waiting on", so its owner hears nothing.
+      await seedTask(event.id, [president.id], {
+        status: "done",
+        completedAt: new Date(),
+      });
+      signedInAs(president);
+
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ startsAt: new Date(Date.now() + HOUR).toISOString() });
+
+      expect(response.status).toBe(200);
+      const sent = await db
+        .select({ userId: notifications.userId })
+        .from(notifications)
+        .where(sql`"entity_id" = ${event.id} AND "kind" = 'event_date_changed'`);
+      expect(sent.map((row) => row.userId).sort()).toEqual([director.id, secretary.id].sort());
+    });
+
+    it("blocks raising minTier above a co-assignee's tier, not just the first assignee", async () => {
+      const president = await member("president", "president");
+      const director = await member("director", "director");
+      const officer = await member("officer", "officer");
+      const event = await seedEvent({ title: "test-event-tier-escalation" });
+      // Director is the actor (tier 1). The task pairs a tier-2 owner with a
+      // tier-0 one, so only a read that checks EVERY link catches the lower.
+      await seedTask(event.id, [president.id, officer.id]);
+      signedInAs(director);
+
+      const response = await request(app).patch(`/api/events/${event.id}`).send({ minTier: 1 });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.fields.minTier).toBeDefined();
+    });
+
+    it("allows raising minTier when every assignee already meets it", async () => {
+      const director = await member("director", "director");
+      const secretary = await member("secretary", "secretary");
+      const event = await seedEvent({ title: "test-event-tier-escalation-ok" });
+      await seedTask(event.id, [director.id, secretary.id]);
+      signedInAs(director);
+
+      const response = await request(app).patch(`/api/events/${event.id}`).send({ minTier: 1 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.event.minTier).toBe(1);
+    });
+
+    it("embeds every assignee of each task on GET /api/events/:id", async () => {
+      const officer = await member("officer", "officer");
+      const director = await member("director", "director");
+      const event = await seedEvent({ title: "test-event-embed-assignees" });
+      const shared = await seedTask(event.id, [officer.id, director.id]);
+      signedInAs(officer);
+
+      const response = await request(app)
+        .get(`/api/events/${event.id}`)
+        .query({ include: "tasks" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.event.tasks).toHaveLength(1);
+      expect(response.body.event.tasks[0]).toMatchObject({
+        id: shared.id,
+        assigneeIds: [officer.id, director.id],
+      });
+    });
+  });
+
+  describe("GET /api/calendar", () => {
+    it("lists each task's full assignee set, not one representative", async () => {
+      const officer = await member("officer", "officer");
+      const director = await member("director", "director");
+      const event = await seedEvent({ title: "test-event-calendar-assignees" });
+      const shared = await seedTask(event.id, [officer.id, director.id], {
+        dueAt: new Date(Date.now() + HOUR),
+      });
+      signedInAs(officer);
+
+      const response = await request(app)
+        .get("/api/calendar")
+        .query({
+          from: new Date().toISOString(),
+          to: new Date(Date.now() + 2 * HOUR).toISOString(),
+        });
+
+      expect(response.status).toBe(200);
+      const item = response.body.items.find(
+        (candidate: { kind: string; id: string }) =>
+          candidate.kind === "task" && candidate.id === shared.id,
+      );
+      expect(item.assigneeIds.sort()).toEqual([officer.id, director.id].sort());
     });
   });
 });
