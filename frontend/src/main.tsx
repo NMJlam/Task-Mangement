@@ -12,7 +12,10 @@ import { LoginPage } from "./routes/login";
 import { MembersPage } from "./routes/members";
 import { MessagesPage } from "./routes/messages";
 import { NotificationsPage } from "./routes/notifications";
+import { SettingsPage } from "./routes/settings";
 import { TasksPage } from "./routes/tasks";
+
+document.documentElement.classList.toggle("dark", localStorage.getItem("theme") === "dark");
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -93,6 +96,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <MessagesPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/settings",
+    element: (
+      <RequireAuth>
+        <SettingsPage />
       </RequireAuth>
     ),
   },

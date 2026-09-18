@@ -7,6 +7,7 @@ import {
   Landmark,
   LogOut,
   MessageSquare,
+  Settings,
   Sparkles,
   UsersRound,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/notifications", label: "Inbox", icon: Bell },
   { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/members", label: "Members", icon: UsersRound },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({
