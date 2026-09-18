@@ -149,6 +149,37 @@ describe("EventDetailPage", () => {
     await user.click(screen.getByRole("tab", { name: "Files" }));
     expect(await screen.findByText(/file attachments are not built yet/i)).toBeInTheDocument();
   });
+
+  it("offers cancel to the president only", async () => {
+    // Tier 2 also holds the treasurer — event:cancel is the president's alone,
+    // so a tier check would wrongly let this through.
+    stubEvent({ role: "treasurer", tier: 2 });
+    renderDetail();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "Cancel Event" })).not.toBeInTheDocument();
+  });
+
+  it("confirms before sending the DELETE", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubEvent({ role: "president", tier: 2 });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel Event" }));
+    expect(screen.getByText(/releases the unspent allocation/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm Cancellation" }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      );
+      expect(call).toBeDefined();
+      expect((call as [string])[0]).toBe(`/api/events/${EVENT_ID}`);
+    });
+  });
 });
 
 const AUTHOR_ID = "018f3a4b-0000-7000-8000-00000000000a";
@@ -194,7 +225,8 @@ function stubEvent({
   messages = [] as unknown[],
   members = [] as unknown[],
 }: { role?: string; tier?: number; messages?: unknown[]; members?: unknown[] } = {}) {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") return Promise.resolve({ ok: true, status: 204 });
     if (url === "/api/me") {
       return Promise.resolve(
         ok({ user: { id: "018f3a4b-0000-7000-8000-00000000000f", email: "a@b.c", role, tier } }),

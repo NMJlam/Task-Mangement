@@ -1,5 +1,5 @@
 import { eventResponseSchema, type EventDetail } from "@ctp/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type EventState =
   | { status: "loading" }
@@ -10,6 +10,8 @@ type EventState =
 /** ViewModel for a single event (GET /api/events/:id). */
 export function useEvent(id: string | undefined) {
   const [state, setState] = useState<EventState>({ status: "loading" });
+  const [busy, setBusy] = useState(false);
+  const [mutationError, setMutationError] = useState<string>();
 
   useEffect(() => {
     if (!id) return;
@@ -42,5 +44,31 @@ export function useEvent(id: string | undefined) {
     };
   }, [id]);
 
-  return { state };
+  /**
+   * `DELETE` is the only door into `cancelled` — cancelling must also release the
+   * unspent allocation, and a second route in is how that release gets skipped.
+   */
+  const cancelEvent = useCallback(async () => {
+    if (!id) return false;
+    setBusy(true);
+    setMutationError(undefined);
+    try {
+      const res = await fetch(`/api/events/${id}`, { method: "DELETE", credentials: "include" });
+      // 204 No Content — there is no body to parse.
+      if (!res.ok) throw new Error("Failed to cancel the event");
+      setState((previous) =>
+        previous.status === "ok"
+          ? { ...previous, event: { ...previous.event, status: "cancelled" } }
+          : previous,
+      );
+      return true;
+    } catch (cause: unknown) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to cancel the event");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [id]);
+
+  return { state, cancelEvent, busy, mutationError };
 }

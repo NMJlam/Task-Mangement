@@ -45,12 +45,7 @@ export function EventsPage() {
 
       {canCreate && <CreateEventForm onSubmit={events.createEvent} busy={events.busy} />}
 
-      <EventFilters
-        time={time}
-        status={status}
-        onTimeChange={setTime}
-        onStatusChange={setStatus}
-      />
+      <EventFilters time={time} status={status} onTimeChange={setTime} onStatusChange={setStatus} />
 
       {state.status === "loading" && (
         <p className="mt-8 text-sm text-muted-foreground" role="status">
