@@ -4,39 +4,30 @@
 /* Dark mode via the `class` strategy (§4). No toggle is built — out of scope. */
 @custom-variant dark (&:is(.dark *));
 
-/*
- * shadcn/ui "new-york" tokens, base colour "slate", as CSS variables (§4).
- *
- * TODO(theme): replace the accent tokens (--primary / --accent / --ring and
- * their -foreground pairs) with MAC's club colours once Nathan supplies them.
- * Do NOT invent a palette — keep these slate defaults until then. After any
- * swap, re-run the contrast check and update docs/accessibility.md.
- */
 :root {
   --radius: 0.625rem;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  /* Stock shadcn muted-foreground (L=0.554) clears AA only marginally on
-     --background (4.77:1). Darkened to L=0.492 (6.20:1) for headroom before the
-     MAC palette swap, which may shift these hues. See docs/accessibility.md (R14). */
-  --muted-foreground: oklch(0.492 0.04 257.287);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  /* Ported from the approved FE prototype. Muted text is darkened from
+     #78766f to keep normal copy above WCAG AA on the warm background. */
+  --background: #fafaf9;
+  --foreground: #1c1c1a;
+  --card: #ffffff;
+  --card-foreground: #1c1c1a;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1a;
+  --primary: #1c1c1a;
+  --primary-foreground: #fafaf9;
+  --secondary: #f1f1ef;
+  --secondary-foreground: #3d3d3a;
+  --muted: #f1f1ef;
+  --muted-foreground: #706e68;
+  --accent: #eef0ff;
+  --accent-foreground: #3a47c4;
+  --destructive: #c14a3a;
+  --destructive-foreground: #ffffff;
+  --border: #e7e5e2;
+  --input: #d6d3ce;
+  --ring: #5b6cff;
 
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -46,25 +37,25 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+  --background: #16161a;
+  --foreground: #ececef;
+  --card: #1d1d22;
+  --card-foreground: #ececef;
+  --popover: #1d1d22;
+  --popover-foreground: #ececef;
+  --primary: #ececef;
+  --primary-foreground: #16161a;
+  --secondary: #24242a;
+  --secondary-foreground: #ececef;
+  --muted: #24242a;
+  --muted-foreground: #b0b0b8;
+  --accent: #232442;
+  --accent-foreground: #aab4ff;
+  --destructive: #e07566;
+  --destructive-foreground: #16161a;
+  --border: #2c2c33;
+  --input: #3a3a42;
+  --ring: #818df8;
 
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -105,6 +96,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "Geist", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
 }
 
 @layer base {
@@ -113,7 +105,43 @@
     outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
   }
   body {
+    min-height: 100svh;
     background-color: var(--background);
     color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    scroll-margin-top: 6rem;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

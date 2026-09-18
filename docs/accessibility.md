@@ -18,25 +18,22 @@ relative luminance). Light theme:
 
 | Token pair                                | Ratio   | AA (4.5:1) |
 | ----------------------------------------- | ------- | ---------- |
-| `foreground` on `background`              | 20.17:1 | ✅ PASS    |
-| `card-foreground` on `card`               | 20.17:1 | ✅ PASS    |
-| `primary-foreground` on `primary`         | 17.05:1 | ✅ PASS    |
-| `secondary-foreground` on `secondary`     | 16.28:1 | ✅ PASS    |
-| `accent-foreground` on `accent`           | 16.28:1 | ✅ PASS    |
-| `muted-foreground` on `background`        | 6.20:1  | ✅ PASS    |
-| `destructive-foreground` on `destructive` | 4.55:1  | ✅ PASS    |
+| `foreground` on `background`              | 16.34:1 | ✅ PASS    |
+| `card-foreground` on `card`               | 17.07:1 | ✅ PASS    |
+| `primary-foreground` on `primary`         | 16.34:1 | ✅ PASS    |
+| `secondary-foreground` on `secondary`     | 9.64:1  | ✅ PASS    |
+| `accent-foreground` on `accent`           | 6.44:1  | ✅ PASS    |
+| `muted-foreground` on `background`        | 4.88:1  | ✅ PASS    |
+| `destructive-foreground` on `destructive` | 4.87:1  | ✅ PASS    |
 
 ### Adjustment made
 
-`muted-foreground` was darkened from shadcn's stock `oklch(0.554 …)` (**4.77:1**,
-a thin margin) to `oklch(0.492 …)` (**6.20:1**) for headroom. `destructive`
-passes at **4.55:1** — a narrow margin; **re-check it after the MAC palette
-swap**, as it is the most likely pair to regress.
+The FE prototype's `muted` text was darkened from `#78766f` (**4.35:1**) to
+`#706e68` (**4.88:1**) so normal copy clears AA. `destructive` passes at
+**4.87:1**; both pairs should be re-checked after any palette change.
 
 ### ⚠️ Re-run this after the theme swap
 
-These numbers are for the **slate placeholder** palette. When MAC's colours land
-(`TODO(theme)` in `index.css`), recompute — `primary-foreground` on `primary`
-and `muted-foreground` on `background` are the pairs most likely to fail. The
-computation script lives in the scaffold PR notes; the method is oklch → linear
-sRGB → relative luminance → `(L1+0.05)/(L2+0.05)`.
+These numbers are for the FE prototype palette. Recompute them whenever the
+palette changes; `muted-foreground` and `destructive-foreground` have the least
+headroom. The method is sRGB → relative luminance → `(L1+0.05)/(L2+0.05)`.
