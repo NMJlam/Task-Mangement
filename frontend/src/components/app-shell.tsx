@@ -7,6 +7,7 @@ import {
   Landmark,
   LogOut,
   Sparkles,
+  UsersRound,
 } from "lucide-react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
@@ -23,6 +24,7 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/finance", label: "Finance", icon: Landmark },
   { to: "/notifications", label: "Inbox", icon: Bell },
+  { to: "/members", label: "Members", icon: UsersRound },
 ];
 
 export function AppShell({
