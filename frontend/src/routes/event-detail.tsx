@@ -207,7 +207,7 @@ export function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <TaskBoard tasks={tasks} />
+          <TaskBoard tasks={tasks} members={memberItems} />
         </TabsContent>
 
         <TabsContent value="thread">
