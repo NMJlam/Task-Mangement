@@ -175,10 +175,36 @@ rows — opt in:
 SEED_DEMO=1 npm run db:seed          # PowerShell: $env:SEED_DEMO=1; npm run db:seed
 ```
 
-It adds no `app_user` rows and is idempotent (ids are derived from slugs, every
-insert is `ON CONFLICT DO NOTHING`), so the integration suite still passes with
-it loaded. Ignored when `NODE_ENV=production`. See
-`backend/src/db/seed-demo.ts`.
+Locally it reuses the six role fixtures and is idempotent (ids are derived from
+slugs, every fixture insert is `ON CONFLICT DO NOTHING`), so the integration
+suite still passes with it loaded. See `backend/src/db/seed-demo.ts`.
+
+For the shared production demo, add these variables to the Vercel Production
+environment:
+
+```dotenv
+SEED_DEMO=1
+FOUNDER_EMAIL=nathan.lam.rt@gmail.com
+DEMO_DIRECTOR_EMAILS=reviewer.one@example.com,reviewer.two@example.com
+```
+
+Replace the example reviewer addresses with the permitted Google sign-in
+emails. The founder receives a seven-day `president` invite and each remaining
+unique address receives a seven-day `director` invite. Existing memberships are
+left alone; expired invites are renewed on the next seed run. The fixture uses
+fixed fictional `.invalid` accounts for display, assignments and team
+membership, so only invited real addresses can sign in.
+
+After migrations, run the seed once from a trusted shell with the Vercel
+Production variables loaded:
+
+```bash
+NODE_ENV=production npm run db:seed
+```
+
+It is safe to rerun: missing deterministic records are restored without
+overwriting edited demo rows. Cancelled events remain absent because cancellation
+is the application's hidden soft-delete state.
 
 ### Browse the database — Drizzle Studio
 
