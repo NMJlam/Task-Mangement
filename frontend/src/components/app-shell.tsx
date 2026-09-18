@@ -1,6 +1,7 @@
 import type { AuthUser } from "@ctp/shared";
 import {
   Bell,
+  Bot,
   CalendarDays,
   CheckSquare2,
   HeartPulse,
@@ -27,6 +28,7 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/finance", label: "Finance", icon: Landmark },
   { to: "/notifications", label: "Inbox", icon: Bell },
   { to: "/messages", label: "Messages", icon: MessageSquare },
+  { to: "/ai", label: "AI Breakdown", icon: Bot },
   { to: "/members", label: "Members", icon: UsersRound },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
