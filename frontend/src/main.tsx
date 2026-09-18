@@ -9,6 +9,7 @@ import { EventsPage } from "./routes/events";
 import { FinancePage } from "./routes/finance";
 import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
+import { NotificationsPage } from "./routes/notifications";
 import { TasksPage } from "./routes/tasks";
 
 const router = createBrowserRouter([
@@ -66,6 +67,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <TasksPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/notifications",
+    element: (
+      <RequireAuth>
+        <NotificationsPage />
       </RequireAuth>
     ),
   },
