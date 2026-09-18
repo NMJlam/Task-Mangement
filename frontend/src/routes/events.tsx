@@ -69,15 +69,21 @@ export function EventsPage() {
           {state.items.map((event) => (
             <Card
               key={event.id}
-              className="gap-0 py-0 shadow-none transition-[border-color,box-shadow] hover:border-input hover:shadow-sm"
+              className="relative gap-0 py-0 shadow-none transition-[border-color,box-shadow] focus-within:border-input focus-within:shadow-sm hover:border-input hover:shadow-sm"
             >
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold tracking-tight">
+                      {/*
+                        The link stretches over the whole card via `after:`, so any
+                        part of the card is a click target while the accessible name
+                        stays the title. Wrapping the card in an anchor instead would
+                        read the venue, status and progress out as link text.
+                      */}
                       <Link
                         to={`/events/${event.id}`}
-                        className="rounded-sm hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                        className="rounded-sm after:absolute after:inset-0 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                       >
                         {event.title}
                       </Link>

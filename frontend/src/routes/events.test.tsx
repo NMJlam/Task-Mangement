@@ -28,6 +28,18 @@ describe("EventsPage", () => {
     expect(screen.queryByText(/no upcoming events/i)).not.toBeInTheDocument();
   });
 
+  it("makes the whole card a click target without swallowing the card text", async () => {
+    stubFetch({ items: [summary("AGM")], nextCursor: null });
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: "AGM" });
+    // The link stretches over the card via a pseudo-element, so the accessible
+    // name stays the title — wrapping the card in an anchor would read the venue,
+    // status and progress out as part of the link text.
+    expect(link.className).toContain("after:absolute");
+    expect(link.closest("[data-slot='card']")).toHaveClass("relative");
+  });
+
   it("shows an actionable error when the API returns an HTML error page", async () => {
     vi.stubGlobal(
       "fetch",
