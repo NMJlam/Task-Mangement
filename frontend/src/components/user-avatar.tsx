@@ -13,7 +13,7 @@ export function UserAvatar({ name, className }: { name: string; className?: stri
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex size-8 shrink-0 items-center justify-center rounded-full border bg-linear-to-br from-secondary to-input text-xs font-semibold text-secondary-foreground",
+        "inline-flex size-8 shrink-0 items-center justify-center rounded-full border bg-secondary text-xs font-semibold text-secondary-foreground",
         className,
       )}
     >

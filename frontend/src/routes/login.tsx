@@ -15,6 +15,7 @@ export function LoginPage() {
 
   return (
     <main className="grid min-h-svh bg-background lg:grid-cols-[1.1fr_0.9fr]">
+      <h1 className="sr-only">Club Task Platform</h1>
       <section className="relative hidden overflow-hidden bg-primary p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
         <div className="flex items-center gap-3">
           <span
@@ -76,9 +77,9 @@ export function LoginPage() {
         <div className="flex flex-1 items-center justify-center py-12">
           <Card className="w-full max-w-md border-0 bg-transparent shadow-none">
             <CardHeader className="px-0">
-              <h1 className="text-3xl leading-none font-semibold tracking-[-0.035em]">
+              <h2 className="text-3xl leading-none font-semibold tracking-[-0.035em]">
                 Welcome Back
-              </h1>
+              </h2>
               <CardDescription className="text-sm leading-6">
                 Sign in with your approved club account to continue.
               </CardDescription>
