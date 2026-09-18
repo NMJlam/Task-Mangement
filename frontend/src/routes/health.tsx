@@ -1,9 +1,15 @@
 import { Activity, BadgeCheck } from "lucide-react";
-import { ExampleForm } from "@/components/common/example-form";
+import { lazy, Suspense } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Toaster } from "@/components/ui/sonner";
 import { useHealth } from "@/hooks/use-health";
+
+const ExampleForm = lazy(() =>
+  import("@/components/common/example-form").then(({ ExampleForm }) => ({ default: ExampleForm })),
+);
+const Toaster = lazy(() =>
+  import("@/components/ui/sonner").then(({ Toaster }) => ({ default: Toaster })),
+);
 
 /**
  * Sanity / wiring page: proves Tailwind tokens, a shadcn Card + Button + Form
@@ -71,12 +77,22 @@ export function HealthPage() {
             </p>
           </CardHeader>
           <CardContent>
-            <ExampleForm />
+            <Suspense
+              fallback={
+                <p className="text-sm text-muted-foreground" role="status">
+                  Loading Form…
+                </p>
+              }
+            >
+              <ExampleForm />
+            </Suspense>
           </CardContent>
         </Card>
       </div>
 
-      <Toaster />
+      <Suspense fallback={null}>
+        <Toaster />
+      </Suspense>
     </main>
   );
 }

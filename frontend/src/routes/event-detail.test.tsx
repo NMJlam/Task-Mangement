@@ -243,7 +243,10 @@ function stubEvent({
 
 function renderDetail(search = "") {
   return render(
-    <MemoryRouter initialEntries={[`/events/${EVENT_ID}${search}`]}>
+    <MemoryRouter
+      initialEntries={[`/events/${EVENT_ID}${search}`]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <Routes>
         <Route path="/events/:id" element={<EventDetailPage />} />
       </Routes>

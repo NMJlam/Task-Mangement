@@ -47,8 +47,6 @@ export function RequireAuth({
 }) {
   const { account, isLoading, member, needsInvite, signOut } = useAuth();
 
-  if (!account) return <Navigate to="/login" replace />;
-
   if (isLoading) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
@@ -58,6 +56,8 @@ export function RequireAuth({
       </main>
     );
   }
+
+  if (!account) return <Navigate to="/login" replace />;
 
   if (!member || member.tier < minTier || (capability && !can(member.role, capability))) {
     return (

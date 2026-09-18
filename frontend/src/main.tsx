@@ -1,20 +1,49 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { RequireAuth } from "./components/layout/require-auth";
 import "./index.css";
-import { AiBreakdownPage } from "./routes/ai-breakdown";
-import { CalendarPage } from "./routes/calendar";
-import { EventDetailPage } from "./routes/event-detail";
-import { EventsPage } from "./routes/events";
-import { FinancePage } from "./routes/finance";
 import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
-import { MembersPage } from "./routes/members";
-import { MessagesPage } from "./routes/messages";
-import { NotificationsPage } from "./routes/notifications";
-import { SettingsPage } from "./routes/settings";
-import { TasksPage } from "./routes/tasks";
+
+const AiBreakdownPage = lazy(() =>
+  import("./routes/ai-breakdown").then(({ AiBreakdownPage }) => ({ default: AiBreakdownPage })),
+);
+const CalendarPage = lazy(() =>
+  import("./routes/calendar").then(({ CalendarPage }) => ({ default: CalendarPage })),
+);
+const DashboardPage = lazy(() =>
+  import("./routes/dashboard").then(({ DashboardPage }) => ({ default: DashboardPage })),
+);
+const EventDetailPage = lazy(() =>
+  import("./routes/event-detail").then(({ EventDetailPage }) => ({ default: EventDetailPage })),
+);
+const EventsPage = lazy(() =>
+  import("./routes/events").then(({ EventsPage }) => ({ default: EventsPage })),
+);
+const FinancePage = lazy(() =>
+  import("./routes/finance").then(({ FinancePage }) => ({ default: FinancePage })),
+);
+const MembersPage = lazy(() =>
+  import("./routes/members").then(({ MembersPage }) => ({ default: MembersPage })),
+);
+const MessagesPage = lazy(() =>
+  import("./routes/messages").then(({ MessagesPage }) => ({ default: MessagesPage })),
+);
+const NewEventPage = lazy(() =>
+  import("./routes/new-event").then(({ NewEventPage }) => ({ default: NewEventPage })),
+);
+const NotificationsPage = lazy(() =>
+  import("./routes/notifications").then(({ NotificationsPage }) => ({
+    default: NotificationsPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("./routes/settings").then(({ SettingsPage }) => ({ default: SettingsPage })),
+);
+const TasksPage = lazy(() =>
+  import("./routes/tasks").then(({ TasksPage }) => ({ default: TasksPage })),
+);
 
 document.documentElement.classList.toggle("dark", localStorage.getItem("theme") === "dark");
 
@@ -24,7 +53,7 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <RequireAuth>
-        <HealthPage />
+        <DashboardPage />
       </RequireAuth>
     ),
   },
@@ -41,6 +70,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <EventsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/events/new",
+    element: (
+      <RequireAuth minTier={1}>
+        <NewEventPage />
       </RequireAuth>
     ),
   },
@@ -133,6 +170,16 @@ if (!rootEl) throw new Error("Root element #root not found");
 
 createRoot(rootEl).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <Suspense
+      fallback={
+        <main className="flex min-h-svh items-center justify-center p-8">
+          <p className="text-muted-foreground" role="status">
+            Loading…
+          </p>
+        </main>
+      }
+    >
+      <RouterProvider router={router} />
+    </Suspense>
   </StrictMode>,
 );

@@ -7,7 +7,7 @@ import { LoginPage } from "@/routes/login";
 const useAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-auth", () => ({ useAuth }));
 
-it("redirects guests without waiting for the session request", () => {
+it("keeps the auth check stable while the session request is pending", () => {
   useAuth.mockReturnValue({
     account: null,
     isLoading: true,
@@ -17,7 +17,10 @@ it("redirects guests without waiting for the session request", () => {
   });
 
   render(
-    <MemoryRouter initialEntries={["/protected"]}>
+    <MemoryRouter
+      initialEntries={["/protected"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <Routes>
         <Route path="/protected" element={<RequireAuth>secret</RequireAuth>} />
         <Route path="/login" element={<LoginPage />} />
@@ -25,7 +28,8 @@ it("redirects guests without waiting for the session request", () => {
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("button", { name: /sign in with google/i })).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("Loading…");
+  expect(screen.queryByRole("button", { name: /sign in with google/i })).not.toBeInTheDocument();
 });
 
 it("hides capability-gated UI from roles without the capability", () => {
@@ -42,7 +46,7 @@ it("hides capability-gated UI from roles without the capability", () => {
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth capability="member:role-change">secret</RequireAuth>
     </MemoryRouter>,
   );
@@ -61,7 +65,7 @@ it("tells a signed-in account without membership that it needs an invite", () =>
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth>secret</RequireAuth>
     </MemoryRouter>,
   );
@@ -80,7 +84,7 @@ it("does not blame a server error on a missing invite", () => {
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth>secret</RequireAuth>
     </MemoryRouter>,
   );
