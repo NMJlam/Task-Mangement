@@ -1,10 +1,49 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TasksPage } from "./tasks";
 
+/**
+ * Stands in for the drag provider: jsdom has no layout, so dnd-kit's own
+ * collision detection can never report a drop here. The board still owns the
+ * decision — this only hands it the operation a real drop would produce.
+ */
+const dnd = vi.hoisted(() => ({
+  onDragEnd: undefined as ((event: unknown) => void) | undefined,
+}));
+
+vi.mock("@dnd-kit/react", () => ({
+  DragDropProvider: ({
+    children,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    onDragEnd: (event: unknown) => void;
+  }) => {
+    dnd.onDragEnd = onDragEnd;
+    return <>{children}</>;
+  },
+  useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
+
+const EVENT_ID = "018f3a4b-0000-7000-8000-000000000010";
+
 describe("TasksPage", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("creates tasks and shows them on the board", async () => {
+    const task = buildTask();
+    stubApi(task);
+
+    render(<TasksPage />);
+
+    await screen.findByText("Confirm venue access");
+    fireEvent.change(screen.getByLabelText(/^task$/i), { target: { value: "Book AV" } });
+    fireEvent.click(screen.getByRole("button", { name: /add task/i }));
+
+    await waitFor(() => expect(screen.getByText("Book AV")).toBeInTheDocument());
+  });
 
   it("opens a task modal and links the task to an event", async () => {
     const user = userEvent.setup();
@@ -13,7 +52,7 @@ describe("TasksPage", () => {
 
     render(<TasksPage />);
 
-    await user.click(await screen.findByRole("button", { name: /confirm venue access/i }));
+    await user.click(await screen.findByRole("button", { name: /open confirm venue access/i }));
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Linked event"), EVENT_ID);
@@ -26,27 +65,21 @@ describe("TasksPage", () => {
     });
   });
 
-  it("moves cards between columns by drag and drop", async () => {
+  it("moves a dropped card into the new column and PATCHes its status", async () => {
     const task = buildTask();
     const fetchMock = stubApi(task);
 
     render(<TasksPage />);
 
-    const card = await screen.findByRole("button", { name: /confirm venue access/i });
-    const draggable = card.closest("[draggable='true']");
-    const target = screen.getByRole("region", { name: "In Progress" });
-    const values = new Map<string, string>();
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? "",
-    };
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+    expect(columnOf("Confirm venue access", "To Do")).toBe(true);
 
-    expect(draggable).not.toBeNull();
-    fireEvent.dragStart(draggable!, { dataTransfer });
-    fireEvent.dragOver(target, { dataTransfer });
-    fireEvent.drop(target, { dataTransfer });
+    dropCard("in_progress");
+
+    // No await between the drop and this assertion: the column changed before
+    // the request could have answered.
+    expect(columnOf("Confirm venue access", "In Progress")).toBe(true);
+    expect(columnOf("Confirm venue access", "To Do")).toBe(false);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -57,23 +90,75 @@ describe("TasksPage", () => {
         }),
       ),
     );
+    expect(columnOf("Confirm venue access", "In Progress")).toBe(true);
   });
 
-  it("creates tasks", async () => {
-    const user = userEvent.setup();
+  it("puts the card back in its own column when the status write fails", async () => {
+    const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/tasks/${task.id}/status`)
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      if (url === "/api/events") return Promise.resolve(response({ items: [buildEvent()] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+      return Promise.resolve(response({ tasks: [task] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TasksPage />);
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+
+    dropCard("in_progress");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to update task. Try again.");
+    expect(columnOf("Confirm venue access", "To Do")).toBe(true);
+    expect(columnOf("Confirm venue access", "In Progress")).toBe(false);
+    // The handle is live again, so the user can retry the drag.
+    expect(screen.getByRole("button", { name: "Move Confirm venue access" })).toBeEnabled();
+  });
+
+  it("opens the task modal from the card's overlay button", async () => {
     const task = buildTask();
     stubApi(task);
 
     render(<TasksPage />);
 
-    await screen.findByText("Confirm venue access");
-    fireEvent.change(screen.getByLabelText(/^task$/i), { target: { value: "Book AV" } });
-    await user.click(screen.getByRole("button", { name: /add task/i }));
-    await waitFor(() => expect(screen.getByText("Book AV")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // jsdom cannot hit-test, so this clicks the overlay the card body is covered
+    // by; that a click on the visible title reaches it is a browser concern and
+    // is covered by the manual pass.
+    fireEvent.click(screen.getByRole("button", { name: /open confirm venue access/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "Confirm venue access" }),
+    ).toBeInTheDocument();
   });
 });
 
-const EVENT_ID = "018f3a4b-0000-7000-8000-000000000010";
+/** The card's column is read off the DOM, which is the observable result. */
+function columnOf(title: string, label: string) {
+  const column = screen.getByRole("heading", { name: label }).closest("section");
+  if (!column) throw new Error(`No column for ${label}`);
+  return within(column).queryByText(title) !== null;
+}
+
+function dropCard(status: string) {
+  act(() => {
+    dnd.onDragEnd?.({
+      canceled: false,
+      operation: {
+        source: {
+          id: "018f3a4b-0000-7000-8000-000000000001",
+          data: { title: "Confirm venue access", status: "todo" },
+        },
+        target: { id: status },
+      },
+    });
+  });
+}
 
 function stubApi(task: ReturnType<typeof buildTask>) {
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
@@ -100,7 +185,14 @@ function stubApi(task: ReturnType<typeof buildTask>) {
   return fetchMock;
 }
 
-function response(body: unknown) {
+/** The shape every success stub in this file shares. */
+interface OkResponse {
+  ok: true;
+  status: number;
+  json: () => Promise<unknown>;
+}
+
+function response(body: unknown): OkResponse {
   return { ok: true, status: 200, json: async () => body };
 }
 

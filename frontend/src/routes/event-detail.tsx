@@ -15,6 +15,7 @@ import { useEvent } from "@/hooks/use-event";
 import { useEventProgress } from "@/hooks/use-event-progress";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
+import { useTasks } from "@/hooks/use-tasks";
 import { useThreadMessages } from "@/hooks/use-threads";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,10 @@ export function EventDetailPage() {
   // Both sit above the early returns: hook order must not change between renders.
   // Each accepts an absent id and stays idle until there is one.
   const messages = useThreadMessages(state.status === "ok" ? state.event.channelId : undefined);
+  // The board reads `/api/tasks?eventId=`, not `event.tasks`: the board owns the
+  // task list so a drop can move a card without refetching the whole event.
+  // `enabled` keeps an absent id from ever loading the global list.
+  const tasks = useTasks({ eventId: id, enabled: Boolean(id) });
   const members = useMembers();
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const me = useMe();
@@ -64,7 +69,6 @@ export function EventDetailPage() {
   }
 
   const { event } = state;
-  const tasks = event.tasks ?? [];
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -207,7 +211,32 @@ export function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <TaskBoard tasks={tasks} members={memberItems} />
+          {/* No `events`/`onEventChange`: the event link control stays out of an
+              event's own tab, where the link is already the thing you are on. */}
+          {tasks.mutationError && (
+            <p className="mb-3 text-sm text-destructive" role="alert">
+              {tasks.mutationError}. Try again.
+            </p>
+          )}
+          {tasks.state.status === "loading" && (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading Tasks…
+            </p>
+          )}
+          {tasks.state.status === "error" && (
+            <p className="text-sm text-destructive" role="alert">
+              Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.
+            </p>
+          )}
+          {tasks.state.status === "ok" && (
+            <TaskBoard
+              tasks={tasks.state.items}
+              members={memberItems}
+              busyTaskId={tasks.busy}
+              emptyMessage="No tasks are linked to this event yet."
+              onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="thread">

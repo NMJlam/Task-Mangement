@@ -10,14 +10,35 @@ import { useCallback, useEffect, useState } from "react";
 type TasksState =
   { status: "loading" } | { status: "ok"; items: Task[] } | { status: "error"; message: string };
 
-export function useTasks() {
+/**
+ * ViewModel for a task board. With no `eventId` it reads the whole `/api/tasks`
+ * list (the `/tasks` board); with one it reads that event's tasks alone.
+ *
+ * `enabled: false` keeps the hook idle — `event-detail` calls it above its early
+ * returns, where the route param may still be missing, and an idle hook must
+ * never fall back to the global list.
+ */
+export function useTasks({
+  eventId,
+  enabled = true,
+}: { eventId?: string; enabled?: boolean } = {}) {
   const [state, setState] = useState<TasksState>({ status: "loading" });
   const [busy, setBusy] = useState<string>();
   const [mutationError, setMutationError] = useState<string>();
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ status: "loading" });
+      setBusy(undefined);
+      setMutationError(undefined);
+      return;
+    }
+
     let active = true;
-    fetch("/api/tasks", { credentials: "include" })
+    setState({ status: "loading" });
+    const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "";
+
+    fetch(`/api/tasks${query}`, { credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load tasks");
         return taskListResponseSchema.parse(await response.json()).tasks;
@@ -36,7 +57,7 @@ export function useTasks() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled, eventId]);
 
   const createTask = useCallback(async (title: string, priority: TaskPriority) => {
     setBusy("new");
@@ -62,10 +83,23 @@ export function useTasks() {
     }
   }, []);
 
+  /**
+   * Optimistic, because the drop has already moved the card: the board commits
+   * the new column immediately and the write either confirms it with the
+   * server's row or puts the original task back and surfaces the error.
+   */
   const changeStatus = useCallback(async (task: Task, status: TaskStatus) => {
-    if (task.status === status) return;
+    if (task.status === status) return true;
     setBusy(task.id);
     setMutationError(undefined);
+    setState((current) =>
+      current.status === "ok"
+        ? {
+            ...current,
+            items: current.items.map((item) => (item.id === task.id ? { ...item, status } : item)),
+          }
+        : current,
+    );
     try {
       const response = await fetch(`/api/tasks/${task.id}/status`, {
         method: "PATCH",
@@ -83,8 +117,18 @@ export function useTasks() {
             }
           : current,
       );
+      return true;
     } catch (cause) {
+      setState((current) =>
+        current.status === "ok"
+          ? {
+              ...current,
+              items: current.items.map((item) => (item.id === task.id ? task : item)),
+            }
+          : current,
+      );
       setMutationError(cause instanceof Error ? cause.message : "Failed to update task");
+      return false;
     } finally {
       setBusy(undefined);
     }

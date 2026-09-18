@@ -13,6 +13,8 @@ import { useTasks } from "@/hooks/use-tasks";
 
 export function TasksPage() {
   const tasks = useTasks();
+  // The roster is one club-sized page, and so is the event list, so both are
+  // searched in memory rather than asking the server for one row.
   const events = useEvents();
   const members = useMembers();
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
@@ -93,24 +95,18 @@ export function TasksPage() {
           Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.
         </p>
       )}
-      {tasks.state.status === "ok" && taskItems.length === 0 && (
-        <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No tasks yet. Add the first task above.
-          </CardContent>
-        </Card>
-      )}
-      {tasks.state.status === "ok" && taskItems.length > 0 && (
-        <section aria-label="Task board" className="mt-8">
+      {tasks.state.status === "ok" && (
+        <div className="mt-8">
           <TaskBoard
             tasks={taskItems}
             members={memberItems}
             events={eventItems}
             busyTaskId={tasks.busy}
+            emptyMessage="No tasks yet. Add the first task above."
             onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
             onEventChange={(task, eventId) => void tasks.changeEvent(task, eventId)}
           />
-        </section>
+        </div>
       )}
     </main>
   );
