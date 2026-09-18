@@ -6,6 +6,7 @@ import {
   HeartPulse,
   Landmark,
   LogOut,
+  MessageSquare,
   Sparkles,
   UsersRound,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/finance", label: "Finance", icon: Landmark },
   { to: "/notifications", label: "Inbox", icon: Bell },
+  { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/members", label: "Members", icon: UsersRound },
 ];
 
