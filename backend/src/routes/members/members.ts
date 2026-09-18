@@ -14,7 +14,14 @@ import {
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { Router } from "express";
 import { getDb } from "../../db/client.js";
-import { appUsers, authUser, tasks, teamMembers, teams } from "../../db/schema/index.js";
+import {
+  appUsers,
+  authUser,
+  taskAssignees,
+  tasks,
+  teamMembers,
+  teams,
+} from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 
 export const membersRouter = Router();
@@ -221,18 +228,21 @@ membersRouter.delete(
         }
       }
 
-      // Rule 7. Open is "not done" — a task the club is still waiting on.
-      const openTasks = await db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(and(eq(tasks.assignee, targetId), ne(tasks.status, "done")));
+      // Rule 7. Open is "not done" — a task the club is still waiting on. Any
+      // unfinished assignment counts, co-assignees included: the member is
+      // leaving either way, and the club should say who holds the work now.
+      const openLinks = await db
+        .select({ taskId: taskAssignees.taskId })
+        .from(taskAssignees)
+        .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+        .where(and(eq(taskAssignees.userId, targetId), ne(tasks.status, "done")));
 
-      if (openTasks.length > 0) {
+      if (openLinks.length > 0) {
         if (!reassignTo) {
           res.status(409).json({
             error: {
               code: "OPEN_TASKS",
-              message: `This member has ${openTasks.length} open task(s). Pass ?reassignTo=<memberId> to hand them over.`,
+              message: `This member has ${openLinks.length} open task(s). Pass ?reassignTo=<memberId> to hand them over.`,
             },
           });
           return;
@@ -256,10 +266,24 @@ membersRouter.delete(
           });
           return;
         }
-        await db
-          .update(tasks)
-          .set({ assignee: reassignTo, updatedAt: new Date() })
-          .where(and(eq(tasks.assignee, targetId), ne(tasks.status, "done")));
+        // The successor replaces the departing slot on those tasks. DO NOTHING
+        // on the composite key covers the case where the successor already
+        // holds one of them — a duplicate link would be rejected, not merged.
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            INSERT INTO "task_assignee" ("task_id", "user_id")
+            SELECT "task_id", ${reassignTo}
+            FROM "task_assignee"
+            INNER JOIN "task" ON "task"."id" = "task_assignee"."task_id"
+            WHERE "task_assignee"."user_id" = ${targetId} AND "task"."status" <> 'done'
+            ON CONFLICT DO NOTHING
+          `);
+          await tx.execute(sql`
+            DELETE FROM "task_assignee"
+            WHERE "user_id" = ${targetId}
+              AND "task_id" IN (SELECT "id" FROM "task" WHERE "status" <> 'done')
+          `);
+        });
       }
 
       // Rule 15, in order. The RESTRICT on app_user.auth_user_id is what makes

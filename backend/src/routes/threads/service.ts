@@ -155,13 +155,13 @@ export function replyProblem(
   return undefined;
 }
 
-/** Who hears about a comment on a task: its assignee and creator, never the
- * author. */
+/** Who hears about a comment on a task: every assignee and the creator, each
+ * once, never the author. */
 export function commentRecipients(
-  task: { assignee: string | null; creator: string | null },
+  task: { assigneeIds: readonly string[]; creator: string | null },
   authorId: string,
 ): string[] {
-  return [...new Set([task.assignee, task.creator])].filter(
+  return [...new Set([...task.assigneeIds, task.creator])].filter(
     (id): id is string => id !== null && id !== authorId,
   );
 }

@@ -17,14 +17,14 @@ import {
   type Tier,
   type UpdateTask,
 } from "@ctp/shared";
-import { and, asc, desc, eq, inArray, lt, ne, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, events, tasks, teams } from "../../db/schema/index.js";
+import { appUsers, events, taskAssignees, tasks, teams } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
-import { visibleEvents } from "../events/service.js";
-import { ensureWorkstreams, mergeLink, workstreamKeys } from "./service.js";
+import { visibleEvents, type Queryable, type Tx } from "../events/service.js";
+import { assembleTasks, ensureWorkstreams, mergeLink, workstreamKeys } from "./service.js";
 
 export const tasksRouter = Router();
 
@@ -38,27 +38,34 @@ export const tasksRouter = Router();
  * role-bound power actually exists (plan.md, watch-out 4).
  */
 
-type Reference = { eventId?: string | null; teamId?: string | null; assignee?: string | null };
+type Reference = {
+  eventId?: string | null;
+  teamId?: string | null;
+  assigneeIds?: readonly string[];
+};
 
 /**
  * Resolve the foreign keys before writing.
  *
- * `task.event_id`, `task.team_id` and `task.assignee` are all FK-constrained, so
- * an unknown id would otherwise surface as an opaque 500 from Postgres. Checking
- * them here turns each into a 422 that names the offending field.
+ * `task.event_id`, `task.team_id` and `task_assignee.user_id` are all
+ * FK-constrained, so an unknown id would otherwise surface as an opaque 500
+ * from Postgres. Checking them here turns each into a 422 that names the
+ * offending field.
  *
  * An event must also be one the caller can see. Above their tier or cancelled
  * (the soft delete) reads as missing, as on every event route — a different
  * code would confirm the event exists.
  */
 async function findBadReference(
-  db: ReturnType<typeof getDb>,
+  db: Queryable,
   references: Reference[],
   tier: Tier,
 ): Promise<{ code: string; message: string } | undefined> {
   const eventIds = [...new Set(references.map((reference) => reference.eventId).filter(isId))];
   const teamIds = [...new Set(references.map((reference) => reference.teamId).filter(isId))];
-  const assignees = [...new Set(references.map((reference) => reference.assignee).filter(isId))];
+  // Every array in the batch flattens into one membership check — a bulk create
+  // sending the same member on fifty tasks is one id to look up, not fifty.
+  const assignees = [...new Set(references.flatMap((reference) => reference.assigneeIds ?? []))];
 
   if (eventIds.length > 0) {
     const found = await db
@@ -104,6 +111,28 @@ function notFound(res: Response): void {
   res.status(404).json({ error: { code: "TASK_NOT_FOUND", message: "Task not found." } });
 }
 
+// ── The junction, in and out ─────────────────────────────────────────────────
+
+/** `EXISTS` a `task_assignee` row putting `userId` on the task being filtered. */
+function assignedTo(userId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${taskAssignees} WHERE ${taskAssignees.taskId} = ${tasks.id} AND ${taskAssignees.userId} = ${userId})`;
+}
+
+/**
+ * Replaces a task's whole assignment set. Delete-then-insert rather than a
+ * diff: the submitted array IS the new set, `[]` included, and a diff would
+ * leave a co-assignee the caller dropped.
+ *
+ * The ids arrive already deduplicated by `assigneeIdsSchema`, so both
+ * statements stay safe on the composite primary key.
+ */
+async function setAssignees(tx: Tx, taskId: string, userIds: readonly string[]): Promise<void> {
+  await tx.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
+  if (userIds.length > 0) {
+    await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
+  }
+}
+
 // ── GET /api/tasks ───────────────────────────────────────────────────────────
 
 tasksRouter.get(
@@ -114,15 +143,18 @@ tasksRouter.get(
   async (_req, res, next) => {
     try {
       const query = res.locals.validated as ListTasksQuery;
+      const db = getDb();
       const filters = [
         query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.status ? eq(tasks.status, query.status) : undefined,
         query.priority ? eq(tasks.priority, query.priority) : undefined,
-        query.assignee ? eq(tasks.assignee, query.assignee) : undefined,
+        // `assignee=` is membership, not identity: a multi-assignee task comes
+        // back once for any member holding it, which EXISTS guarantees.
+        query.assignee ? assignedTo(query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
-      const rows = await getDb()
+      const rows = await db
         .select()
         .from(tasks)
         .where(filters.length > 0 ? and(...filters) : undefined)
@@ -130,7 +162,7 @@ tasksRouter.get(
         .limit(query.limit)
         .offset(query.offset);
 
-      res.status(200).json({ tasks: rows } satisfies TaskListResponse);
+      res.status(200).json({ tasks: await assembleTasks(db, rows) } satisfies TaskListResponse);
     } catch (error) {
       next(error);
     }
@@ -149,6 +181,7 @@ tasksRouter.get(
   async (_req, res, next) => {
     try {
       const query = res.locals.validated as OverdueTasksQuery;
+      const db = getDb();
       // Overdue is derived, never stored: past due and not yet done. A NULL
       // due_at is not overdue, and `lt` already excludes it.
       const filters = [
@@ -156,10 +189,10 @@ tasksRouter.get(
         ne(tasks.status, "done"),
         query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
-        query.assignee ? eq(tasks.assignee, query.assignee) : undefined,
+        query.assignee ? assignedTo(query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
-      const rows = await getDb()
+      const rows = await db
         .select()
         .from(tasks)
         .where(and(...filters))
@@ -167,7 +200,7 @@ tasksRouter.get(
         .limit(query.limit)
         .offset(query.offset);
 
-      res.status(200).json({ tasks: rows } satisfies TaskListResponse);
+      res.status(200).json({ tasks: await assembleTasks(db, rows) } satisfies TaskListResponse);
     } catch (error) {
       next(error);
     }
@@ -195,17 +228,22 @@ tasksRouter.post(
 
       // `creator` is stamped from the session, never the body, so a caller
       // cannot attribute work to someone else.
-      const [task] = await db
-        .insert(tasks)
-        .values({
-          id: newId(),
-          creator: req.user!.id,
-          ...input,
-          ...completionOf(input.status),
-        })
-        .returning();
+      const { assigneeIds, ...columns } = input;
+      const task = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(tasks)
+          .values({
+            id: newId(),
+            creator: req.user!.id,
+            ...columns,
+            ...completionOf(input.status),
+          })
+          .returning();
+        await setAssignees(tx, row!.id, assigneeIds);
+        return (await assembleTasks(tx, [row!]))[0]!;
+      });
 
-      res.status(201).json({ task: task! } satisfies TaskResponse);
+      res.status(201).json({ task } satisfies TaskResponse);
     } catch (error) {
       next(error);
     }
@@ -231,19 +269,29 @@ tasksRouter.post(
 
       await ensureWorkstreams(db, workstreamKeys(input.tasks));
 
-      // One multi-row INSERT rather than a transaction: it is atomic on its own
-      // and works identically on the node and Neon HTTP drivers.
-      const rows = await db
-        .insert(tasks)
-        .values(
-          input.tasks.map((task) => ({
-            id: newId(),
-            creator: req.user!.id,
-            ...task,
-            ...completionOf(task.status),
-          })),
-        )
-        .returning();
+      // One multi-row INSERT rather than one per task: it is atomic on its own
+      // and works identically on the node and Neon serverless drivers. The
+      // junction rows join the same transaction so no task lands unowned.
+      const rows = await db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(tasks)
+          .values(
+            input.tasks.map(({ assigneeIds: _assigneeIds, ...task }) => ({
+              id: newId(),
+              creator: req.user!.id,
+              ...task,
+              ...completionOf(task.status),
+            })),
+          )
+          .returning();
+        const links = inserted.flatMap((row, index) =>
+          (input.tasks[index]!.assigneeIds ?? []).map((userId) => ({ taskId: row.id, userId })),
+        );
+        if (links.length > 0) {
+          await tx.insert(taskAssignees).values(links).onConflictDoNothing();
+        }
+        return assembleTasks(tx, inserted);
+      });
 
       res.status(201).json({ tasks: rows } satisfies TaskListResponse);
     } catch (error) {
@@ -271,7 +319,9 @@ tasksRouter.get(
         notFound(res);
         return;
       }
-      res.status(200).json({ task } satisfies TaskResponse);
+      res
+        .status(200)
+        .json({ task: (await assembleTasks(getDb(), [task]))[0]! } satisfies TaskResponse);
     } catch (error) {
       next(error);
     }
@@ -312,16 +362,28 @@ tasksRouter.patch(
         await ensureWorkstreams(db, workstreamKeys([mergeLink(stored, patch)]));
       }
 
-      // No `updated_at` trigger exists, so the route owns the timestamp.
-      const [task] = await db
-        .update(tasks)
-        .set({
-          ...patch,
-          ...(patch.status ? completionOf(patch.status) : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(tasks.id, req.params.id!))
-        .returning();
+      // `assigneeIds` is a second table, so it cannot ride along in the UPDATE
+      // above; the task row and the junction move in one transaction, which is
+      // also what makes the submitted array replace the set atomically.
+      const { assigneeIds, ...columns } = patch;
+      const task = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(tasks)
+          .set({
+            ...columns,
+            // No `updated_at` trigger exists, so the route owns the timestamp.
+            ...(columns.status ? completionOf(columns.status) : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, req.params.id!))
+          .returning();
+
+        if (!row) return undefined;
+        if (assigneeIds !== undefined) {
+          await setAssignees(tx, row.id, assigneeIds);
+        }
+        return (await assembleTasks(tx, [row]))[0];
+      });
 
       if (!task) {
         notFound(res);
@@ -355,7 +417,10 @@ tasksRouter.patch(
         notFound(res);
         return;
       }
-      res.status(200).json({ task } satisfies TaskResponse);
+      // Status touches the task row alone, so the set is read back, not written.
+      res
+        .status(200)
+        .json({ task: (await assembleTasks(getDb(), [task]))[0]! } satisfies TaskResponse);
     } catch (error) {
       next(error);
     }

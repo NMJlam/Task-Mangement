@@ -15,6 +15,7 @@ import {
   invites,
   messages,
   notifications,
+  taskAssignees,
   tasks,
   teamMembers,
   teams,
@@ -464,9 +465,10 @@ export async function seedDemo(production = false): Promise<void> {
         eventId: event("hackathon"),
         teamId: team("media"),
         title: "Film the opening keynote",
+        description:
+          "Two cameras on the main stage. Deliver the raw card by Sunday so Media can cut the reel.",
         status: "todo",
         priority: "high",
-        assignee: member("director"),
         creator: member("president"),
         dueAt: at(3),
         boardOrder: 0,
@@ -480,7 +482,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Edit the highlight reel",
         status: "in_progress",
         priority: "medium",
-        assignee: member("officer"),
         creator: member("director"),
         dueAt: at(6),
         boardOrder: 1,
@@ -492,7 +493,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Post the speaker lineup",
         status: "done",
         priority: "high",
-        assignee: member("vice_president"),
         creator: member("president"),
         dueAt: at(-1),
         // Required by task_completed_at_matches_status_check when status = done.
@@ -504,9 +504,9 @@ export async function seedDemo(production = false): Promise<void> {
         eventId: event("hackathon"),
         teamId: team("events"),
         title: "Book the venue AV",
+        description: "Waiting on the venue's preferred supplier to confirm the quote.",
         status: "blocked",
         priority: "urgent",
-        assignee: member("secretary"),
         creator: member("president"),
         dueAt: at(1),
         boardOrder: 0,
@@ -518,7 +518,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Return the hired furniture",
         status: "done",
         priority: "medium",
-        assignee: member("officer"),
         creator: member("secretary"),
         completedAt: at(-40),
         boardOrder: 0,
@@ -530,7 +529,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Draft the sponsorship deck",
         status: "todo",
         priority: "high",
-        assignee: member("treasurer"),
         creator: member("president"),
         dueAt: at(30),
         minTier: 1,
@@ -544,7 +542,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Confirm the final headcount",
         status: "todo",
         priority: "medium",
-        assignee: member("secretary"),
         creator: member("vice_president"),
         dueAt: at(2),
         boardOrder: 2,
@@ -555,7 +552,6 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Update the constitution",
         status: "todo",
         priority: "low",
-        assignee: member("secretary"),
         creator: member("president"),
         boardOrder: 0,
       },
@@ -563,9 +559,9 @@ export async function seedDemo(production = false): Promise<void> {
       {
         id: task("insurance"),
         title: "Renew the club insurance",
+        description: "Quote expired last month — the treasurer has the renewal link.",
         status: "todo",
         priority: "urgent",
-        assignee: member("treasurer"),
         creator: member("president"),
         dueAt: at(-5),
         boardOrder: 1,
@@ -585,7 +581,6 @@ export async function seedDemo(production = false): Promise<void> {
             title,
             status: faker.helpers.arrayElement(["todo", "todo", "in_progress"] as const),
             priority: faker.helpers.arrayElement(["medium", "high"] as const),
-            assignee: member(faker.helpers.arrayElement(roleSchema.options)),
             creator: member(fixture.owner),
             dueAt: at(fixture.startsInDays - faker.number.int({ min: 2, max: 10 })),
             boardOrder,
@@ -594,6 +589,28 @@ export async function seedDemo(production = false): Promise<void> {
       )
       .onConflictDoNothing();
   }
+
+  await db
+    .insert(taskAssignees)
+    .values(
+      (
+        [
+          ["film-keynote", "director"],
+          ["highlight-reel", "officer"],
+          ["speaker-lineup", "vice_president"],
+          ["venue-av", "secretary"],
+          ["return-furniture", "officer"],
+          ["sponsor-deck", "treasurer"],
+          ["final-headcount", "secretary"],
+          ["constitution", "secretary"],
+          ["insurance", "treasurer"],
+        ] as const
+      ).map(([taskSlug, memberSlug]) => ({
+        taskId: task(taskSlug),
+        userId: member(memberSlug),
+      })),
+    )
+    .onConflictDoNothing();
 
   await db
     .insert(messages)

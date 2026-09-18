@@ -26,6 +26,7 @@ import {
   channels,
   messages,
   notifications,
+  taskAssignees,
   tasks,
 } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
@@ -339,7 +340,6 @@ async function postToTask(
       title: tasks.title,
       eventId: tasks.eventId,
       teamId: tasks.teamId,
-      assignee: tasks.assignee,
       creator: tasks.creator,
     })
     .from(tasks)
@@ -349,6 +349,12 @@ async function postToTask(
     taskNotFound(res);
     return;
   }
+  // Every holder of the task, not one: a comment on multi-assignee work
+  // concerns all of them, and `commentRecipients` dedupes against the author.
+  const assigneeLinks = await db
+    .select({ userId: taskAssignees.userId })
+    .from(taskAssignees)
+    .where(eq(taskAssignees.taskId, task.id));
 
   const target = taskThreadFilter(task);
   const thread = target ? await findThread(db, viewer, target) : undefined;
@@ -381,7 +387,10 @@ async function postToTask(
       .values({ id: newId(), channelId: thread.id, taskId: task.id, author: viewer.id, ...values })
       .returning();
 
-    const recipients = commentRecipients(task, viewer.id);
+    const recipients = commentRecipients(
+      { assigneeIds: assigneeLinks.map((link) => link.userId), creator: task.creator },
+      viewer.id,
+    );
     if (recipients.length > 0) {
       await tx.insert(notifications).values(
         recipients.map((userId) => ({

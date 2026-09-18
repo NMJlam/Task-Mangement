@@ -37,11 +37,13 @@ import {
   channels,
   events,
   notifications,
+  taskAssignees,
   tasks,
   teams,
   workstreams,
 } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
+import { assembleTasks } from "../tasks/service.js";
 import {
   allowedFromStatuses,
   allocateToEvent,
@@ -90,12 +92,11 @@ async function notifyAssignees(
   body: string,
 ): Promise<void> {
   const assigneeRows = await tx
-    .selectDistinct({ assignee: tasks.assignee })
-    .from(tasks)
+    .selectDistinct({ userId: taskAssignees.userId })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
     .where(and(eq(tasks.eventId, eventId), ne(tasks.status, "done")));
-  const assignees = assigneeRows
-    .map((row) => row.assignee)
-    .filter((id): id is string => id !== null);
+  const assignees = assigneeRows.map((row) => row.userId);
   if (assignees.length === 0) return;
 
   await tx.insert(notifications).values(
@@ -379,12 +380,15 @@ eventsRouter.get(
       // TODO(R9): "expenses" is not embeddable yet — no shared expenseSchema
       // row shape exists (see events-calendar-plan.md Phase 0 deviation).
       if (include?.includes("tasks")) {
-        detail.tasks = await db
-          .select()
-          .from(tasks)
-          .where(and(eq(tasks.eventId, id), lte(tasks.minTier, req.user!.tier)))
-          .orderBy(asc(tasks.boardOrder))
-          .limit(50);
+        detail.tasks = await assembleTasks(
+          db,
+          await db
+            .select()
+            .from(tasks)
+            .where(and(eq(tasks.eventId, id), lte(tasks.minTier, req.user!.tier)))
+            .orderBy(asc(tasks.boardOrder))
+            .limit(50),
+        );
       }
       if (include?.includes("channel")) {
         const [channel] = await db
@@ -466,12 +470,11 @@ eventsRouter.get(
             title: tasks.title,
             dueAt: tasks.dueAt,
             eventId: tasks.eventId,
-            assigneeId: tasks.assignee,
           })
           .from(tasks)
           .where(and(...filters))
           .orderBy(asc(tasks.dueAt));
-        for (const row of rows) items.push({ kind: "task", ...row });
+        for (const row of await assembleTasks(db, rows)) items.push({ kind: "task", ...row });
       }
 
       const dateOf = (item: CalendarItem): number =>
@@ -625,8 +628,9 @@ eventsRouter.patch(
           if (input.minTier !== undefined && input.minTier > event.minTier) {
             const assigneeTiers = await tx
               .select({ assigneeTier: appUsers.tier })
-              .from(tasks)
-              .innerJoin(appUsers, eq(appUsers.id, tasks.assignee))
+              .from(taskAssignees)
+              .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+              .innerJoin(appUsers, eq(appUsers.id, taskAssignees.userId))
               .where(eq(tasks.eventId, id));
             assertNoTierEscalation(input.minTier, assigneeTiers);
           }
