@@ -120,32 +120,26 @@ describe("EventsPage", () => {
     expect((fetchMock.mock.calls.at(-1) as [string])[0]).toContain("cursor=abc");
   });
 
-  it("hides the create form from tier 0 and shows it to tier 1", async () => {
+  it("hides the create link from tier 0", async () => {
     stubWithMe({ role: "officer", tier: 0 });
     renderPage();
 
     await waitFor(() => expect(screen.getByText(/no upcoming events/i)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Create Event" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /new event/i })).not.toBeInTheDocument();
   });
 
-  it("posts a new event and clears the form", async () => {
-    const user = userEvent.setup();
+  it("points tier 1 at the create page rather than posting from the list", async () => {
     const fetchMock = stubWithMe({ role: "director", tier: 1 });
     renderPage();
 
-    await user.type(await screen.findByLabelText("Title"), "AGM");
-    await user.type(screen.getByLabelText("Starts At"), "2026-11-01T10:00");
-    await user.click(screen.getByRole("button", { name: "Create Event" }));
-
-    await waitFor(() => {
-      const post = fetchMock.mock.calls.find(
-        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
-      );
-      expect(post).toBeDefined();
-      expect(JSON.parse((post as [string, RequestInit])[1].body as string)).toMatchObject({
-        title: "AGM",
-      });
-    });
+    // Creating lives on /events/new, which validates the full createEventSchema.
+    expect(await screen.findByRole("link", { name: /new event/i })).toHaveAttribute(
+      "href",
+      "/events/new",
+    );
+    expect(
+      fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+    ).toBe(false);
   });
 });
 

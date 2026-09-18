@@ -14,17 +14,32 @@ describe("HealthPage", () => {
   });
 
   it("renders the heading and the shared-validation form", async () => {
-    // Warm the lazy chunk before rendering. A Suspense resource that resolves
-    // inside waitFor's act environment does not flush there, so findBy* waits out
-    // its timeout even after the chunk loads; pre-importing makes React.lazy
-    // resolve on the first act tick instead of racing a Vite transform.
-    await import("@/components/common/example-form");
-
     render(<HealthPage />);
     expect(screen.getByRole("heading", { name: /club task platform/i })).toBeInTheDocument();
     // Let the useHealth effect resolve so the render is settled (no act warning).
     await waitFor(() => expect(screen.getByText(/backend ok/i)).toBeInTheDocument());
-    await act(async () => {});
-    expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
+
+    expect(
+      await flushUntil(() => screen.queryByRole("button", { name: /submit/i })),
+    ).toBeInTheDocument();
   });
 });
+
+/**
+ * The form is lazy-loaded, and `findBy*` cannot see it: a Suspense resource that
+ * resolves inside waitFor's act environment never flushes there, so findBy waits
+ * out any timeout even once the chunk has loaded. Advancing real time inside
+ * act() is what lets React commit the resolved lazy component.
+ */
+async function flushUntil<T>(query: () => T | null, attempts = 60): Promise<T> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const found = query();
+    if (found) return found;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+  }
+  const found = query();
+  if (!found) throw new Error("Lazy component never resolved");
+  return found;
+}

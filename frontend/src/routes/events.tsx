@@ -1,9 +1,8 @@
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, MapPin, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
-import { CreateEventForm } from "@/components/events/create-event-form";
 import { EventFilters, type TimeFilter } from "@/components/events/event-filters";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,8 @@ export function EventsPage() {
   );
   const events = useEvents(query);
   const { state } = events;
-  // `POST /api/events` is tier 1 — hiding the form keeps a guaranteed 403 off screen.
+  // `/events/new` is guarded at minTier 1 — hiding the link keeps a guaranteed
+  // bounce off screen.
   const me = useMe();
   const canCreate = me.status === "ok" && me.user.tier >= 1;
 
@@ -41,9 +41,17 @@ export function EventsPage() {
       <PageHeader
         title="Events"
         description="Plan upcoming club events and keep delivery, deadlines, and spending visible."
+        actions={
+          canCreate && (
+            <Button asChild>
+              <Link to="/events/new">
+                <Plus aria-hidden="true" />
+                New Event
+              </Link>
+            </Button>
+          )
+        }
       />
-
-      {canCreate && <CreateEventForm onSubmit={events.createEvent} busy={events.busy} />}
 
       <EventFilters time={time} status={status} onTimeChange={setTime} onStatusChange={setStatus} />
 
