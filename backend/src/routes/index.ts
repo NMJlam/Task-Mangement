@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { budgetRouter } from "./budget/budget.js";
 import { cronRouter } from "./cron/cron.js";
 import { eventsRouter } from "./events/events.js";
 import { exampleRouter } from "./example/example.js";
@@ -26,6 +27,7 @@ apiRouter.use(teamsRouter);
 apiRouter.use(invitesRouter);
 apiRouter.use(tasksRouter);
 apiRouter.use(eventsRouter);
+apiRouter.use(budgetRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(threadsRouter);
 // Mounted under a path prefix so the cron-secret guard is scoped to /api/cron/*.
