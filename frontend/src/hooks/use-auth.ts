@@ -9,7 +9,7 @@ import { authClient } from "@/lib/auth";
 export function useAuth() {
   const { data, isPending } = authClient.useSession();
   const account = data?.user ?? null;
-  const me = useMe(Boolean(account));
+  const me = useMe();
 
   return {
     isLoading: isPending || (Boolean(account) && (me.status === "idle" || me.status === "loading")),
