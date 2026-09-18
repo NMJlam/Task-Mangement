@@ -1,5 +1,5 @@
 import type { AuthUser } from "@ctp/shared";
-import { CalendarDays, HeartPulse, Landmark, LogOut, Sparkles } from "lucide-react";
+import { CalendarDays, CheckSquare2, HeartPulse, Landmark, LogOut, Sparkles } from "lucide-react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/", label: "Overview", icon: HeartPulse },
   { to: "/events", label: "Events", icon: Sparkles },
+  { to: "/tasks", label: "Tasks", icon: CheckSquare2 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/finance", label: "Finance", icon: Landmark },
 ];
@@ -75,7 +76,7 @@ export function AppShell({
           </header>
           <nav
             aria-label="Mobile navigation"
-            className="sticky top-14 z-30 grid grid-cols-4 border-b bg-background/95 backdrop-blur lg:hidden"
+            className="sticky top-14 z-30 grid grid-cols-5 border-b bg-background/95 backdrop-blur lg:hidden"
           >
             {navigation.map((item) => (
               <NavigationLink key={item.to} {...item} compact />
