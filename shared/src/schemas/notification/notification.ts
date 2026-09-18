@@ -13,6 +13,7 @@ export const notificationKindSchema = z.enum([
   // A comment or a file on a task you are assigned or created (R9).
   "task_commented",
   "mention",
+  "expense_submitted",
   "expense_decided",
   "invite_accepted",
   "event_created",

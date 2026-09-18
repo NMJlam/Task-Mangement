@@ -8,6 +8,7 @@ import {
 describe("notification schemas", () => {
   it("accepts known kinds", () => {
     expect(notificationKindSchema.safeParse("mention").success).toBe(true);
+    expect(notificationKindSchema.safeParse("expense_submitted").success).toBe(true);
   });
 
   it("rejects unknown kinds", () => {
