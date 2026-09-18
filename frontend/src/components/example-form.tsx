@@ -41,7 +41,7 @@ export function ExampleForm() {
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input placeholder="Ada Lovelace" {...field} />
+                <Input autoComplete="name" placeholder="Ada Lovelace" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -54,7 +54,7 @@ export function ExampleForm() {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="ada@example.com" {...field} />
+                <Input type="email" autoComplete="email" placeholder="ada@example.com" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
