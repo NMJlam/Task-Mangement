@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
 
   /* Ported from the approved FE prototype. Muted text is darkened from
@@ -37,6 +38,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #16161a;
   --foreground: #ececef;
   --card: #1d1d22;
