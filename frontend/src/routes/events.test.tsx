@@ -86,10 +86,16 @@ describe("EventsPage", () => {
 
   it("appends the next page and hides the button at the end of the list", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(ok({ items: [summary("AGM")], nextCursor: "abc" }))
-      .mockResolvedValueOnce(ok({ items: [summary("Showcase")], nextCursor: null }));
+    // Routed by URL, not call order — `useMe` also fetches, and the page may
+    // reorder its calls.
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "member", tier: 0 }) }));
+      return Promise.resolve(
+        url.includes("cursor=abc")
+          ? ok({ items: [summary("Showcase")], nextCursor: null })
+          : ok({ items: [summary("AGM")], nextCursor: "abc" }),
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
     renderPage();
 
@@ -100,6 +106,34 @@ describe("EventsPage", () => {
     expect(screen.getByText("AGM")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load More" })).not.toBeInTheDocument();
     expect((fetchMock.mock.calls.at(-1) as [string])[0]).toContain("cursor=abc");
+  });
+
+  it("hides the create form from tier 0 and shows it to tier 1", async () => {
+    stubWithMe({ role: "member", tier: 0 });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/no upcoming events/i)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Create Event" })).not.toBeInTheDocument();
+  });
+
+  it("posts a new event and clears the form", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubWithMe({ role: "director", tier: 1 });
+    renderPage();
+
+    await user.type(await screen.findByLabelText("Title"), "AGM");
+    await user.type(screen.getByLabelText("Starts At"), "2026-11-01T10:00");
+    await user.click(screen.getByRole("button", { name: "Create Event" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse((post as [string, RequestInit])[1].body as string)).toMatchObject({
+        title: "AGM",
+      });
+    });
   });
 });
 
@@ -121,6 +155,21 @@ function stubFetch(body: unknown) {
   return fetchMock;
 }
 
+function me(user: { role: string; tier: number }) {
+  return { id: idFor("me"), email: "a@b.c", ...user };
+}
+
+/** Routes `/api/me`, the POST and the list read separately so tier can vary per test. */
+function stubWithMe(user: { role: string; tier: number }) {
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (url === "/api/me") return Promise.resolve(ok({ user: me(user) }));
+    if (init?.method === "POST") return Promise.resolve(ok({ event: detail("AGM") }));
+    return Promise.resolve(ok({ items: [], nextCursor: null }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 function idFor(title: string) {
   return `018f3a4b-0000-7000-8000-${title.length.toString().padStart(12, "0")}`;
 }
@@ -138,5 +187,16 @@ function summary(title: string) {
     taskCounts: { todo: 0, inProgress: 0, blocked: 0, done: 0 },
     overdueCount: 0,
     budget: { allocationCents: 0, committedCents: 0, spentCents: 0 },
+  };
+}
+
+/** `POST /api/events` answers with an EventDetail, not the list's EventSummary. */
+function detail(title: string) {
+  return {
+    ...summary(title),
+    description: null,
+    attendanceEstimate: null,
+    createdAt: "2026-09-18T00:00:00.000Z",
+    updatedAt: "2026-09-18T00:00:00.000Z",
   };
 }

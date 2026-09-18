@@ -1,4 +1,4 @@
-import { listEventsResponseSchema, type EventSummary } from "@ctp/shared";
+import { eventResponseSchema, listEventsResponseSchema, type EventSummary } from "@ctp/shared";
 import { useCallback, useEffect, useState } from "react";
 
 export type EventsQuery = {
@@ -41,6 +41,7 @@ export function useEvents(query: EventsQuery = {}) {
   const { teamId, status, from, to, ownerId } = query;
   const [state, setState] = useState<EventsState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
 
   useEffect(() => {
@@ -96,5 +97,42 @@ export function useEvents(query: EventsQuery = {}) {
     }
   }, [state, loadingMore, teamId, status, from, to, ownerId]);
 
-  return { state, loadMore, loadingMore, mutationError };
+  /**
+   * `POST /api/events` is tier 1. Only `title` and `startsAt` are required by
+   * `createEventSchema`; the rest of an event is filled in later via `PATCH`.
+   */
+  const createEvent = useCallback(
+    async (input: { title: string; startsAt: string; venue?: string }) => {
+      setBusy(true);
+      setMutationError(undefined);
+      try {
+        const res = await fetch("/api/events", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: input.title,
+            startsAt: new Date(input.startsAt).toISOString(),
+            ...(input.venue ? { venue: input.venue } : {}),
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to create the event");
+        const parsed = eventResponseSchema.parse(await res.json());
+        setState((previous) =>
+          previous.status === "ok"
+            ? { ...previous, items: [parsed.event, ...previous.items] }
+            : previous,
+        );
+        return true;
+      } catch (cause: unknown) {
+        setMutationError(cause instanceof Error ? cause.message : "Failed to create the event");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
+  return { state, loadMore, loadingMore, createEvent, busy, mutationError };
 }

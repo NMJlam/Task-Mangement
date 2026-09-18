@@ -1,6 +1,7 @@
 import { CalendarDays, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { CreateEventForm } from "@/components/create-event-form";
 import { EventFilters, type TimeFilter } from "@/components/event-filters";
 import { EventHealthStrip } from "@/components/event-health-strip";
 import { PageHeader } from "@/components/page-header";
@@ -8,6 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEvents } from "@/hooks/use-events";
+import { useMe } from "@/hooks/use-me";
 
 const eventDate = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -30,6 +32,9 @@ export function EventsPage() {
   );
   const events = useEvents(query);
   const { state } = events;
+  // `POST /api/events` is tier 1 — hiding the form keeps a guaranteed 403 off screen.
+  const me = useMe();
+  const canCreate = me.status === "ok" && me.user.tier >= 1;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -37,6 +42,8 @@ export function EventsPage() {
         title="Events"
         description="Plan upcoming club events and keep delivery, deadlines, and spending visible."
       />
+
+      {canCreate && <CreateEventForm onSubmit={events.createEvent} busy={events.busy} />}
 
       <EventFilters
         time={time}
