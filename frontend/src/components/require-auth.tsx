@@ -52,7 +52,9 @@ export function RequireAuth({
   if (isLoading) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
-        <p className="text-muted-foreground">Loading…</p>
+        <p className="text-muted-foreground" role="status">
+          Loading…
+        </p>
       </main>
     );
   }
@@ -60,7 +62,7 @@ export function RequireAuth({
   if (!member || member.tier < minTier || (capability && !can(member.role, capability))) {
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">
+        <p className="text-destructive" role="alert">
           {member
             ? "You do not have access."
             : needsInvite
