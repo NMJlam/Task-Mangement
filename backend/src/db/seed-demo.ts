@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Role } from "@ctp/shared";
+import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { nodeDb } from "./client.js";
 import {
   aiRuns,
@@ -12,7 +14,6 @@ import {
   invites,
   messages,
   notifications,
-  settings,
   tasks,
   teamMembers,
   teams,
@@ -30,9 +31,9 @@ import {
  *
  *   SEED_DEMO=1 npm run db:seed
  *
- * For the same reason this file adds NO app_user rows — it reuses the six role
- * fixtures the base seed creates, so those tests still hold with demo data
- * loaded.
+ * Locally it reuses the six role fixtures the base seed creates, so those tests
+ * still hold with demo data loaded. Production gets deterministic fictional
+ * display members with .invalid emails; they cannot sign in.
  *
  * Idempotent like the rest: every id is derived from a slug (see `demoId`) and
  * every insert is ON CONFLICT DO NOTHING, so a second run changes nothing.
@@ -41,6 +42,25 @@ import {
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const now = Date.now();
+
+export function demoInvitees(
+  founderEmail: string | undefined,
+  directorEmails: string | undefined,
+): { email: string; role: "president" | "director" }[] {
+  const founder = founderEmail?.trim().toLowerCase();
+  if (!founder) throw new Error("FOUNDER_EMAIL is required for the production bootstrap seed.");
+
+  const emails = [founder, ...(directorEmails?.split(",") ?? [])]
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  const invalid = emails.filter((email) => !z.email().safeParse(email).success);
+  if (invalid.length) throw new Error(`Invalid demo email address(es): ${invalid.join(", ")}`);
+
+  return [...new Set(emails)].map((email) => ({
+    email,
+    role: email === founder ? "president" : "director",
+  }));
+}
 
 /** A date `days` from now — negative is the past. */
 const at = (days: number, extraHours = 0): Date => new Date(now + days * DAY + extraHours * HOUR);
@@ -59,6 +79,15 @@ function demoId(slug: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(18, 20)}-${h.slice(20, 32)}`;
 }
 
+const DEMO_MEMBERS = [
+  { role: "president", name: "Ava Chen" },
+  { role: "vice_president", name: "Liam Brooks" },
+  { role: "treasurer", name: "Priya Nair" },
+  { role: "secretary", name: "Zoe Martin" },
+  { role: "director", name: "Ethan Nguyen" },
+  { role: "officer", name: "Maya Singh" },
+] as const satisfies readonly { role: Role; name: string }[];
+
 // Exec is management (tier 2) plus directors, led by the president. It is a
 // team, not a rank — see docs/roles-and-permissions.md "Groups".
 const TEAMS = [
@@ -69,20 +98,46 @@ const TEAMS = [
   { slug: "events", name: "Events", lead: "secretary" },
 ] as const satisfies readonly { slug: string; name: string; lead: Role }[];
 
-export async function seedDemo(): Promise<void> {
+export async function seedDemo(production = false): Promise<void> {
   const db = nodeDb();
+
+  if (production) {
+    for (const persona of DEMO_MEMBERS) {
+      await db.execute(sql`
+        INSERT INTO auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+        VALUES (
+          ${`demo-persona-${persona.role}`},
+          ${persona.name},
+          ${`${persona.role.replaceAll("_", ".")}@demo.invalid`},
+          false,
+          ${new Date(now)},
+          ${new Date(now)}
+        )
+        ON CONFLICT (id) DO NOTHING
+      `);
+    }
+    await db
+      .insert(appUsers)
+      .values(
+        DEMO_MEMBERS.map(({ role }) => ({
+          id: demoId(`member:${role}`),
+          authUserId: `demo-persona-${role}`,
+          role,
+        })),
+      )
+      .onConflictDoNothing();
+  }
 
   // The base seed generates app_user ids with newId(), so they cannot be
   // hardcoded here — look them up by the role they hold.
-  const roster = await db.select({ id: appUsers.id, role: appUsers.role }).from(appUsers);
+  const roster = production
+    ? DEMO_MEMBERS.map(({ role }) => ({ id: demoId(`member:${role}`), role }))
+    : await db.select({ id: appUsers.id, role: appUsers.role }).from(appUsers);
   const byRole = new Map<Role, string>(roster.map((row) => [row.role, row.id]));
   const member = (role: Role): string => {
     const id = byRole.get(role);
     if (!id) {
-      throw new Error(
-        `SEED_DEMO needs the six local role fixtures, but no '${role}' exists. ` +
-          `Run db:seed without NODE_ENV=production first.`,
-      );
+      throw new Error(`SEED_DEMO needs a '${role}' display member. Run the base seed first.`);
     }
     return id;
   };
@@ -93,9 +148,18 @@ export async function seedDemo(): Promise<void> {
   const task = (slug: string): string => demoId(`task:${slug}`);
   const message = (slug: string): string => demoId(`message:${slug}`);
 
-  // The pool that event.allocation_cents divides up. Must cover every
-  // allocation below (rule 1), so it is set before the events are inserted.
-  await db.update(settings).set({ budgetCents: 1_000_000, updatedAt: new Date() });
+  // Upgrade an untouched base seed once, then preserve every later budget edit.
+  await db.execute(sql`
+    UPDATE "settings"
+    SET "budget_cents" = 1000000, "updated_at" = ${new Date(now)}
+    WHERE "id" = 1
+      AND "budget_cents" = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM "event" WHERE "id" IN (
+          ${event("oweek")}, ${event("hackathon")}, ${event("gala")}
+        )
+      )
+  `);
 
   await db
     .insert(teams)

@@ -1,9 +1,9 @@
 import { roleSchema } from "@ctp/shared";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { closeNodeDb, nodeDb } from "./client.js";
 import { newId } from "./id.js";
 import { appUsers, invites, settings } from "./schema/index.js";
-import { seedDemo } from "./seed-demo.js";
+import { demoInvitees, seedDemo } from "./seed-demo.js";
 
 /**
  * Creates the pinned settings row. `settings` is a singleton table (CHECK id = 1)
@@ -11,8 +11,11 @@ import { seedDemo } from "./seed-demo.js";
  * rule 1 takes SELECT ... FOR UPDATE on it. ON CONFLICT DO NOTHING keeps the
  * seed idempotent.
  */
-async function seedSettings(): Promise<void> {
-  await nodeDb().insert(settings).values({ id: 1 }).onConflictDoNothing();
+async function seedSettings(demoEnabled: boolean): Promise<void> {
+  await nodeDb()
+    .insert(settings)
+    .values({ id: 1, budgetCents: demoEnabled ? 1_000_000 : 0 })
+    .onConflictDoNothing();
 }
 
 async function seedLocal(): Promise<void> {
@@ -33,52 +36,72 @@ async function seedLocal(): Promise<void> {
   }
 }
 
-async function seedProduction(): Promise<void> {
-  const email = process.env.FOUNDER_EMAIL?.toLowerCase();
-  if (!email) throw new Error("FOUNDER_EMAIL is required for the production bootstrap seed.");
-
+async function seedProduction(demoEnabled: boolean): Promise<void> {
+  const invitees = demoInvitees(
+    process.env.FOUNDER_EMAIL,
+    demoEnabled ? process.env.DEMO_DIRECTOR_EMAILS : undefined,
+  );
   const db = nodeDb();
   await db.transaction(async (tx) => {
-    // Serialises concurrent seeds so two runs cannot both find "no live invite"
-    // and both insert one.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}), hashtext('president'))`);
-    const now = new Date();
-    const [existing] = await tx
-      .select({ id: invites.id })
-      .from(invites)
-      .where(
-        and(
-          eq(invites.email, email),
-          eq(invites.role, "president"),
-          isNull(invites.acceptedAt),
-          isNull(invites.revokedAt),
-          gt(invites.expiresAt, now),
-        ),
-      )
-      .limit(1);
+    for (const { email, role } of invitees) {
+      // Serialises concurrent seeds so two runs cannot both find "no live invite"
+      // and both insert one.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${email}), hashtext('demo-bootstrap'))`,
+      );
+      const member = await tx.execute<{ exists: boolean }>(sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM "app_user" member
+          JOIN auth."user" account ON account."id" = member."auth_user_id"
+          WHERE lower(account."email") = ${email}
+        ) AS "exists"
+      `);
+      if (member.rows[0]?.exists) continue;
 
-    // No revoke-then-insert dance any more. That existed only to work around
-    // the partial unique index on open invites, which could not express
-    // "expires_at > now()" (now() is not immutable, index predicates must be) —
-    // so a lapsed invite blocked re-inviting the same address. The index is
-    // gone; duplicate live invites are harmless because authenticate.ts takes
-    // the newest with ORDER BY expires_at DESC LIMIT 1 FOR UPDATE.
-    if (!existing) {
-      await tx.insert(invites).values({
-        id: newId(),
-        email,
-        role: "president",
-        expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-      });
+      const now = new Date();
+      await tx
+        .update(invites)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(invites.email, email),
+            ne(invites.role, role),
+            isNull(invites.acceptedAt),
+            isNull(invites.revokedAt),
+            gt(invites.expiresAt, now),
+          ),
+        );
+      const [existing] = await tx
+        .select({ id: invites.id })
+        .from(invites)
+        .where(
+          and(
+            eq(invites.email, email),
+            eq(invites.role, role),
+            isNull(invites.acceptedAt),
+            isNull(invites.revokedAt),
+            gt(invites.expiresAt, now),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        await tx.insert(invites).values({
+          id: newId(),
+          email,
+          role,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        });
+      }
     }
   });
 }
 
-await seedSettings();
-if (process.env.NODE_ENV !== "production") await seedLocal();
-if (process.env.NODE_ENV === "production" || process.env.FOUNDER_EMAIL) await seedProduction();
-// Opt-in only, and never in production. CI runs this script before the
-// integration tier, so anything unconditional here becomes the shared test
-// fixture — see seed-demo.ts for the constraint that imposes.
-if (process.env.SEED_DEMO && process.env.NODE_ENV !== "production") await seedDemo();
+const demoEnabled = process.env.SEED_DEMO === "1";
+const production = process.env.NODE_ENV === "production";
+await seedSettings(demoEnabled);
+if (!production) await seedLocal();
+if (production || process.env.FOUNDER_EMAIL) await seedProduction(demoEnabled);
+if (demoEnabled) await seedDemo(production);
 await closeNodeDb();
