@@ -1,11 +1,14 @@
 import {
   can,
   createExpenseSchema,
+  expenseParamsSchema,
   listExpensesQuerySchema,
+  updateExpenseSchema,
   type CreateExpense,
   type ExpenseListResponse,
   type ExpenseResponse,
   type ListExpensesQuery,
+  type UpdateExpense,
 } from "@ctp/shared";
 import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
@@ -13,6 +16,7 @@ import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import { appUsers, expenses, notifications } from "../../db/schema/index.js";
 import { authenticate, authorise, authoriseCapability, validate } from "../../middleware/index.js";
+import { ExpenseTransitionError, updatePendingExpense } from "./service.js";
 
 export const expensesRouter = Router();
 
@@ -23,6 +27,12 @@ function sqlState(error: unknown): string | undefined {
     cursor = (cursor as { cause?: unknown }).cause;
   }
   return undefined;
+}
+
+function transitionError(res: Response, error: ExpenseTransitionError): void {
+  const status =
+    error.code === "EXPENSE_NOT_FOUND" ? 404 : error.code === "OWN_EXPENSE" ? 422 : 409;
+  res.status(status).json({ error: { code: error.code, message: error.message } });
 }
 
 function unknownReference(res: Response): void {
@@ -111,6 +121,26 @@ expensesRouter.post(
       });
       res.status(201).json({ expense } satisfies ExpenseResponse);
     } catch (error) {
+      if (sqlState(error) === "23503") return unknownReference(res);
+      next(error);
+    }
+  },
+);
+
+expensesRouter.patch(
+  "/expenses/:id",
+  authenticate,
+  authoriseCapability("expense:approve"),
+  validate(expenseParamsSchema, "params"),
+  validate(updateExpenseSchema),
+  async (req, res, next) => {
+    try {
+      const expense = await getDb().transaction((tx) =>
+        updatePendingExpense(tx, req.params.id!, res.locals.validated as UpdateExpense),
+      );
+      res.status(200).json({ expense } satisfies ExpenseResponse);
+    } catch (error) {
+      if (error instanceof ExpenseTransitionError) return transitionError(res, error);
       if (sqlState(error) === "23503") return unknownReference(res);
       next(error);
     }
