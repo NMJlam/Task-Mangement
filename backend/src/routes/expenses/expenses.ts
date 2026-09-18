@@ -1,10 +1,13 @@
 import {
   can,
   createExpenseSchema,
+  decideExpenseSchema,
   expenseParamsSchema,
   listExpensesQuerySchema,
   updateExpenseSchema,
   type CreateExpense,
+  type DecideExpense,
+  type ExpenseDecisionResponse,
   type ExpenseListResponse,
   type ExpenseResponse,
   type ListExpensesQuery,
@@ -16,7 +19,13 @@ import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import { appUsers, expenses, notifications } from "../../db/schema/index.js";
 import { authenticate, authorise, authoriseCapability, validate } from "../../middleware/index.js";
-import { deletePendingExpense, ExpenseTransitionError, updatePendingExpense } from "./service.js";
+import { getBudgetSummary } from "../budget/service.js";
+import {
+  decideExpense,
+  deletePendingExpense,
+  ExpenseTransitionError,
+  updatePendingExpense,
+} from "./service.js";
 
 export const expensesRouter = Router();
 
@@ -156,6 +165,29 @@ expensesRouter.delete(
     try {
       await getDb().transaction((tx) => deletePendingExpense(tx, req.params.id!));
       res.status(204).end();
+    } catch (error) {
+      if (error instanceof ExpenseTransitionError) return transitionError(res, error);
+      next(error);
+    }
+  },
+);
+
+expensesRouter.post(
+  "/expenses/:id/decision",
+  authenticate,
+  authoriseCapability("expense:approve"),
+  validate(expenseParamsSchema, "params"),
+  validate(decideExpenseSchema),
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const expense = await db.transaction((tx) =>
+        decideExpense(tx, req.params.id!, res.locals.validated as DecideExpense, req.user!.id),
+      );
+      res.status(200).json({
+        expense,
+        budget: await getBudgetSummary(db),
+      } satisfies ExpenseDecisionResponse);
     } catch (error) {
       if (error instanceof ExpenseTransitionError) return transitionError(res, error);
       next(error);
