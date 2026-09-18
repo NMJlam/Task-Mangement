@@ -1,35 +1,58 @@
 import { listEventsResponseSchema, type EventSummary } from "@ctp/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+export type EventsQuery = {
+  teamId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  ownerId?: string;
+};
 
 type EventsState =
   | { status: "loading" }
   | { status: "ok"; items: EventSummary[]; nextCursor: string | null }
   | { status: "error"; message: string };
 
+/** `cursor` is opaque — base64 of `startsAt|id`. Pass `nextCursor` back verbatim. */
+function toSearch(query: EventsQuery, cursor?: string) {
+  const params = new URLSearchParams();
+  if (query.teamId) params.set("teamId", query.teamId);
+  if (query.status) params.set("status", query.status);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.ownerId) params.set("ownerId", query.ownerId);
+  if (cursor) params.set("cursor", cursor);
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
 /**
- * ViewModel for the event list (R9). Owns the fetch + parse against the
- * shared schema and exposes plain state to the view — `routes/events.tsx`
- * stays declarative. No pagination wiring yet (Phase 6 scope is the list
- * route itself); `nextCursor` is exposed for a future "load more".
+ * ViewModel for the event list (R9). Owns the fetch + parse against the shared
+ * schema and exposes plain state to the view — `routes/events.tsx` stays
+ * declarative.
+ *
+ * Filtering is server-side. The API sorts `startsAt DESC`, so splitting the page
+ * into upcoming/past on the client would show groups that stay partial until the
+ * reader pages all the way to the bottom; `from`/`to` let the server answer the
+ * question instead.
  */
-export function useEvents(query: { teamId?: string; status?: string } = {}): EventsState {
-  const { teamId, status } = query;
+export function useEvents(query: EventsQuery = {}) {
+  const { teamId, status, from, to, ownerId } = query;
   const [state, setState] = useState<EventsState>({ status: "loading" });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [mutationError, setMutationError] = useState<string>();
 
   useEffect(() => {
     let active = true;
     setState({ status: "loading" });
 
-    const params = new URLSearchParams();
-    if (teamId) params.set("teamId", teamId);
-    if (status) params.set("status", status);
-    const qs = params.toString();
-
-    fetch(`/api/events${qs ? `?${qs}` : ""}`, { credentials: "include" })
+    fetch(`/api/events${toSearch({ teamId, status, from, to, ownerId })}`, {
+      credentials: "include",
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load events");
-        const body: unknown = await res.json();
-        return listEventsResponseSchema.parse(body);
+        return listEventsResponseSchema.parse(await res.json());
       })
       .then((parsed) => {
         if (active) setState({ status: "ok", items: parsed.items, nextCursor: parsed.nextCursor });
@@ -46,7 +69,32 @@ export function useEvents(query: { teamId?: string; status?: string } = {}): Eve
     return () => {
       active = false;
     };
-  }, [teamId, status]);
+  }, [teamId, status, from, to, ownerId]);
 
-  return state;
+  const loadMore = useCallback(async () => {
+    if (state.status !== "ok" || !state.nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMutationError(undefined);
+    try {
+      const search = toSearch({ teamId, status, from, to, ownerId }, state.nextCursor);
+      const res = await fetch(`/api/events${search}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load more events");
+      const parsed = listEventsResponseSchema.parse(await res.json());
+      setState((previous) =>
+        previous.status === "ok"
+          ? {
+              status: "ok",
+              items: [...previous.items, ...parsed.items],
+              nextCursor: parsed.nextCursor,
+            }
+          : previous,
+      );
+    } catch (cause: unknown) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to load more events");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [state, loadingMore, teamId, status, from, to, ownerId]);
+
+  return { state, loadMore, loadingMore, mutationError };
 }

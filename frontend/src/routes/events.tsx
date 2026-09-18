@@ -1,8 +1,11 @@
 import { CalendarDays, MapPin } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { EventFilters, type TimeFilter } from "@/components/event-filters";
 import { EventHealthStrip } from "@/components/event-health-strip";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEvents } from "@/hooks/use-events";
 
@@ -13,7 +16,20 @@ const eventDate = new Intl.DateTimeFormat(undefined, {
 
 /** The event list (R9). ViewModel (`useEvents`) does the fetching; this stays declarative. */
 export function EventsPage() {
-  const events = useEvents();
+  const [time, setTime] = useState<TimeFilter>("upcoming");
+  const [status, setStatus] = useState("");
+  // One timestamp per mount — a fresh `new Date()` each render would refetch forever.
+  const now = useMemo(() => new Date().toISOString(), []);
+  const query = useMemo(
+    () => ({
+      status: status || undefined,
+      from: time === "upcoming" ? now : undefined,
+      to: time === "past" ? now : undefined,
+    }),
+    [status, time, now],
+  );
+  const events = useEvents(query);
+  const { state } = events;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -22,26 +38,33 @@ export function EventsPage() {
         description="Plan upcoming club events and keep delivery, deadlines, and spending visible."
       />
 
-      {events.status === "loading" && (
+      <EventFilters
+        time={time}
+        status={status}
+        onTimeChange={setTime}
+        onStatusChange={setStatus}
+      />
+
+      {state.status === "loading" && (
         <p className="mt-8 text-sm text-muted-foreground" role="status">
           Loading Events…
         </p>
       )}
-      {events.status === "error" && (
+      {state.status === "error" && (
         <p className="mt-8 text-sm text-destructive" role="alert">
-          Couldn&apos;t load events: {events.message}. Refresh the page to try again.
+          Couldn&apos;t load events: {state.message}. Refresh the page to try again.
         </p>
       )}
-      {events.status === "ok" && events.items.length === 0 && (
+      {state.status === "ok" && state.items.length === 0 && (
         <Card className="mt-8 border-dashed shadow-none">
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             No upcoming events. Lead+ members can create one to get started.
           </CardContent>
         </Card>
       )}
-      {events.status === "ok" && events.items.length > 0 && (
+      {state.status === "ok" && state.items.length > 0 && (
         <section aria-label="Event list" className="mt-8 grid gap-3">
-          {events.items.map((event) => (
+          {state.items.map((event) => (
             <Card
               key={event.id}
               className="gap-0 py-0 shadow-none transition-[border-color,box-shadow] hover:border-input hover:shadow-sm"
@@ -63,6 +86,14 @@ export function EventsPage() {
                         <time dateTime={new Date(event.startsAt).toISOString()}>
                           {eventDate.format(new Date(event.startsAt))}
                         </time>
+                        {event.endsAt && (
+                          <span>
+                            –{" "}
+                            <time dateTime={new Date(event.endsAt).toISOString()}>
+                              {eventDate.format(new Date(event.endsAt))}
+                            </time>
+                          </span>
+                        )}
                       </span>
                       {event.venue && (
                         <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -85,6 +116,23 @@ export function EventsPage() {
             </Card>
           ))}
         </section>
+      )}
+
+      {state.status === "ok" && state.nextCursor && (
+        <div className="mt-6 flex justify-center">
+          <Button
+            variant="outline"
+            disabled={events.loadingMore}
+            onClick={() => void events.loadMore()}
+          >
+            {events.loadingMore ? "Loading…" : "Load More"}
+          </Button>
+        </div>
+      )}
+      {events.mutationError && (
+        <p className="mt-4 text-sm text-destructive" role="alert">
+          {events.mutationError}. Try again.
+        </p>
       )}
     </main>
   );
