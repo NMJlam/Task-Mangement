@@ -8,7 +8,7 @@ type EventState =
   | { status: "error"; message: string };
 
 /** ViewModel for a single event (GET /api/events/:id). */
-export function useEvent(id: string | undefined): EventState {
+export function useEvent(id: string | undefined) {
   const [state, setState] = useState<EventState>({ status: "loading" });
 
   useEffect(() => {
@@ -16,7 +16,9 @@ export function useEvent(id: string | undefined): EventState {
     let active = true;
     setState({ status: "loading" });
 
-    fetch(`/api/events/${id}?include=tasks`, { credentials: "include" })
+    // `channel` is asked for by name — `channelId` is absent without it, and the
+    // Thread tab has nothing to read.
+    fetch(`/api/events/${id}?include=tasks,channel`, { credentials: "include" })
       .then(async (res) => {
         if (res.status === 404) return { status: "not_found" as const };
         if (!res.ok) throw new Error("Failed to load event");
@@ -40,5 +42,5 @@ export function useEvent(id: string | undefined): EventState {
     };
   }, [id]);
 
-  return state;
+  return { state };
 }
