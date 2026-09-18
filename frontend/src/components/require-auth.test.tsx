@@ -1,10 +1,32 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 import { RequireAuth } from "./require-auth";
+import { LoginPage } from "@/routes/login";
 
 const useAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-auth", () => ({ useAuth }));
+
+it("redirects guests without waiting for the session request", () => {
+  useAuth.mockReturnValue({
+    account: null,
+    isLoading: true,
+    member: null,
+    needsInvite: false,
+    signOut: vi.fn(),
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/protected"]}>
+      <Routes>
+        <Route path="/protected" element={<RequireAuth>secret</RequireAuth>} />
+        <Route path="/login" element={<LoginPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByRole("button", { name: /sign in with google/i })).toBeVisible();
+});
 
 it("hides capability-gated UI from roles without the capability", () => {
   useAuth.mockReturnValue({
