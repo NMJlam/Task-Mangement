@@ -2,6 +2,7 @@ import { roleSchema, type Role } from "@ctp/shared";
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * The membership gate. An invite pre-assigns the position, so a new treasurer
@@ -44,5 +45,6 @@ export const invites = pgTable(
       "invite_not_both_accepted_and_revoked_check",
       sql`${table.acceptedAt} IS NULL OR ${table.revokedAt} IS NULL`,
     ),
+    check("invite_uuid_shape_check", uuidShape(table.id)),
   ],
 );

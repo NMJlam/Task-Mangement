@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 
 export const notifications = pgTable(
   "notification",
@@ -46,5 +47,6 @@ export const notifications = pgTable(
       "notification_entity_all_or_nothing_check",
       sql`num_nulls(${table.entityType}, ${table.entityId}) IN (0, 2)`,
     ),
+    check("notification_uuid_shape_check", uuidShape(table.id, table.userId, table.entityId)),
   ],
 );

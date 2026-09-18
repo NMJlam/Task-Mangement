@@ -1,6 +1,7 @@
-import { index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { events } from "./event.js";
+import { uuidShape } from "./sql-uuid.js";
 import { teams } from "./team.js";
 
 /**
@@ -48,5 +49,9 @@ export const workstreams = pgTable(
     // The `GET /api/events` teamId filter is an EXISTS leading with team_id;
     // the unique index above leads with event_id and doesn't serve it.
     index("workstream_team_idx").on(table.teamId),
+    check(
+      "workstream_uuid_shape_check",
+      uuidShape(table.id, table.eventId, table.teamId, table.lead),
+    ),
   ],
 );

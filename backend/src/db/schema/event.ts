@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { notBlank, sqlEnumValues } from "./sql-enum.js";
+import { uuidShape } from "./sql-uuid.js";
 
 /**
  * An event. Note there is no team_id — several teams contribute to one event,
@@ -76,5 +77,6 @@ export const events = pgTable(
       "event_attendance_estimate_non_negative_check",
       sql`${table.attendanceEstimate} IS NULL OR ${table.attendanceEstimate} >= 0`,
     ),
+    check("event_uuid_shape_check", uuidShape(table.id, table.owner)),
   ],
 );

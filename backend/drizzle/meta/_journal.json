@@ -36,6 +36,20 @@
       "when": 1789701041075,
       "tag": "0004_nasty_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789744027186,
+      "tag": "0005_swift_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789746147723,
+      "tag": "0006_tough_guardian",
+      "breakpoints": true
     }
   ]
 }

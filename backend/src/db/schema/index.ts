@@ -15,6 +15,7 @@
 
 export * from "./auth.js";
 export * from "./sql-enum.js";
+export * from "./sql-uuid.js";
 
 // Identity
 export * from "./app-user.js";

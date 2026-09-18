@@ -30,6 +30,14 @@ const eventId = newId();
 const channelId = newId();
 
 /**
+ * A UUID-shaped value Postgres accepts and `z.uuid()` rejects: the version and
+ * variant nibbles are unconstrained. This is the literal value that was found in
+ * production-shaped data and broke `/api/tasks` for every reader, so the tests
+ * below use it rather than an invented one.
+ */
+const NOT_ZOD_SHAPED = "6c283ddb-61a9-37dd-d39b-201e49b643ae";
+
+/**
  * Runs an insert that is expected to violate a constraint and returns the name
  * of the constraint the database reported. Returning the name (rather than
  * asserting inside) makes a failure message say which constraint fired instead
@@ -454,5 +462,111 @@ describe("ai_run constraints", () => {
          VALUES ('${newId()}', '${channelId}', 'hello', -1)`,
       ),
     ).toBe("ai_run_cost_non_negative_check");
+  });
+});
+
+/**
+ * One deliberately-failing insert per `*_uuid_shape_check`.
+ *
+ * These constraints exist because Postgres's `uuid` type accepts any 8-4-4-4-12
+ * hex string while `z.uuid()` does not, so a value written out of band is
+ * storable yet unparseable — and the frontend parses whole lists in one zod
+ * call, so ONE such row takes out the Tasks page and the Dashboard for every
+ * user. Each table is proved here rather than trusting the shared helper.
+ */
+describe("uuid shape constraints", () => {
+  const tables: { table: string; insert: string; constraint: string }[] = [
+    {
+      table: "app_user",
+      insert: `INSERT INTO "app_user" ("id", "auth_user_id", "role") VALUES ('${NOT_ZOD_SHAPED}', '${AUTH_SPARE}', 'officer')`,
+      constraint: "app_user_uuid_shape_check",
+    },
+    {
+      table: "team",
+      insert: `INSERT INTO "team" ("id", "name") VALUES ('${NOT_ZOD_SHAPED}', 'constraint-bad-uuid-team')`,
+      constraint: "team_uuid_shape_check",
+    },
+    {
+      // Every uuid column here is an FK, so the bad value must break one of them.
+      // A CHECK is evaluated while the tuple is inserted and the FK is an AFTER
+      // trigger, so the shape check is what reports.
+      table: "team_member",
+      insert: `INSERT INTO "team_member" ("team_id", "user_id") VALUES ('${NOT_ZOD_SHAPED}', '${userA}')`,
+      constraint: "team_member_uuid_shape_check",
+    },
+    {
+      table: "invite",
+      insert: `INSERT INTO "invite" ("id", "email", "role", "expires_at") VALUES ('${NOT_ZOD_SHAPED}', 'shape@example.com', 'officer', now() + interval '7 days')`,
+      constraint: "invite_uuid_shape_check",
+    },
+    {
+      table: "event",
+      insert: `INSERT INTO "event" ("id", "title", "starts_at") VALUES ('${NOT_ZOD_SHAPED}', 'E', now())`,
+      constraint: "event_uuid_shape_check",
+    },
+    {
+      table: "workstream",
+      insert: `INSERT INTO "workstream" ("id", "event_id", "team_id") VALUES ('${NOT_ZOD_SHAPED}', '${eventId}', '${teamId}')`,
+      constraint: "workstream_uuid_shape_check",
+    },
+    {
+      table: "task",
+      insert: `INSERT INTO "task" ("id", "title") VALUES ('${NOT_ZOD_SHAPED}', 'T')`,
+      constraint: "task_uuid_shape_check",
+    },
+    {
+      table: "task_assignee",
+      insert: `INSERT INTO "task_assignee" ("task_id", "user_id") VALUES ('${NOT_ZOD_SHAPED}', '${userA}')`,
+      constraint: "task_assignee_uuid_shape_check",
+    },
+    {
+      table: "channel",
+      insert: `INSERT INTO "channel" ("id", "kind", "name") VALUES ('${NOT_ZOD_SHAPED}', 'group', 'Shape')`,
+      constraint: "channel_uuid_shape_check",
+    },
+    {
+      table: "chan_member",
+      insert: `INSERT INTO "chan_member" ("channel_id", "user_id") VALUES ('${NOT_ZOD_SHAPED}', '${userA}')`,
+      constraint: "chan_member_uuid_shape_check",
+    },
+    {
+      table: "ai_run",
+      insert: `INSERT INTO "ai_run" ("id", "channel_id", "prompt") VALUES ('${NOT_ZOD_SHAPED}', '${channelId}', 'x')`,
+      constraint: "ai_run_uuid_shape_check",
+    },
+    {
+      table: "message",
+      insert: `INSERT INTO "message" ("id", "channel_id", "body") VALUES ('${NOT_ZOD_SHAPED}', '${channelId}', 'x')`,
+      constraint: "message_uuid_shape_check",
+    },
+    {
+      table: "expense",
+      insert: `INSERT INTO "expense" ("id", "description", "category", "amount_cents") VALUES ('${NOT_ZOD_SHAPED}', 'Pizza', 'catering', 100)`,
+      constraint: "expense_uuid_shape_check",
+    },
+    {
+      table: "notification",
+      insert: `INSERT INTO "notification" ("id", "user_id", "kind", "body") VALUES ('${NOT_ZOD_SHAPED}', '${userA}', 'mention', 'x')`,
+      constraint: "notification_uuid_shape_check",
+    },
+    {
+      table: "audit_log",
+      insert: `INSERT INTO "audit_log" ("id", "action", "entity_type") VALUES ('${NOT_ZOD_SHAPED}', 'task.updated', 'task')`,
+      constraint: "audit_log_uuid_shape_check",
+    },
+  ];
+
+  it.each(tables)("rejects a non-conformant id on $table", async ({ insert, constraint }) => {
+    expect(await violatedConstraint(insert)).toBe(constraint);
+  });
+
+  // The other direction: the constraint must not reject what the app writes.
+  it("accepts the shapes newId() and the demo seed produce", async () => {
+    const id = newId();
+    const inserted = await db.execute(sql`
+      INSERT INTO "task" ("id", "title") VALUES (${id}::uuid, 'shape ok') RETURNING "id"
+    `);
+    expect(inserted.rows).toHaveLength(1);
+    await db.execute(sql`DELETE FROM "task" WHERE "id" = ${id}::uuid`);
   });
 });

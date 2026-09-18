@@ -12,6 +12,7 @@ import {
 import { aiRuns } from "./ai-run.js";
 import { appUsers } from "./app-user.js";
 import { channels } from "./channel.js";
+import { uuidShape } from "./sql-uuid.js";
 import { tasks } from "./task.js";
 
 export const messages = pgTable(
@@ -84,6 +85,17 @@ export const messages = pgTable(
     check(
       "message_not_own_parent_check",
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
+    ),
+    check(
+      "message_uuid_shape_check",
+      uuidShape(
+        table.id,
+        table.channelId,
+        table.taskId,
+        table.parentId,
+        table.author,
+        table.aiRunId,
+      ),
     ),
   ],
 );
