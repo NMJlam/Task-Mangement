@@ -5,7 +5,14 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, events, tasks, teams, workstreams } from "../../db/schema/index.js";
+import {
+  appUsers,
+  events,
+  taskAssignees,
+  tasks,
+  teams,
+  workstreams,
+} from "../../db/schema/index.js";
 
 const getSession = vi.hoisted(() => vi.fn());
 vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
@@ -72,6 +79,12 @@ describe("/api/tasks", () => {
     return row!;
   }
 
+  /** Writes the junction rows a task's ownership now lives in. */
+  async function assignTo(taskId: string, userIds: readonly string[]) {
+    if (userIds.length === 0) return;
+    await db.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
+  }
+
   // Delete order follows the FKs. Events go first: deleting one cascades to its
   // workstreams and, through the composite FK, to their tasks — and
   // workstream.team_id is RESTRICT, so no team can go while one points at it.
@@ -86,7 +99,12 @@ describe("/api/tasks", () => {
       DELETE FROM "task"
       WHERE "team_id" IN (SELECT "id" FROM "team" WHERE "name" LIKE 'test-task-%')
          OR "creator" IN (SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%')
-         OR "assignee" IN (SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%')
+         OR "id" IN (
+              SELECT "task_id" FROM "task_assignee"
+              WHERE "user_id" IN (
+                SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%'
+              )
+            )
     `);
     await db.execute(sql`DELETE FROM "team" WHERE "name" LIKE 'test-task-%'`);
     await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-task-%'`);
@@ -111,7 +129,7 @@ describe("/api/tasks", () => {
 
       const response = await request(app)
         .post("/api/tasks")
-        .send({ teamId, title: "  Book the venue  ", assignee: actor.id });
+        .send({ teamId, title: "  Book the venue  " });
 
       expect(response.status).toBe(201);
       expect(response.body.task).toMatchObject({
@@ -119,8 +137,50 @@ describe("/api/tasks", () => {
         title: "Book the venue",
         status: "todo",
         priority: "medium",
-        assignee: actor.id,
+        assigneeIds: [],
       });
+    });
+
+    it("creates a task owned by two members", async () => {
+      const actor = await member("officer", "officer");
+      const director = await member("director", "director");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ teamId, title: "Share the load", assigneeIds: [actor.id, director.id] });
+
+      expect(response.status).toBe(201);
+      expect(response.body.task.assigneeIds).toEqual([actor.id, director.id]);
+      // The rows are real, not just echoed back: the junction holds both.
+      const links = await db
+        .select({ userId: taskAssignees.userId })
+        .from(taskAssignees)
+        .where(eq(taskAssignees.taskId, response.body.task.id));
+      expect(links.map((link) => link.userId).sort()).toEqual([actor.id, director.id].sort());
+    });
+
+    it("stores and returns a description, trimming it", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ teamId, title: "With detail", description: "  Bring the AV cart.  " });
+      expect(created.status).toBe(201);
+      expect(created.body.task.description).toBe("Bring the AV cart.");
+
+      // An emptied field clears it, and the read path agrees.
+      const cleared = await request(app)
+        .patch(`/api/tasks/${created.body.task.id}`)
+        .send({ description: "" });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.task.description).toBeNull();
+
+      const reread = await request(app).get(`/api/tasks/${created.body.task.id}`);
+      expect(reread.body.task.description).toBeNull();
     });
 
     // `creator` is stamped from the session, so a caller cannot attribute work
@@ -177,7 +237,25 @@ describe("/api/tasks", () => {
 
       const response = await request(app)
         .post("/api/tasks")
-        .send({ teamId, title: "Unassigned", assignee: UNKNOWN_ID });
+        .send({ teamId, title: "Unassigned", assigneeIds: [UNKNOWN_ID] });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe("ASSIGNEE_NOT_FOUND");
+    });
+
+    it("422s the batch when one assignee in the whole batch is unknown", async () => {
+      const actor = await member("director", "director");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const response = await request(app)
+        .post("/api/tasks/bulk")
+        .send({
+          tasks: [
+            { teamId, title: "Fine", assigneeIds: [actor.id] },
+            { teamId, title: "Not fine", assigneeIds: [UNKNOWN_ID] },
+          ],
+        });
 
       expect(response.status).toBe(422);
       expect(response.body.error.code).toBe("ASSIGNEE_NOT_FOUND");
@@ -208,6 +286,30 @@ describe("/api/tasks", () => {
       const response = await request(app).get("/api/tasks").query({ limit: 500 });
 
       expect(response.status).toBe(422);
+    });
+
+    // `?assignee=` is membership: a task held by two people answers for either
+    // of them, and answers once — the join must not multiply the row.
+    it("returns a shared task once for either of its assignees", async () => {
+      const actor = await member("officer", "officer");
+      const director = await member("director", "director");
+      const { id: teamId } = await team();
+      const shared = await seedTask(teamId, { title: "Shared" });
+      await assignTo(shared.id, [actor.id, director.id]);
+      await seedTask(teamId, { title: "Unowned" });
+      signedInAs(actor);
+
+      for (const assignee of [actor.id, director.id]) {
+        const response = await request(app).get("/api/tasks").query({ teamId, assignee });
+        expect(response.status).toBe(200);
+        expect(response.body.tasks.map((task: { title: string }) => task.title)).toEqual([
+          "Shared",
+        ]);
+      }
+
+      const bystander = await member("treasurer", "treasurer");
+      const none = await request(app).get("/api/tasks").query({ teamId, assignee: bystander.id });
+      expect(none.body.tasks).toEqual([]);
     });
   });
 
@@ -250,14 +352,20 @@ describe("/api/tasks", () => {
   describe("GET /api/tasks/:id", () => {
     it("returns one task", async () => {
       const actor = await member("officer", "officer");
+      const director = await member("director", "director");
       const { id: teamId } = await team();
       const existing = await seedTask(teamId);
+      await assignTo(existing.id, [actor.id, director.id]);
       signedInAs(actor);
 
       const response = await request(app).get(`/api/tasks/${existing.id}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.task).toMatchObject({ id: existing.id, title: "Seeded task" });
+      expect(response.body.task).toMatchObject({
+        id: existing.id,
+        title: "Seeded task",
+        assigneeIds: [actor.id, director.id],
+      });
     });
 
     it("404s for an unknown id", async () => {
@@ -272,18 +380,83 @@ describe("/api/tasks", () => {
   });
 
   describe("PATCH /api/tasks/:id", () => {
-    it("applies a partial update and clears a nullable field", async () => {
+    it("applies a partial update", async () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
-      const existing = await seedTask(teamId, { assignee: null });
+      const existing = await seedTask(teamId);
       signedInAs(actor);
 
       const response = await request(app)
         .patch(`/api/tasks/${existing.id}`)
-        .send({ title: "Renamed", assignee: null });
+        .send({ title: "Renamed", dueAt: null });
 
       expect(response.status).toBe(200);
-      expect(response.body.task).toMatchObject({ title: "Renamed", assignee: null });
+      expect(response.body.task).toMatchObject({ title: "Renamed", dueAt: null });
+    });
+
+    it("replaces the assignment set with the submitted one", async () => {
+      const actor = await member("officer", "officer");
+      const director = await member("director", "director");
+      const secretary = await member("secretary", "secretary");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      await assignTo(existing.id, [actor.id, director.id]);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ assigneeIds: [secretary.id, director.id] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task.assigneeIds).toEqual([secretary.id, director.id]);
+    });
+
+    it("leaves the set alone when the patch omits it", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      await assignTo(existing.id, [actor.id]);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ title: "Renamed" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task.assigneeIds).toEqual([actor.id]);
+    });
+
+    it("unassigns everyone with an empty set", async () => {
+      const actor = await member("officer", "officer");
+      const director = await member("director", "director");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      await assignTo(existing.id, [actor.id, director.id]);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ assigneeIds: [] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task.assigneeIds).toEqual([]);
+      expect(
+        await db.select().from(taskAssignees).where(eq(taskAssignees.taskId, existing.id)),
+      ).toHaveLength(0);
+    });
+
+    it("422s ASSIGNEE_NOT_FOUND on an unknown member in the patch", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ assigneeIds: [UNKNOWN_ID] });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe("ASSIGNEE_NOT_FOUND");
     });
 
     it("422s on an empty patch", async () => {
@@ -312,8 +485,10 @@ describe("/api/tasks", () => {
   describe("PATCH /api/tasks/:id/status", () => {
     it("moves a task to a new status", async () => {
       const actor = await member("officer", "officer");
+      const director = await member("director", "director");
       const { id: teamId } = await team();
       const existing = await seedTask(teamId);
+      await assignTo(existing.id, [actor.id, director.id]);
       signedInAs(actor);
 
       const response = await request(app)
@@ -321,7 +496,12 @@ describe("/api/tasks", () => {
         .send({ status: "in_progress" });
 
       expect(response.status).toBe(200);
-      expect(response.body.task).toMatchObject({ id: existing.id, status: "in_progress" });
+      // The status write touches the task row alone, so the set must survive it.
+      expect(response.body.task).toMatchObject({
+        id: existing.id,
+        status: "in_progress",
+        assigneeIds: [actor.id, director.id],
+      });
     });
 
     it("accepts blocked, which is a first-class status here", async () => {

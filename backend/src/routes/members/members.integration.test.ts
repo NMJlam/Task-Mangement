@@ -5,7 +5,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, tasks, teamMembers, teams } from "../../db/schema/index.js";
+import { appUsers, taskAssignees, tasks, teamMembers, teams } from "../../db/schema/index.js";
 
 const getSession = vi.hoisted(() => vi.fn());
 vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
@@ -175,9 +175,11 @@ describe("/api/members (integration)", () => {
     const actor = await member("actor", "president");
     const leaving = await member("leaving", "officer");
     const successor = await member("successor", "officer");
-    await db
+    const [open] = await db
       .insert(tasks)
-      .values({ id: newId(), title: "test-role-open", assignee: leaving.id, creator: actor.id });
+      .values({ id: newId(), title: "test-role-open", creator: actor.id })
+      .returning();
+    await db.insert(taskAssignees).values({ taskId: open!.id, userId: leaving.id });
     getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
 
     const blocked = await request(app).delete(`/api/members/${leaving.id}`);
@@ -189,14 +191,54 @@ describe("/api/members (integration)", () => {
     );
     expect(removed.status).toBe(204);
 
-    const [handedOver] = await db.select().from(tasks).where(eq(tasks.title, "test-role-open"));
-    expect(handedOver!.assignee).toBe(successor.id);
+    // The successor takes the departing slot, and the departing link is gone.
+    const links = await db
+      .select({ userId: taskAssignees.userId })
+      .from(taskAssignees)
+      .where(eq(taskAssignees.taskId, open!.id));
+    expect(links.map((link) => link.userId)).toEqual([successor.id]);
     expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(0);
     // Rule 15: the auth user goes last, which revokes the session.
     const authRows = await db.execute(
       sql`SELECT 1 FROM auth."user" WHERE id = ${leaving.authUserId}`,
     );
     expect(authRows.rows).toHaveLength(0);
+  });
+
+  // A shared task is still open work for the person leaving, so the same guard
+  // applies — but the handover must not try to insert a link the successor
+  // already holds, and must not drop the co-assignee who is staying.
+  it("requires a handover even when co-assignees remain, and keeps them", async () => {
+    const actor = await member("actor", "president");
+    const leaving = await member("leaving", "officer");
+    const staying = await member("staying", "officer");
+    const successor = await member("successor", "officer");
+    const [shared] = await db
+      .insert(tasks)
+      .values({ id: newId(), title: "test-role-shared", creator: actor.id })
+      .returning();
+    await db.insert(taskAssignees).values([
+      { taskId: shared!.id, userId: leaving.id },
+      { taskId: shared!.id, userId: staying.id },
+      { taskId: shared!.id, userId: successor.id },
+    ]);
+    getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+    const blocked = await request(app).delete(`/api/members/${leaving.id}`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe("OPEN_TASKS");
+
+    const removed = await request(app).delete(
+      `/api/members/${leaving.id}?reassignTo=${successor.id}`,
+    );
+    expect(removed.status).toBe(204);
+
+    const links = await db
+      .select({ userId: taskAssignees.userId })
+      .from(taskAssignees)
+      .where(eq(taskAssignees.taskId, shared!.id));
+    // Deduplicated through the composite key: the successor holds it once.
+    expect(links.map((link) => link.userId).sort()).toEqual([staying.id, successor.id].sort());
   });
 
   it("removes a member who holds no open tasks", async () => {
