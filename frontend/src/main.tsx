@@ -9,6 +9,7 @@ import { EventsPage } from "./routes/events";
 import { FinancePage } from "./routes/finance";
 import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
+import { TasksPage } from "./routes/tasks";
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -57,6 +58,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <CalendarPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/tasks",
+    element: (
+      <RequireAuth>
+        <TasksPage />
       </RequireAuth>
     ),
   },

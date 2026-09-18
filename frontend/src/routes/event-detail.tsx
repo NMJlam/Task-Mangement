@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EventHealthStrip } from "@/components/event-health-strip";
 import { PageHeader } from "@/components/page-header";
+import { PriorityDot } from "@/components/priority-dot";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useEvent } from "@/hooks/use-event";
@@ -186,16 +187,8 @@ function TaskCard({ task }: { task: Task }) {
     <Card className="gap-3 py-4 shadow-none">
       <CardContent className="px-4">
         <div className="flex items-start gap-2">
-          <span
-            className={cn(
-              "mt-1.5 size-2 shrink-0 rounded-full",
-              task.priority === "urgent" && "bg-red-600",
-              task.priority === "high" && "bg-amber-500",
-              task.priority === "medium" && "bg-indigo-500",
-              task.priority === "low" && "bg-muted-foreground",
-            )}
-          >
-            <span className="sr-only">{task.priority} priority</span>
+          <span className="mt-1.5">
+            <PriorityDot priority={task.priority} />
           </span>
           <h4 className="text-sm leading-5 font-medium">{task.title}</h4>
         </div>
