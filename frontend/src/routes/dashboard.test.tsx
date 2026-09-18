@@ -78,6 +78,33 @@ it("summarises the current member’s work and upcoming events", async () => {
   expect(fetchMock).toHaveBeenCalledTimes(5);
 });
 
+it("keeps an activity outage out of the page-level error banner", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/me")
+      return Promise.resolve(
+        response({
+          user: { id: memberId, email: "jordan@example.com", role: "president", tier: 2 },
+        }),
+      );
+    if (url === "/api/tasks") return Promise.resolve(response({ tasks: [] }));
+    if (url === "/api/events") return Promise.resolve(response({ items: [], nextCursor: null }));
+    if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+    if (url === "/api/notifications") return Promise.resolve({ ok: false, status: 503 });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <DashboardPage />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 function response(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
 }

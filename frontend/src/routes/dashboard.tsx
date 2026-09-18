@@ -117,7 +117,6 @@ export function DashboardPage() {
     me.status === "error" ? "your tasks" : undefined,
     tasks.state.status === "error" ? "tasks" : undefined,
     events.state.status === "error" ? "events" : undefined,
-    notifications.state.status === "error" ? "activity" : undefined,
     members.state.status === "error" ? "committee load" : undefined,
   ].filter((label): label is string => Boolean(label));
 

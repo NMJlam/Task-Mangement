@@ -1,25 +1,23 @@
-import { taskPrioritySchema, taskStatusSchema, type Task, type TaskStatus } from "@ctp/shared";
+import { taskPrioritySchema } from "@ctp/shared";
 import { ListPlus } from "lucide-react";
 import type { FormEvent } from "react";
 import { PageHeader } from "@/components/common/page-header";
-import { PriorityDot } from "@/components/common/priority-dot";
+import { TaskBoard } from "@/components/tasks/task-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useEvents } from "@/hooks/use-events";
+import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
-
-const columns: { status: TaskStatus; label: string }[] = [
-  { status: "todo", label: "To Do" },
-  { status: "in_progress", label: "In Progress" },
-  { status: "blocked", label: "Blocked" },
-  { status: "done", label: "Done" },
-];
-const dueDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 export function TasksPage() {
   const tasks = useTasks();
+  const events = useEvents();
+  const members = useMembers();
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
+  const eventItems = events.state.status === "ok" ? events.state.items : undefined;
+  const memberItems = members.state.status === "ok" ? members.state.items : [];
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,83 +101,17 @@ export function TasksPage() {
         </Card>
       )}
       {tasks.state.status === "ok" && taskItems.length > 0 && (
-        <section aria-label="Task board" className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {columns.map((column) => {
-            const items = taskItems.filter((task) => task.status === column.status);
-            return (
-              <section key={column.status} aria-labelledby={`tasks-${column.status}`}>
-                <div className="mb-3 flex items-center justify-between gap-2 px-1">
-                  <h2 id={`tasks-${column.status}`} className="text-sm font-semibold">
-                    {column.label}
-                  </h2>
-                  <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
-                </div>
-                <div className="grid gap-2">
-                  {items.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      busy={tasks.busy === task.id}
-                      onStatusChange={(status) => void tasks.changeStatus(task, status)}
-                    />
-                  ))}
-                  {items.length === 0 && (
-                    <div className="rounded-lg border border-dashed px-3 py-10 text-center text-xs text-muted-foreground">
-                      No tasks
-                    </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
+        <section aria-label="Task board" className="mt-8">
+          <TaskBoard
+            tasks={taskItems}
+            members={memberItems}
+            events={eventItems}
+            busyTaskId={tasks.busy}
+            onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
+            onEventChange={(task, eventId) => void tasks.changeEvent(task, eventId)}
+          />
         </section>
       )}
     </main>
-  );
-}
-
-function TaskCard({
-  task,
-  busy,
-  onStatusChange,
-}: {
-  task: Task;
-  busy: boolean;
-  onStatusChange: (status: TaskStatus) => void;
-}) {
-  return (
-    <Card className="gap-4 py-4 shadow-none">
-      <CardContent className="px-4">
-        <div className="flex items-start gap-2">
-          <span className="mt-1.5">
-            <PriorityDot priority={task.priority} />
-          </span>
-          <h3 className="text-sm leading-5 font-medium">{task.title}</h3>
-        </div>
-        <div className="mt-4 flex items-end justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {task.dueAt ? `Due ${dueDate.format(task.dueAt)}` : "No due date"}
-          </p>
-          <div>
-            <Label htmlFor={`status-${task.id}`} className="sr-only">
-              Status for {task.title}
-            </Label>
-            <select
-              id={`status-${task.id}`}
-              value={task.status}
-              disabled={busy}
-              onChange={(event) => onStatusChange(taskStatusSchema.parse(event.target.value))}
-              className="h-8 max-w-32 cursor-pointer rounded-md border bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {columns.map((column) => (
-                <option key={column.status} value={column.status}>
-                  {column.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

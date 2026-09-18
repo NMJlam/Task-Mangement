@@ -1,4 +1,4 @@
-import type { RosterMember, Task } from "@ctp/shared";
+import type { EventSummary, RosterMember, Task } from "@ctp/shared";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
 import {
@@ -12,18 +12,20 @@ import {
 const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "full" });
 const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-/**
- * Read-only detail for one task. `taskSchema` has no description field, so this
- * shows only what a task actually carries — inventing a body here would be a
- * field the API never returns.
- */
+/** Task detail, plus the event link control when the parent supplies one. */
 export function TaskDetailDialog({
   task,
   members,
+  events,
+  busy,
+  onEventChange,
   onClose,
 }: {
   task: Task | undefined;
   members: RosterMember[];
+  events?: EventSummary[];
+  busy?: boolean;
+  onEventChange?: (task: Task, eventId: string | null) => void;
   onClose: () => void;
 }) {
   const assignee = members.find((member) => member.id === task?.assignee);
@@ -53,6 +55,34 @@ export function TaskDetailDialog({
           </div>
 
           <dl className="grid gap-3 border-t pt-4 text-sm">
+            {onEventChange && (
+              <div className="flex items-center justify-between gap-3">
+                <dt>
+                  <label htmlFor={`task-event-${task.id}`} className="text-muted-foreground">
+                    Linked event
+                  </label>
+                </dt>
+                <dd>
+                  <select
+                    id={`task-event-${task.id}`}
+                    value={task.eventId ?? ""}
+                    disabled={busy || !events}
+                    onChange={(event) => onEventChange(task, event.target.value || null)}
+                    className="h-9 max-w-56 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">No event</option>
+                    {task.eventId && !events?.some((event) => event.id === task.eventId) && (
+                      <option value={task.eventId}>Current event</option>
+                    )}
+                    {events?.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.title}
+                      </option>
+                    ))}
+                  </select>
+                </dd>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">Assignee</dt>
               <dd>

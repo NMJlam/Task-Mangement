@@ -4,11 +4,39 @@ import {
   createTaskSchema,
   listTasksQuerySchema,
   overdueTasksQuerySchema,
+  taskListResponseSchema,
+  taskParamsSchema,
   updateTaskSchema,
 } from "./task.js";
 
 const teamId = "018f3a4b-0000-7000-8000-000000000001";
 const eventId = "018f3a4b-0000-7000-8000-000000000002";
+const legacyTaskId = "6c283ddb-61a9-37dd-d39b-201e49b643ae";
+
+describe("task identifiers", () => {
+  it("accepts UUID-shaped legacy ids already stored by Postgres", () => {
+    const task = {
+      id: legacyTaskId,
+      eventId: null,
+      teamId: null,
+      assignee: null,
+      creator: null,
+      title: "Legacy task",
+      status: "todo",
+      priority: "medium",
+      dueAt: null,
+      boardOrder: 0,
+      minTier: 0,
+      completedAt: null,
+      aiRunId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    expect(taskListResponseSchema.parse({ tasks: [task] }).tasks[0]?.id).toBe(legacyTaskId);
+    expect(taskParamsSchema.parse({ id: legacyTaskId }).id).toBe(legacyTaskId);
+  });
+});
 
 describe("createTaskSchema", () => {
   it("trims the title and defaults status and priority", () => {

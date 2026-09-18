@@ -30,9 +30,12 @@ export type TaskPriority = z.infer<typeof taskPrioritySchema>;
  * and the two answer different questions.
  */
 const titleSchema = z.string().trim().min(1, "Title is required").max(200);
+// Postgres accepts every UUID-shaped value, including legacy rows whose
+// version/variant bits predate the stricter RFC check in z.uuid().
+const storedTaskIdSchema = z.guid();
 
 export const taskSchema = z.object({
-  id: z.uuid(),
+  id: storedTaskIdSchema,
   // Both parents nullable: standing committee work belongs to no event,
   // cross-cutting work belongs to no team.
   eventId: z.uuid().nullable(),
@@ -56,7 +59,7 @@ export const taskSchema = z.object({
 export type Task = z.infer<typeof taskSchema>;
 
 /** Route params for every /tasks/:id endpoint. */
-export const taskParamsSchema = z.object({ id: z.uuid() });
+export const taskParamsSchema = z.object({ id: storedTaskIdSchema });
 
 // ── POST /api/tasks ──────────────────────────────────────────────────────────
 

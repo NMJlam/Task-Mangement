@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { Role } from "@ctp/shared";
+import { roleSchema, type Role } from "@ctp/shared";
+import { fakerEN_AU as faker } from "@faker-js/faker";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { nodeDb } from "./client.js";
@@ -98,8 +99,43 @@ const TEAMS = [
   { slug: "events", name: "Events", lead: "secretary" },
 ] as const satisfies readonly { slug: string; name: string; lead: Role }[];
 
+const CLUB_EVENTS = [
+  {
+    slug: "trivia-night",
+    title: "Interfaculty Trivia Night",
+    description: "A social trivia fundraiser open to members and friends.",
+    team: "events",
+    owner: "secretary",
+    tasks: ["Confirm the quizmaster", "Publish team registrations", "Order prizes"],
+  },
+  {
+    slug: "club-expo",
+    title: "Semester Club Expo Stall",
+    description: "Recruit new members with demos, flyers and committee Q&A.",
+    team: "marketing",
+    owner: "vice_president",
+    tasks: ["Print sign-up QR cards", "Schedule stall volunteers", "Prepare the club display"],
+  },
+  {
+    slug: "member-showcase",
+    title: "Member Showcase Evening",
+    description: "An evening for members to present creative work and performances.",
+    team: "media",
+    owner: "director",
+    tasks: ["Collect performer bios", "Run the technical rehearsal", "Publish the run sheet"],
+  },
+] as const satisfies readonly {
+  slug: string;
+  title: string;
+  description: string;
+  team: (typeof TEAMS)[number]["slug"];
+  owner: Role;
+  tasks: readonly string[];
+}[];
+
 export async function seedDemo(production = false): Promise<void> {
   const db = nodeDb();
+  faker.seed(20_260_918);
 
   if (production) {
     for (const persona of DEMO_MEMBERS) {
@@ -148,10 +184,41 @@ export async function seedDemo(production = false): Promise<void> {
   const task = (slug: string): string => demoId(`task:${slug}`);
   const message = (slug: string): string => demoId(`message:${slug}`);
 
-  // Upgrade an untouched base seed once, then preserve every later budget edit.
+  // Local dev only: the base seed created `seed-${role}` users, so give them
+  // faker display names. In production those rows don't exist, so this no-ops.
+  for (const role of roleSchema.options) {
+    await db.execute(sql`
+      UPDATE auth."user"
+      SET name = ${faker.person.fullName()}, "updatedAt" = ${new Date()}
+      WHERE id = ${`seed-${role}`}
+    `);
+  }
+
+  // Faker-randomised extras enrich local dev only; the production demo seed
+  // stays a fixed, deterministic fixture (see seed-demo.integration.test.ts).
+  const generatedEvents = production
+    ? []
+    : CLUB_EVENTS.map((fixture) => {
+        const startsInDays = faker.number.int({ min: 14, max: 90 });
+        const startsAt = at(startsInDays, faker.number.int({ min: 9, max: 18 }));
+        return {
+          ...fixture,
+          startsInDays,
+          startsAt,
+          endsAt: new Date(startsAt.getTime() + faker.number.int({ min: 2, max: 5 }) * HOUR),
+          venue: `${faker.helpers.arrayElement(["Student Pavilion", "Arts West", "Union House", "South Lawn Hub"])}, Room ${faker.number.int({ min: 101, max: 499 })}`,
+          allocationCents: faker.number.int({ min: 50, max: 160 }) * 1_000,
+          attendanceEstimate: faker.number.int({ min: 40, max: 220 }),
+        };
+      });
+
+  // The pool that event.allocation_cents divides up (rule 1) — set before any
+  // event is inserted. Local dev needs headroom for the generated events above;
+  // production keeps the curated 1M. Upgrade an untouched base seed once, then
+  // preserve every later budget edit.
   await db.execute(sql`
     UPDATE "settings"
-    SET "budget_cents" = 1000000, "updated_at" = ${new Date(now)}
+    SET "budget_cents" = ${production ? 1_000_000 : 2_000_000}, "updated_at" = ${new Date(now)}
     WHERE "id" = 1
       AND "budget_cents" = 0
       AND NOT EXISTS (
@@ -229,6 +296,25 @@ export async function seedDemo(production = false): Promise<void> {
     ])
     .onConflictDoNothing();
 
+  if (generatedEvents.length) {
+    await db
+      .insert(events)
+      .values(
+        generatedEvents.map((fixture) => ({
+          id: event(fixture.slug),
+          title: fixture.title,
+          description: fixture.description,
+          venue: fixture.venue,
+          startsAt: fixture.startsAt,
+          endsAt: fixture.endsAt,
+          allocationCents: fixture.allocationCents,
+          attendanceEstimate: fixture.attendanceEstimate,
+          owner: member(fixture.owner),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+
   // Every (event_id, team_id) a task below uses must exist here first — task's
   // composite FK `task_within_declared_workstream` points at this table.
   await db
@@ -276,6 +362,22 @@ export async function seedDemo(production = false): Promise<void> {
       },
     ])
     .onConflictDoNothing();
+
+  if (generatedEvents.length) {
+    await db
+      .insert(workstreams)
+      .values(
+        generatedEvents.map((fixture) => ({
+          id: demoId(`ws:${fixture.slug}-${fixture.team}`),
+          eventId: event(fixture.slug),
+          teamId: team(fixture.team),
+          brief: `${fixture.team === "events" ? "Deliver" : "Support"} ${fixture.title.toLowerCase()} from planning through pack-down.`,
+          lead: member(fixture.owner),
+          dueAt: at(fixture.startsInDays - 1),
+        })),
+      )
+      .onConflictDoNothing();
+  }
 
   // Both visibility mechanisms are represented: `team`/`event` channels are
   // tier-gated, `group`/`dm`/`ai` are membership-gated and must leave min_tier
@@ -470,6 +572,28 @@ export async function seedDemo(production = false): Promise<void> {
       },
     ])
     .onConflictDoNothing();
+
+  if (generatedEvents.length) {
+    await db
+      .insert(tasks)
+      .values(
+        generatedEvents.flatMap((fixture) =>
+          fixture.tasks.map((title, boardOrder) => ({
+            id: task(`${fixture.slug}-${boardOrder}`),
+            eventId: event(fixture.slug),
+            teamId: team(fixture.team),
+            title,
+            status: faker.helpers.arrayElement(["todo", "todo", "in_progress"] as const),
+            priority: faker.helpers.arrayElement(["medium", "high"] as const),
+            assignee: member(faker.helpers.arrayElement(roleSchema.options)),
+            creator: member(fixture.owner),
+            dueAt: at(fixture.startsInDays - faker.number.int({ min: 2, max: 10 })),
+            boardOrder,
+          })),
+        ),
+      )
+      .onConflictDoNothing();
+  }
 
   await db
     .insert(messages)
