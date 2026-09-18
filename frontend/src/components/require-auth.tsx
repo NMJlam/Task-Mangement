@@ -1,6 +1,6 @@
 import { can, type AuthUser, type Capability, type Tier } from "@ctp/shared";
 import { useState, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { RoleChangeConfirmation } from "@/components/role-change-confirmation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -8,9 +8,14 @@ import { useAuth } from "@/hooks/use-auth";
 function AuthHeader({ member, signOut }: { member: AuthUser; signOut: () => Promise<unknown> }) {
   return (
     <header className="flex items-center justify-between gap-4 border-b px-4 py-2">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-4 text-sm">
         <span className="text-muted-foreground">{member.email}</span>
         <span className="text-xs">{member.role.replaceAll("_", " ")}</span>
+        <nav className="flex gap-3" aria-label="Main navigation">
+          <Link to="/events">Events</Link>
+          <Link to="/calendar">Calendar</Link>
+          <Link to="/finance">Finance</Link>
+        </nav>
       </div>
       <Button variant="outline" size="sm" onClick={() => void signOut()}>
         Sign out
@@ -60,6 +65,8 @@ export function RequireAuth({
 }) {
   const { account, isLoading, member, needsInvite, signOut } = useAuth();
 
+  if (!account) return <Navigate to="/login" replace />;
+
   if (isLoading) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
@@ -67,8 +74,6 @@ export function RequireAuth({
       </main>
     );
   }
-
-  if (!account) return <Navigate to="/login" replace />;
 
   if (!member || member.tier < minTier || (capability && !can(member.role, capability))) {
     return (

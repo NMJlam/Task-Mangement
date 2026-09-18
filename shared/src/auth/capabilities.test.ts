@@ -20,4 +20,11 @@ describe("role access", () => {
       removed: ["invite:create"],
     });
   });
+
+  it("reserves money mutations for the president and treasurer", () => {
+    expect(can("president", "expense:approve")).toBe(true);
+    expect(can("treasurer", "expense:approve")).toBe(true);
+    expect(can("vice_president", "expense:approve")).toBe(false);
+    expect(can("treasurer", "budget:manage")).toBe(true);
+  });
 });

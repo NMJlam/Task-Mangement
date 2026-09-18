@@ -8,15 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
  * the single "Sign in with Google" action, which hands off to Better Auth.
  */
 export function LoginPage() {
-  const { account, isLoading, signInWithGoogle } = useAuth();
-
-  if (isLoading) {
-    return (
-      <main className="flex min-h-svh items-center justify-center p-8">
-        <p className="text-muted-foreground">Loading…</p>
-      </main>
-    );
-  }
+  const { account, signInWithGoogle } = useAuth();
 
   if (account) return <Navigate to="/" replace />;
 

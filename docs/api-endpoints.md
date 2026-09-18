@@ -37,6 +37,8 @@ of truth. If this page disagrees with them, this page is wrong.
   task priority `low | medium | high | urgent`,
   event status `planning | live | wrapped | cancelled`,
   event risk `on_track | at_risk | critical`,
+  expense status `pending | approved | paid | rejected`,
+  expense category `catering | venue | marketing | equipment | transport | printing | other`,
   thread kind `team | event | group | dm | ai`.
 - **Money is always integer cents**, never a float.
 
@@ -653,6 +655,100 @@ takes this — only the caption `body` is optional:
 **No file storage exists yet.** This records a file that has already been
 uploaded under `fileKey`. It never receives the file itself, and reads return the
 key, not a download link. `fileSizeBytes` must be between 1 byte and 25 MB.
+
+## Budget and expenses
+
+Money is club-wide. `settings.budget_cents` is the pool, event allocations
+divide it, and expenses record committed (`approved` + `paid`) and spent
+(`paid`) cents.
+
+### `GET /api/budget` · tier 0
+
+Returns the club totals, per-event totals (including events with zero
+allocation), and committed/spent totals by category:
+
+```json
+{
+  "budget": {
+    "budgetCents": 1000000,
+    "allocationCents": 250000,
+    "committedCents": 120000,
+    "spentCents": 80000,
+    "availableCents": 750000,
+    "risk": "on_track",
+    "allocations": [
+      {
+        "eventId": "<uuid>",
+        "eventTitle": "Hackathon",
+        "allocationCents": 250000,
+        "committedCents": 120000,
+        "spentCents": 80000
+      }
+    ],
+    "byCategory": [{ "category": "venue", "committedCents": 120000, "spentCents": 80000 }]
+  }
+}
+```
+
+Club risk is `critical` when committed spend exceeds the pool or an event is
+over its allocation. Otherwise it reuses the event progress rule: `at_risk`
+when an event's spend is ahead of its planning runway, and `on_track` otherwise.
+
+### `PATCH /api/budget` · `budget:manage`
+
+Body: `{ "budgetCents": 1000000 }`. Upserts the singleton settings row. Returns
+the same shape as `GET /api/budget`; `409 BUDGET_EXCEEDED` if the new pool is
+below existing active-event allocations.
+
+### `PUT /api/budget/allocations/:eventId` · `budget:manage`
+
+Body: `{ "allocationCents": 250000 }`. Uses the same locked allocation rule as
+event updates and returns the refreshed budget. `404 EVENT_NOT_FOUND` for an
+unknown event; `409 BUDGET_EXCEEDED` when the club pool would be exceeded.
+
+### `GET /api/expenses` · tier 0
+
+Query: `?eventId&teamId&status&limit=<1-100, default 25>&offset=<default 0>`.
+President/treasurer see all rows. Other members see their own rows plus all
+`approved` and `paid` rows. Returns `{ "expenses": [ … ], "total": 12 }`, newest
+first. `createdAt` is the logged date. `receiptKey` remains a storage key until
+file storage exists; it is not a public download URL.
+
+### `POST /api/expenses` · `expense:approve`
+
+```json
+{
+  "eventId": "<optional uuid>",
+  "teamId": "<optional uuid>",
+  "amountCents": 12500,
+  "description": "Venue deposit",
+  "category": "venue",
+  "receiptKey": "<optional storage key>"
+}
+```
+
+Always creates `pending`, stamps the caller as submitter, notifies the other
+finance role holders, and returns `201 { "expense": { … } }`.
+
+### `PATCH /api/expenses/:id` · `expense:approve`
+
+Accepts a non-empty partial create body. Pending only; otherwise
+`409 INVALID_EXPENSE_STATE`.
+
+### `DELETE /api/expenses/:id` · `expense:approve`
+
+Deletes a pending expense and returns `204`. Non-pending rows return
+`409 INVALID_EXPENSE_STATE`.
+
+### `POST /api/expenses/:id/decision` · `expense:approve`
+
+Body is one of `{ "action": "approve" }`,
+`{ "action": "reject", "reason": "…" }`, or
+`{ "action": "mark_paid" }`. Approve/reject leaves `pending`; mark-paid leaves
+`approved`. Returns `{ "expense": { … }, "budget": { … } }` with refreshed
+budget context. A second or out-of-order decision is
+`409 INVALID_EXPENSE_STATE`; approving/rejecting your own claim is
+`422 OWN_EXPENSE`.
 
 ## Notifications
 
