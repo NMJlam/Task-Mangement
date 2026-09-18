@@ -1,5 +1,13 @@
 import type { AuthUser } from "@ctp/shared";
-import { CalendarDays, CheckSquare2, HeartPulse, Landmark, LogOut, Sparkles } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  CheckSquare2,
+  HeartPulse,
+  Landmark,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -14,6 +22,7 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/tasks", label: "Tasks", icon: CheckSquare2 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/finance", label: "Finance", icon: Landmark },
+  { to: "/notifications", label: "Inbox", icon: Bell },
 ];
 
 export function AppShell({
@@ -76,7 +85,7 @@ export function AppShell({
           </header>
           <nav
             aria-label="Mobile navigation"
-            className="sticky top-14 z-30 grid grid-cols-5 border-b bg-background/95 backdrop-blur lg:hidden"
+            className="sticky top-14 z-30 flex overflow-x-auto border-b bg-background/95 backdrop-blur lg:hidden"
           >
             {navigation.map((item) => (
               <NavigationLink key={item.to} {...item} compact />
@@ -127,7 +136,7 @@ function NavigationLink({
         cn(
           "flex items-center rounded-md text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
           compact
-            ? "min-w-0 flex-col gap-1 rounded-none px-1 py-2 text-[0.6875rem]"
+            ? "min-w-20 flex-1 flex-col gap-1 rounded-none px-1 py-2 text-[0.6875rem]"
             : "gap-3 px-3 py-2",
           isActive && "bg-accent font-medium text-accent-foreground",
         )
