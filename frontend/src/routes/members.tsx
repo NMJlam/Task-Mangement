@@ -1,9 +1,9 @@
 import { can, roleSchema, tierForRole, type Role, type RosterMember } from "@ctp/shared";
 import { useState } from "react";
-import { PageHeader } from "@/components/page-header";
-import { RoleChangeConfirmation } from "@/components/role-change-confirmation";
+import { PageHeader } from "@/components/common/page-header";
+import { UserAvatar } from "@/components/common/user-avatar";
+import { RoleChangeConfirmation } from "@/components/members/role-change-confirmation";
 import { Card, CardContent } from "@/components/ui/card";
-import { UserAvatar } from "@/components/user-avatar";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 

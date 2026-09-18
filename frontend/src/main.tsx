@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { RequireAuth } from "./components/require-auth";
+import { RequireAuth } from "./components/layout/require-auth";
 import "./index.css";
 import { AiBreakdownPage } from "./routes/ai-breakdown";
 import { CalendarPage } from "./routes/calendar";

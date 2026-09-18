@@ -1,5 +1,5 @@
 import type { EventProgress } from "@ctp/shared";
-import { StatusBadge } from "@/components/status-badge";
+import { StatusBadge } from "@/components/common/status-badge";
 
 /**
  * The verdict from `GET /api/events/:id/progress` — the one surface that has the

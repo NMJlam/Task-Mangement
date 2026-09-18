@@ -1,11 +1,11 @@
 import { CalendarDays, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CreateEventForm } from "@/components/create-event-form";
-import { EventFilters, type TimeFilter } from "@/components/event-filters";
-import { EventHealthStrip } from "@/components/event-health-strip";
-import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/common/page-header";
+import { StatusBadge } from "@/components/common/status-badge";
+import { CreateEventForm } from "@/components/events/create-event-form";
+import { EventFilters, type TimeFilter } from "@/components/events/event-filters";
+import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEvents } from "@/hooks/use-events";

@@ -1,6 +1,6 @@
 import { Activity, BadgeCheck } from "lucide-react";
-import { ExampleForm } from "@/components/example-form";
-import { PageHeader } from "@/components/page-header";
+import { ExampleForm } from "@/components/common/example-form";
+import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Toaster } from "@/components/ui/sonner";
 import { useHealth } from "@/hooks/use-health";

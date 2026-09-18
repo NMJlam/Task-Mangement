@@ -2,15 +2,15 @@ import { can, type Message, type RosterMember } from "@ctp/shared";
 import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { EventHealthStrip } from "@/components/event-health-strip";
-import { EventRiskPanel } from "@/components/event-risk-panel";
-import { EventTaskBoard } from "@/components/event-task-board";
-import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/common/page-header";
+import { StatusBadge } from "@/components/common/status-badge";
+import { UserAvatar } from "@/components/common/user-avatar";
+import { EventHealthStrip } from "@/components/events/event-health-strip";
+import { EventRiskPanel } from "@/components/events/event-risk-panel";
+import { TaskBoard } from "@/components/tasks/task-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserAvatar } from "@/components/user-avatar";
 import { useEvent } from "@/hooks/use-event";
 import { useEventProgress } from "@/hooks/use-event-progress";
 import { useMe } from "@/hooks/use-me";
@@ -207,7 +207,7 @@ export function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <EventTaskBoard tasks={tasks} />
+          <TaskBoard tasks={tasks} />
         </TabsContent>
 
         <TabsContent value="thread">

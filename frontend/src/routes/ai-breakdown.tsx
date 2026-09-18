@@ -1,8 +1,8 @@
 import type { Message, Task } from "@ctp/shared";
 import { Bot, Sparkles } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { PriorityDot } from "@/components/priority-dot";
-import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/common/page-header";
+import { PriorityDot } from "@/components/common/priority-dot";
+import { StatusBadge } from "@/components/common/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useTasks } from "@/hooks/use-tasks";
 import { useThreadMessages, useThreads } from "@/hooks/use-threads";

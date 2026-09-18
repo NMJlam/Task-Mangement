@@ -1,5 +1,5 @@
 import type { Task, TaskStatus } from "@ctp/shared";
-import { PriorityDot } from "@/components/priority-dot";
+import { PriorityDot } from "@/components/common/priority-dot";
 import { Card, CardContent } from "@/components/ui/card";
 
 const shortDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -12,7 +12,7 @@ const columns: { status: TaskStatus; label: string }[] = [
   { status: "done", label: "Done" },
 ];
 
-export function EventTaskBoard({ tasks }: { tasks: Task[] }) {
+export function TaskBoard({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0) {
     return (
       <Card className="border-dashed shadow-none">
