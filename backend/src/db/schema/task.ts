@@ -33,10 +33,8 @@ export const tasks = pgTable(
     eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
 
-    // Separate because they answer different questions ("my work" vs "who asked
-    // for this"), and because the assistant creates tasks on someone's behalf —
-    // so creator stays the human.
-    assignee: uuid("assignee").references(() => appUsers.id, { onDelete: "set null" }),
+    // `creator` stays the human: it answers "who asked for this", while "my
+    // work" is the unordered `task_assignee` set (R3 — multi-assignee).
     creator: uuid("creator").references(() => appUsers.id, { onDelete: "set null" }),
 
     title: text("title").notNull(),
@@ -67,11 +65,6 @@ export const tasks = pgTable(
     // Hot read: the board for one event, in column order. Also serves the
     // standing board, since NULLs are indexed and event_id leads the key.
     index("task_board_idx").on(table.eventId, table.status, table.boardOrder),
-
-    // Hot read: "my open work", on the dashboard.
-    index("task_assignee_open_idx")
-      .on(table.assignee, table.dueAt)
-      .where(sql`${table.status} <> 'done'`),
 
     // Overdue is never a stored flag — a stored flag is wrong every midnight.
     // It is status <> 'done' AND due_at < now(), and this serves it.
