@@ -89,7 +89,7 @@ describe("EventsPage", () => {
     // Routed by URL, not call order — `useMe` also fetches, and the page may
     // reorder its calls.
     const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "member", tier: 0 }) }));
+      if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "officer", tier: 0 }) }));
       return Promise.resolve(
         url.includes("cursor=abc")
           ? ok({ items: [summary("Showcase")], nextCursor: null })
@@ -109,7 +109,7 @@ describe("EventsPage", () => {
   });
 
   it("hides the create form from tier 0 and shows it to tier 1", async () => {
-    stubWithMe({ role: "member", tier: 0 });
+    stubWithMe({ role: "officer", tier: 0 });
     renderPage();
 
     await waitFor(() => expect(screen.getByText(/no upcoming events/i)).toBeInTheDocument());

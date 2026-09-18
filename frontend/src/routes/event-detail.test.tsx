@@ -119,20 +119,90 @@ describe("EventDetailPage", () => {
     expect(await screen.findByText("Confirm lighting")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("names the thread author from the roster", async () => {
+    const user = userEvent.setup();
+    stubEvent({ messages: [message()], members: [roster()] });
+    renderDetail();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Thread" }));
+
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("Lighting rig is booked.")).toBeInTheDocument();
+  });
+
+  it("marks the unbuilt tabs as unbuilt rather than empty", async () => {
+    const user = userEvent.setup();
+    stubEvent();
+    renderDetail();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "RSVPs" }));
+    expect(await screen.findByText(/rsvp tracking is not built yet/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Files" }));
+    expect(await screen.findByText(/file attachments are not built yet/i)).toBeInTheDocument();
+  });
 });
+
+const AUTHOR_ID = "018f3a4b-0000-7000-8000-00000000000a";
+
+function message() {
+  return {
+    id: "018f3a4b-0000-7000-8000-00000000000b",
+    channelId: CHANNEL_ID,
+    taskId: null,
+    parentId: null,
+    author: AUTHOR_ID,
+    body: "Lighting rig is booked.",
+    fileKey: null,
+    fileName: null,
+    fileSizeBytes: null,
+    fileMime: null,
+    aiRunId: null,
+    createdAt: "2026-06-02T00:00:00.000Z",
+    editedAt: null,
+  };
+}
+
+function roster() {
+  return {
+    id: AUTHOR_ID,
+    email: "ada@example.com",
+    name: "Ada Lovelace",
+    role: "officer",
+    tier: 0,
+    portfolio: null,
+    teamIds: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
 
 function ok(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
 }
 
-function stubEvent({ role = "member", tier = 0 }: { role?: string; tier?: number } = {}) {
+function stubEvent({
+  role = "officer",
+  tier = 0,
+  messages = [] as unknown[],
+  members = [] as unknown[],
+}: { role?: string; tier?: number; messages?: unknown[]; members?: unknown[] } = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url === "/api/me") {
-      return Promise.resolve(ok({ user: { id: "018f3a4b-0000-7000-8000-00000000000f", email: "a@b.c", role, tier } }));
+      return Promise.resolve(
+        ok({ user: { id: "018f3a4b-0000-7000-8000-00000000000f", email: "a@b.c", role, tier } }),
+      );
     }
     if (url.includes("/progress")) return Promise.resolve(ok(progressFixture));
-    if (url.includes("/messages")) return Promise.resolve(ok({ messages: [] }));
-    if (url.startsWith("/api/members")) return Promise.resolve(ok({ members: [] }));
+    if (url.includes("/messages")) return Promise.resolve(ok({ messages, nextCursor: null }));
+    if (url.startsWith("/api/members")) return Promise.resolve(ok({ members }));
     return Promise.resolve(ok({ event: eventFixture }));
   });
   vi.stubGlobal("fetch", fetchMock);

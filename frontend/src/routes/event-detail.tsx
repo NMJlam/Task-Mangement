@@ -1,3 +1,4 @@
+import type { Message, RosterMember } from "@ctp/shared";
 import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -8,8 +9,11 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserAvatar } from "@/components/user-avatar";
 import { useEvent } from "@/hooks/use-event";
 import { useEventProgress } from "@/hooks/use-event-progress";
+import { useMembers } from "@/hooks/use-members";
+import { useThreadMessages } from "@/hooks/use-threads";
 import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
@@ -25,6 +29,11 @@ export function EventDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // The open tab lives in the URL so a tab deep-links and Back steps through them.
   const tab = searchParams.get("tab") ?? "overview";
+  // Both sit above the early returns: hook order must not change between renders.
+  // Each accepts an absent id and stays idle until there is one.
+  const messages = useThreadMessages(state.status === "ok" ? state.event.channelId : undefined);
+  const members = useMembers();
+  const memberItems = members.state.status === "ok" ? members.state.items : [];
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams);
@@ -153,9 +162,64 @@ export function EventDetailPage() {
           <EventTaskBoard tasks={tasks} />
         </TabsContent>
 
-        <TabsContent value="thread" />
-        <TabsContent value="files" />
-        <TabsContent value="rsvps" />
+        <TabsContent value="thread">
+          <Card className="shadow-none">
+            <CardHeader>
+              <h2 className="text-lg font-semibold tracking-tight">Event Thread</h2>
+              <p className="text-sm text-muted-foreground">
+                Discussion attached to this event. Posting lives on Messages.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {!event.channelId ? (
+                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+                  This event has no thread yet.
+                </p>
+              ) : messages.state.status === "loading" ? (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Loading Thread…
+                </p>
+              ) : messages.state.status === "error" ? (
+                <p className="text-sm text-destructive" role="alert">
+                  Couldn&apos;t load the thread: {messages.state.message}. Refresh the page to try
+                  again.
+                </p>
+              ) : messages.state.status === "ok" && messages.state.items.length > 0 ? (
+                <ol className="grid gap-4">
+                  {[...messages.state.items].reverse().map((item) => (
+                    <li key={item.id}>
+                      <ThreadMessage message={item} members={memberItems} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+                  No messages in this thread yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TODO(R11): file upload is Deferred — no storage endpoint exists yet. */}
+        <TabsContent value="files">
+          <Card className="border-dashed shadow-none">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              File attachments are not built yet. Documents and images will attach here once
+              upload ships.
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TODO(R4): RSVP tracker — no schema, table or endpoint exists yet. */}
+        <TabsContent value="rsvps">
+          <Card className="border-dashed shadow-none">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              RSVP tracking is not built yet. Attendance responses will appear here once the
+              endpoint ships.
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </main>
   );
@@ -171,6 +235,33 @@ function PageState({ children, role }: { children: ReactNode; role: "status" | "
         {children}
       </p>
     </main>
+  );
+}
+
+/**
+ * `messageSchema.author` is a member id, not a name — the roster resolves it,
+ * exactly as `MessageRow` does on the Messages page.
+ */
+function ThreadMessage({ message, members }: { message: Message; members: RosterMember[] }) {
+  const author = members.find((member) => member.id === message.author);
+  const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
+
+  return (
+    <article className="flex items-start gap-3 rounded-lg border p-4">
+      <UserAvatar name={name} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h3 className="text-sm font-semibold">{name}</h3>
+          <time
+            dateTime={message.createdAt.toISOString()}
+            className="text-xs text-muted-foreground"
+          >
+            {dateTime.format(message.createdAt)}
+          </time>
+        </div>
+        <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">{message.body}</p>
+      </div>
+    </article>
   );
 }
 
