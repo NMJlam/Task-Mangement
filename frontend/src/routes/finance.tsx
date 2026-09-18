@@ -8,7 +8,16 @@ import {
   type Expense,
   type ExpenseCategory,
 } from "@ctp/shared";
+import {
+  ArrowDownToLine,
+  CircleDollarSign,
+  Landmark,
+  ReceiptText,
+  WalletCards,
+} from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -104,32 +113,43 @@ export function FinancePage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+    <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
+      <PageHeader
+        title="Finance"
+        description="Track the club budget, review expense claims, and keep every payment accounted for."
+      />
       {error && (
-        <p className="text-destructive" role="alert">
-          {error}
+        <p className="mt-8 text-sm text-destructive" role="alert">
+          {error}. Refresh the page to try again.
         </p>
       )}
 
       {budget ? (
-        <section aria-labelledby="budget-heading" className="grid gap-3 sm:grid-cols-4">
+        <section
+          aria-labelledby="budget-heading"
+          className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        >
           <h2 id="budget-heading" className="sr-only">
             Club budget
           </h2>
-          <MoneyCard label="Budget" cents={budget.budgetCents} />
-          <MoneyCard label="Allocated" cents={budget.allocationCents} />
-          <MoneyCard label="Committed" cents={budget.committedCents} />
-          <MoneyCard label="Spent" cents={budget.spentCents} />
+          <MoneyCard icon={Landmark} label="Budget" cents={budget.budgetCents} />
+          <MoneyCard icon={WalletCards} label="Allocated" cents={budget.allocationCents} />
+          <MoneyCard icon={ReceiptText} label="Committed" cents={budget.committedCents} />
+          <MoneyCard icon={ArrowDownToLine} label="Spent" cents={budget.spentCents} />
         </section>
       ) : !error ? (
-        <p className="text-muted-foreground">Loading finance data…</p>
+        <p className="mt-8 text-sm text-muted-foreground" role="status">
+          Loading Finance Data…
+        </p>
       ) : null}
 
       {canManage && (
-        <Card>
+        <Card className="mt-8 shadow-none">
           <CardHeader>
-            <CardTitle>Log expense</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
+              Log Expense
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form
@@ -138,18 +158,35 @@ export function FinancePage() {
             >
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="description">Description</Label>
-                <Input id="description" name="description" required maxLength={500} />
+                <Input
+                  id="description"
+                  name="description"
+                  autoComplete="off"
+                  placeholder="e.g. Event printing"
+                  required
+                  maxLength={500}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="amount">Amount (AUD)</Label>
-                <Input id="amount" name="amount" type="number" min="0.01" step="0.01" required />
+                <Input
+                  id="amount"
+                  name="amount"
+                  type="number"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  required
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="category">Category</Label>
                 <select
                   id="category"
                   name="category"
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  className="h-9 rounded-md border bg-background px-3 text-sm capitalize outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   {categories.map((category) => (
                     <option key={category}>{category}</option>
@@ -157,33 +194,41 @@ export function FinancePage() {
                 </select>
               </div>
               <Button className="self-end" disabled={busy}>
-                Log expense
+                {busy ? "Saving…" : "Log Expense"}
               </Button>
             </form>
           </CardContent>
         </Card>
       )}
 
-      <section aria-labelledby="expenses-heading" className="grid gap-3">
-        <h2 id="expenses-heading" className="text-xl font-semibold">
+      <section aria-labelledby="expenses-heading" className="mt-10 grid gap-3">
+        <h2 id="expenses-heading" className="text-xl font-semibold tracking-tight">
           Expenses
         </h2>
-        {expenses?.length === 0 && <p className="text-muted-foreground">No expenses yet.</p>}
+        {expenses?.length === 0 && (
+          <Card className="border-dashed shadow-none">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              No expenses have been logged yet.
+            </CardContent>
+          </Card>
+        )}
         {expenses?.map((expense) => (
-          <Card key={expense.id}>
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div>
-                <p className="font-medium">{expense.description}</p>
-                <p className="text-sm text-muted-foreground">
-                  {money(expense.amountCents)} · {expense.category} ·{" "}
-                  {expense.status.replace("_", " ")}
+          <Card key={expense.id} className="gap-0 py-0 shadow-none">
+            <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold">{expense.description}</h3>
+                  <StatusBadge status={expense.status} />
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground capitalize">
+                  {money(expense.amountCents)} · {expense.category}
                 </p>
               </div>
               {me.status === "ok" &&
                 canManage &&
                 expense.status === "pending" &&
                 expense.submitter !== me.user.id && (
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <Button
                       disabled={busy}
                       size="sm"
@@ -210,7 +255,7 @@ export function FinancePage() {
                   onClick={() => void decide(expense, "mark_paid")}
                   aria-label={`Mark ${expense.description} paid`}
                 >
-                  Mark paid
+                  Mark Paid
                 </Button>
               )}
             </CardContent>
@@ -221,12 +266,25 @@ export function FinancePage() {
   );
 }
 
-function MoneyCard({ label, cents }: { label: string; cents: number }) {
+function MoneyCard({
+  icon: Icon,
+  label,
+  cents,
+}: {
+  icon: typeof Landmark;
+  label: string;
+  cents: number;
+}) {
   return (
-    <Card>
-      <CardContent className="py-4">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="text-xl font-semibold">{money(cents)}</p>
+    <Card className="shadow-none">
+      <CardContent className="flex items-start justify-between py-5">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{money(cents)}</p>
+        </div>
+        <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
+          <Icon aria-hidden="true" className="size-4" />
+        </span>
       </CardContent>
     </Card>
   );

@@ -63,7 +63,9 @@ describe("FinancePage", () => {
     fireEvent.click(screen.getByRole("button", { name: /log expense/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/expenses", expect.anything()));
 
-    fireEvent.click(screen.getByRole("button", { name: /approve printing/i }));
+    const approve = screen.getByRole("button", { name: /approve printing/i });
+    await waitFor(() => expect(approve).toBeEnabled());
+    fireEvent.click(approve);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         `/api/expenses/${expense.id}/decision`,
