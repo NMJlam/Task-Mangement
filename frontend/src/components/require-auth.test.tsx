@@ -17,7 +17,10 @@ it("redirects guests without waiting for the session request", () => {
   });
 
   render(
-    <MemoryRouter initialEntries={["/protected"]}>
+    <MemoryRouter
+      initialEntries={["/protected"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <Routes>
         <Route path="/protected" element={<RequireAuth>secret</RequireAuth>} />
         <Route path="/login" element={<LoginPage />} />
@@ -42,7 +45,7 @@ it("hides capability-gated UI from roles without the capability", () => {
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth capability="member:role-change">secret</RequireAuth>
     </MemoryRouter>,
   );
@@ -61,7 +64,7 @@ it("tells a signed-in account without membership that it needs an invite", () =>
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth>secret</RequireAuth>
     </MemoryRouter>,
   );
@@ -80,7 +83,7 @@ it("does not blame a server error on a missing invite", () => {
   });
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <RequireAuth>secret</RequireAuth>
     </MemoryRouter>,
   );

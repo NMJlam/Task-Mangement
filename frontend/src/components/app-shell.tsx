@@ -3,8 +3,8 @@ import {
   Bell,
   CalendarDays,
   CheckSquare2,
-  HeartPulse,
   Landmark,
+  LayoutDashboard,
   LogOut,
   MessageSquare,
   Settings,
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 const navigation: { to: string; label: string; icon: Icon }[] = [
-  { to: "/", label: "Overview", icon: HeartPulse },
+  { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/events", label: "Events", icon: Sparkles },
   { to: "/tasks", label: "Tasks", icon: CheckSquare2 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
@@ -97,7 +97,11 @@ export function AppShell({
               <NavigationLink key={item.to} {...item} compact />
             ))}
           </nav>
-          <div id="main-content" tabIndex={-1} className="min-w-0 outline-none">
+          <div
+            id="main-content"
+            tabIndex={-1}
+            className="min-w-0 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset"
+          >
             {children}
           </div>
         </div>
