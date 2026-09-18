@@ -90,5 +90,33 @@ export function useTasks() {
     }
   }, []);
 
-  return { state, busy, mutationError, createTask, changeStatus };
+  const changeEvent = useCallback(async (task: Task, eventId: string | null) => {
+    if (task.eventId === eventId) return;
+    setBusy(task.id);
+    setMutationError(undefined);
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ eventId }),
+      });
+      if (!response.ok) throw new Error("Failed to link task");
+      const updated = taskResponseSchema.parse(await response.json()).task;
+      setState((current) =>
+        current.status === "ok"
+          ? {
+              ...current,
+              items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+            }
+          : current,
+      );
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to link task");
+    } finally {
+      setBusy(undefined);
+    }
+  }, []);
+
+  return { state, busy, mutationError, createTask, changeStatus, changeEvent };
 }
