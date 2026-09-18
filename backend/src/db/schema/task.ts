@@ -40,6 +40,10 @@ export const tasks = pgTable(
 
     title: text("title").notNull(),
 
+    // Free-form detail. NULL is "no description", never empty string — the
+    // shared schema normalises "" to null so there is one representation.
+    description: text("description"),
+
     status: text("status").$type<TaskStatus>().notNull().default("todo"),
     priority: text("priority").$type<TaskPriority>().notNull().default("medium"),
 
