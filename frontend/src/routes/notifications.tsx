@@ -124,7 +124,7 @@ function NotificationRow({
     >
       {unread && (
         <span
-          aria-label="Unread"
+          aria-hidden="true"
           className="absolute top-6 left-1.5 size-1.5 rounded-full bg-accent-foreground"
         />
       )}
@@ -132,7 +132,10 @@ function NotificationRow({
         <Icon aria-hidden="true" className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm leading-6">{notification.body}</p>
+        <p className="text-sm leading-6">
+          {unread && <span className="sr-only">Unread: </span>}
+          {notification.body}
+        </p>
         <time
           dateTime={notification.createdAt.toISOString()}
           className="mt-1 block text-xs text-muted-foreground"
