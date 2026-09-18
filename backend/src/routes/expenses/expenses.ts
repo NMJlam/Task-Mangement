@@ -16,7 +16,7 @@ import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import { appUsers, expenses, notifications } from "../../db/schema/index.js";
 import { authenticate, authorise, authoriseCapability, validate } from "../../middleware/index.js";
-import { ExpenseTransitionError, updatePendingExpense } from "./service.js";
+import { deletePendingExpense, ExpenseTransitionError, updatePendingExpense } from "./service.js";
 
 export const expensesRouter = Router();
 
@@ -142,6 +142,22 @@ expensesRouter.patch(
     } catch (error) {
       if (error instanceof ExpenseTransitionError) return transitionError(res, error);
       if (sqlState(error) === "23503") return unknownReference(res);
+      next(error);
+    }
+  },
+);
+
+expensesRouter.delete(
+  "/expenses/:id",
+  authenticate,
+  authoriseCapability("expense:approve"),
+  validate(expenseParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      await getDb().transaction((tx) => deletePendingExpense(tx, req.params.id!));
+      res.status(204).end();
+    } catch (error) {
+      if (error instanceof ExpenseTransitionError) return transitionError(res, error);
       next(error);
     }
   },
