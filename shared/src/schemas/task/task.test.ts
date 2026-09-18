@@ -19,9 +19,10 @@ describe("task identifiers", () => {
       id: legacyTaskId,
       eventId: null,
       teamId: null,
-      assignee: null,
+      assigneeIds: [],
       creator: null,
       title: "Legacy task",
+      description: null,
       status: "todo",
       priority: "medium",
       dueAt: null,
@@ -37,6 +38,8 @@ describe("task identifiers", () => {
     expect(taskParamsSchema.parse({ id: legacyTaskId }).id).toBe(legacyTaskId);
   });
 });
+const memberId = "018f3a4b-0000-7000-8000-000000000003";
+const otherMemberId = "018f3a4b-0000-7000-8000-000000000004";
 
 describe("createTaskSchema", () => {
   it("trims the title and defaults status and priority", () => {
@@ -44,6 +47,42 @@ describe("createTaskSchema", () => {
     expect(task.title).toBe("Book the venue");
     expect(task.status).toBe("todo");
     expect(task.priority).toBe("medium");
+  });
+
+  it("defaults the assignee set to empty, so an unowned task needs no field", () => {
+    expect(createTaskSchema.parse({ teamId, title: "Ok" }).assigneeIds).toEqual([]);
+  });
+
+  it("trims a description, and collapses an all-whitespace one to null", () => {
+    expect(createTaskSchema.parse({ teamId, title: "Ok", description: "  hi  " }).description).toBe(
+      "hi",
+    );
+    expect(
+      createTaskSchema.parse({ teamId, title: "Ok", description: "   " }).description,
+    ).toBeNull();
+    expect(createTaskSchema.parse({ teamId, title: "Ok" }).description).toBeUndefined();
+  });
+
+  it("rejects a description past the 2000-character cap", () => {
+    expect(
+      createTaskSchema.safeParse({ teamId, title: "Ok", description: "x".repeat(2001) }).success,
+    ).toBe(false);
+  });
+
+  it("collapses a repeated id to first-seen order", () => {
+    expect(
+      createTaskSchema.parse({
+        teamId,
+        title: "Ok",
+        assigneeIds: [memberId, otherMemberId, memberId],
+      }).assigneeIds,
+    ).toEqual([memberId, otherMemberId]);
+  });
+
+  it("rejects a non-uuid assignee id", () => {
+    expect(
+      createTaskSchema.safeParse({ teamId, title: "Ok", assigneeIds: ["director"] }).success,
+    ).toBe(false);
   });
 
   it("rejects a blank title", () => {
@@ -90,17 +129,34 @@ describe("updateTaskSchema", () => {
     expect(updateTaskSchema.parse({ status: "done" })).toEqual({ status: "done" });
   });
 
-  it("allows clearing a nullable field", () => {
-    expect(updateTaskSchema.parse({ assignee: null }).assignee).toBeNull();
+  it("leaves the assignee set out when the patch omits it — omission is 'unchanged'", () => {
+    expect("assigneeIds" in updateTaskSchema.parse({ title: "Renamed" })).toBe(false);
   });
 
-  it("rejects an empty patch", () => {
-    expect(updateTaskSchema.safeParse({}).success).toBe(false);
+  it("leaves the description out when omitted, and accepts null to clear it", () => {
+    expect("description" in updateTaskSchema.parse({ title: "Renamed" })).toBe(false);
+    expect(updateTaskSchema.parse({ description: null }).description).toBeNull();
+    // An emptied field reaches the server as "" — one clear, two spellings.
+    expect(updateTaskSchema.parse({ description: "" }).description).toBeNull();
+  });
+
+  it("accepts an empty set, which clears every assignment", () => {
+    expect(updateTaskSchema.parse({ assigneeIds: [] }).assigneeIds).toEqual([]);
+  });
+
+  it("collapses duplicates in a patch too", () => {
+    expect(updateTaskSchema.parse({ assigneeIds: [memberId, memberId] }).assigneeIds).toEqual([
+      memberId,
+    ]);
   });
 
   it("accepts eventId as the only field, including null to unlink", () => {
     expect(updateTaskSchema.parse({ eventId })).toEqual({ eventId });
     expect(updateTaskSchema.parse({ eventId: null })).toEqual({ eventId: null });
+  });
+
+  it("rejects an empty patch", () => {
+    expect(updateTaskSchema.safeParse({}).success).toBe(false);
   });
 });
 
