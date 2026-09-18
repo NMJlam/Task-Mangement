@@ -5,6 +5,7 @@ import { RequireAuth } from "./components/require-auth";
 import "./index.css";
 import { CalendarPage } from "./routes/calendar";
 import { EventsPage } from "./routes/events";
+import { FinancePage } from "./routes/finance";
 import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
 
@@ -31,6 +32,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <EventsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/finance",
+    element: (
+      <RequireAuth>
+        <FinancePage />
       </RequireAuth>
     ),
   },
