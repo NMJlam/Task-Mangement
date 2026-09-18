@@ -98,8 +98,11 @@ signed-in account with club membership: 401 without a session, 403
 3. **No office left empty.** The last holder of any role except `officer` can't
    be demoted or removed: 409 `ROLE_VACANCY`. Promote a successor first. (Spec
    rule 6 names only the president; the code applies it to every office.)
-4. **Offboarding hands over work.** A member with open tasks can't be removed
-   without `?reassignTo=<member id>`: 409 `OPEN_TASKS`. (Spec rules 7 and 15.)
+4. **Offboarding hands over work.** A member assigned any unfinished task can't
+   be removed without `?reassignTo=<member id>`: 409 `OPEN_TASKS`, even when a
+   task has other assignees left. The successor takes their place on those
+   tasks; an assignment the successor already holds is kept, not duplicated.
+   (Spec rules 7 and 15.)
 5. **Team lead is not a role.** It's the `team.lead` column, and the lead's
    authority comes from their tier. A director's portfolio ("Marketing
    Director") is derived from the team they lead, never stored.
@@ -114,9 +117,10 @@ signed-in account with club membership: 401 without a session, 403
    409 `APPROVED_EXPENSES_PENDING`. The one exception to president-only is the
    director leading the **Events** team, and only for an event that team has a
    workstream on.
-8. **Raising `minTier` can't hide a task from its own assignee.** `PATCH
+8. **Raising `minTier` can't hide a task from its own assignees.** `PATCH
 /api/events/:id` 422s if the new floor would put the event out of reach of
-   someone already assigned work on it.
+   anyone already assigned work on it — checked across every assignee of every
+   task on the event.
 9. **Threads hide by tier or by membership.** A `team` or `event` thread follows
    its `min_tier`, and an event's thread also needs the event to be visible to
    you. A `group` or `dm` needs you to be a member. Anything else is a 404

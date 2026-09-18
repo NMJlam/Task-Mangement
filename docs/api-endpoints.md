@@ -117,16 +117,19 @@ Body: `{ "role": "director" }`
 
 ### `DELETE /api/members/:id` · tier 2
 
-Query: `?reassignTo=<uuid>` — hands the departing member's open tasks to someone
-else.
+Query: `?reassignTo=<uuid>` — hands the departing member's unfinished tasks to
+someone else. It is required when they hold any unfinished assignment, even one
+on a task that still has other assignees; the successor takes their place on
+those tasks, and an assignment the successor already holds is kept, not
+duplicated.
 
-| Response               | When                                                 |
-| ---------------------- | ---------------------------------------------------- |
-| `204`                  | Removed, with their auth account.                    |
-| `404 MEMBER_NOT_FOUND` | No such member.                                      |
-| `409 ROLE_VACANCY`     | Last holder of a non-officer role.                   |
-| `409 OPEN_TASKS`       | They hold open tasks and no `reassignTo` was given.  |
-| `422 VALIDATION_ERROR` | `reassignTo` is unknown, or is the departing member. |
+| Response               | When                                                                |
+| ---------------------- | ------------------------------------------------------------------- |
+| `204`                  | Removed, with their auth account.                                   |
+| `404 MEMBER_NOT_FOUND` | No such member.                                                     |
+| `409 ROLE_VACANCY`     | Last holder of a non-officer role.                                  |
+| `409 OPEN_TASKS`       | They are assigned an unfinished task and no `reassignTo` was given. |
+| `422 VALIDATION_ERROR` | `reassignTo` is unknown, or is the departing member.                |
 
 ## Teams
 
@@ -213,9 +216,10 @@ A task object:
   "id": "<uuid>",
   "eventId": null,
   "teamId": "<uuid or null>",
-  "assignee": "<uuid or null>",
+  "assigneeIds": ["<uuid>"],
   "creator": "<uuid or null>",
   "title": "Book the venue",
+  "description": "<text or null>",
   "status": "todo",
   "priority": "medium",
   "dueAt": "2026-10-01T09:00:00.000Z",
@@ -240,16 +244,18 @@ A task object:
 | `DELETE /api/tasks/:id`       | tier 1 | —                                                       | `204`                                  |
 
 `limit` is 1–100 (default 50), `offset` defaults to 0. Both `422` if out of
-range.
+range. `assignee` stays singular and filters by membership: it returns every
+task whose `assigneeIds` contains that member, once each.
 
 Create body — only `title` is required:
 
 ```json
 {
   "title": "Book the venue",
+  "description": "<text>",
   "eventId": "<uuid>",
   "teamId": "<uuid>",
-  "assignee": "<uuid>",
+  "assigneeIds": ["<uuid>"],
   "status": "todo",
   "priority": "medium",
   "dueAt": "2026-10-01T09:00:00.000Z"
@@ -259,10 +265,19 @@ Create body — only `title` is required:
 Things worth knowing before you test:
 
 - **`creator` is stamped from your session.** Sending one in the body is ignored.
-- **An unknown `eventId`, `teamId` or `assignee` is a `422`**, with code
-  `EVENT_NOT_FOUND`, `TEAM_NOT_FOUND` or `ASSIGNEE_NOT_FOUND` — not a `404`,
-  because it's your input that's wrong. A cancelled event, or one above your
-  tier, is `EVENT_NOT_FOUND` too.
+- **An unknown `eventId`, `teamId` or id in `assigneeIds` is a `422`**, with
+  code `EVENT_NOT_FOUND`, `TEAM_NOT_FOUND` or `ASSIGNEE_NOT_FOUND` — not a
+  `404`, because it's your input that's wrong. The first unknown member id
+  fails the whole call, on create, bulk create and `PATCH`. A cancelled event,
+  or one above your tier, is `EVENT_NOT_FOUND` too.
+- **`assigneeIds` is the whole set.** Create defaults it to `[]`; `PATCH`
+  replaces the set outright, `[]` clears every assignment, and omitting the
+  field leaves it unchanged. Duplicate ids collapse to first-seen order, and a
+  response never returns `null` — `[]` means unassigned.
+- **`description` is free text, up to 2000 characters.** It is trimmed, and an
+  empty or all-whitespace value is stored as `null` — so "no description" has
+  one representation, not two. Omitting it on `PATCH` leaves it alone; sending
+  `""` or `null` clears it.
 - **An event plus a team puts that team on the event.** A task naming both
   creates the team's workstream on the event if it has none — there is no
   separate call. The event then shows under `GET /api/events?teamId=`, and the
@@ -272,7 +287,9 @@ Things worth knowing before you test:
 - **`completedAt` is derived from `status`.** Moving to `done` stamps it; moving
   out clears it. You never send it.
 - **`PATCH` needs at least one field**; `{}` is a `422`.
-- **Bulk is all-or-nothing** — one bad reference writes nothing.
+- **Bulk is all-or-nothing** — one bad reference writes nothing. Each task in
+  `tasks` takes its own `assigneeIds`, and every link is written in the same
+  transaction.
 - **Overdue** means past `dueAt` and not `done`. Tasks with no due date never
   appear.
 - A missing task is `404 TASK_NOT_FOUND` on every `/tasks/:id` route.
@@ -436,10 +453,12 @@ field** — `{}` is a `422`.
 - **Dates are validated merged, not per-body.** `PATCH { startsAt }` is checked
   against the event's _stored_ `endsAt`.
 - **Moving a date notifies, it doesn't reschedule.** Tasks left due after the
-  new date come back in `warnings`; every assignee of an unfinished task gets an
-  `event_date_changed` notification. The route never moves a due date for you.
-- **Raising `minTier` is blocked** if it would hide the event from someone
-  already assigned a task on it: `422`, field `minTier`.
+  new date come back in `warnings`; every distinct assignee of the event's
+  unfinished tasks gets an `event_date_changed` notification. The route never
+  moves a due date for you.
+- **Raising `minTier` is blocked** if it would hide the event from anyone
+  already assigned a task on it — checked across every assignee of every task:
+  `422`, field `minTier`.
 
 ### `PATCH /api/events/:id/status` · tier 1
 
@@ -464,7 +483,7 @@ Legal moves: `planning → live`, `live → wrapped`, `wrapped → live`, and
 
 Cancels — it does **not** delete. Sets `cancelled`, releases the unspent
 allocation back to the pool (committed spend stays allocated), and notifies
-every assignee of an unfinished task.
+every distinct assignee of the event's unfinished tasks.
 
 | Response                        | When                                                            |
 | ------------------------------- | --------------------------------------------------------------- |
@@ -501,7 +520,7 @@ Query: `?from&to` (**both required**), plus `?teamId` and
       "title": "Book the venue",
       "dueAt": "2026-09-28T09:00:00.000Z",
       "eventId": "<uuid>",
-      "assigneeId": "<uuid>"
+      "assigneeIds": ["<uuid>"]
     }
   ]
 }
@@ -634,8 +653,8 @@ shows up in the thread as well as belonging to the task.
 - **Which thread:** the event's thread if the task has an `eventId`, otherwise
   its team's thread. A task on an event is always discussed in the event's
   thread, never its team's.
-- **It notifies** the task's assignee and creator (not you) with a
-  `task_commented` notification.
+- **It notifies** every assignee of the task plus its creator — each once,
+  never the author — with a `task_commented` notification.
 - `409 NO_THREAD` — the task has no event and no team.
 - `404 TASK_NOT_FOUND` — no such task, or its thread is hidden from you.
 
