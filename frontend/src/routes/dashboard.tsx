@@ -60,7 +60,10 @@ export function DashboardPage() {
   const memberId = me.status === "ok" ? me.user.id : undefined;
 
   const myOpenTasks = taskItems
-    .filter((task) => task.assignee === memberId && task.status !== "done")
+    .filter(
+      (task) =>
+        memberId !== undefined && task.assigneeIds.includes(memberId) && task.status !== "done",
+    )
     .sort((a, b) => dueTime(a) - dueTime(b));
   const overdueCount = myOpenTasks.filter(
     (task) => task.dueAt && task.dueAt.getTime() < today.getTime(),
@@ -75,8 +78,12 @@ export function DashboardPage() {
   const eventNames = new Map(eventItems.map((event) => [event.id, event.title]));
   const openTasksByMember = new Map<string, number>();
   taskItems.forEach((task) => {
-    if (task.assignee && task.status !== "done") {
-      openTasksByMember.set(task.assignee, (openTasksByMember.get(task.assignee) ?? 0) + 1);
+    // Every holder counts: a multi-assignee task is open work for each of them,
+    // so the load bar has to grow for all of them or it under-reports.
+    if (task.status !== "done") {
+      for (const assigneeId of task.assigneeIds) {
+        openTasksByMember.set(assigneeId, (openTasksByMember.get(assigneeId) ?? 0) + 1);
+      }
     }
   });
   const committee = memberItems
