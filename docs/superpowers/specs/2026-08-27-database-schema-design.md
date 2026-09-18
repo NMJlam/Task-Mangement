@@ -73,10 +73,10 @@ before this spec was written.
 
 ### ON DELETE policy, stated once
 
-- `SET NULL` on authored/owned references (author, assignee, creator,
+- `SET NULL` on authored/owned references (author, creator,
   submitter, decider, lead, actor). A removed member leaves their work intact
   as "former member".
-- `CASCADE` on pure junction rows (`team_member`, `chan_member`,
+- `CASCADE` on pure junction rows (`team_member`, `task_assignee`, `chan_member`,
   `notification`). A membership row with no member is garbage, not history.
 - `RESTRICT` on anything the ledger depends on (`expense → event`, `team`) and
   on `app_user → auth."user"`.
@@ -261,7 +261,7 @@ correct in its own right: one deliverable per team per event.
 **No `min_tier`.** A workstream is visible exactly when its event is — see rule 16. One fact, not two.
 
 **`task`** — `id`; `event_id` CASCADE (nullable); `team_id` SET NULL (nullable);
-`assignee` SET NULL; `creator` SET NULL; `title` NOT NULL CHECK non-empty;
+`creator` SET NULL; `title` NOT NULL CHECK non-empty; `description`;
 `status` NOT NULL DEFAULT `todo` CHECK; `priority` NOT NULL DEFAULT
 `medium` CHECK; `due_at`; `board_order` integer NOT NULL DEFAULT 0;
 `min_tier` smallint NOT NULL DEFAULT 0 CHECK 0..2; `completed_at`; `ai_run_id`
@@ -270,9 +270,10 @@ SET NULL; `created_at`; `updated_at`.
 Both parents nullable: standing committee work belongs to no event,
 cross-cutting work belongs to no team.
 
-`assignee` and `creator` are separate because they answer different questions
-("my work" vs "who asked for this"), and because the assistant creates tasks on
-someone's behalf — `creator` stays the human.
+`creator` answers "who asked for this", and stays the human because the
+assistant creates tasks on someone's behalf. "My work" is not a column here:
+ownership lives in the `task_assignee` junction, so a task carries any number
+of assignees, or none.
 
 ```
 CHECK ((status = 'done') = (completed_at IS NOT NULL))
@@ -291,10 +292,19 @@ single standing board. If renumbering is outgrown, fractional ranking keys are
 the upgrade.
 
 Indexes: `task_board_idx (event_id, status, board_order)`;
-`task_assignee_open_idx (assignee, due_at) WHERE status <> 'done'`;
 `task_overdue_idx (due_at) WHERE status <> 'done' AND due_at IS NOT NULL`.
 
+No assignee index here — the assignee set is not a column. "My open tasks" goes
+through `task_assignee` by `user_id`: the partial `status <> 'done'` predicate
+cannot move to the junction, because a junction index cannot reference
+`task.status`.
+
 Overdue is never a stored flag — a stored flag is wrong every midnight.
+
+**`task_assignee`** — `(task_id, user_id)` composite PK, both CASCADE, and no
+other column: assignment is an unordered set with no primary assignee. Plus
+`task_assignee_user_idx` on `(user_id)`: the PK serves task → assignees, this
+serves member → tasks, which "my tasks" reads on every load.
 
 ### 6.3 Communication
 
@@ -530,8 +540,8 @@ schema.
    aggregate; needs `SELECT … FOR UPDATE` on the settings row, or two people
    allocating at once both pass and overspend.
 2. Cancelling an event releases its unspent allocation.
-3. Assignee's tier >= `task.min_tier`. Refuse the **write** — an assignee must
-   be able to see their own task.
+3. Every assignee's tier >= `task.min_tier`. Refuse the **write** — an assignee
+   must be able to see their own task.
 4. `chan_member`'s tier >= `channel.min_tier`. Same shape.
 5. `task.min_tier` >= its event's `min_tier`.
 6. Committee keeps at least one president; a president cannot demote
