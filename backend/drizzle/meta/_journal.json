@@ -50,6 +50,13 @@
       "when": 1789746147723,
       "tag": "0006_tough_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789746706079,
+      "tag": "0007_breezy_sinister_six",
+      "breakpoints": true
     }
   ]
 }
