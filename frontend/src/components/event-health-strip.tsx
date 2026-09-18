@@ -26,7 +26,10 @@ export function EventHealthStrip({
   const burn = budget.allocationCents === 0 ? null : budget.committedCents / budget.allocationCents;
 
   return (
-    <div className="flex items-center gap-3 text-sm" data-slot="event-health-strip">
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
+      data-slot="event-health-strip"
+    >
       <div
         role="progressbar"
         aria-label="Tasks complete"
@@ -36,7 +39,7 @@ export function EventHealthStrip({
         className="h-2 w-24 overflow-hidden rounded-full bg-muted"
       >
         <div
-          className="h-full rounded-full bg-primary transition-all"
+          className="h-full rounded-full bg-primary transition-[width]"
           style={{ width: `${percentComplete}%` }}
         />
       </div>
