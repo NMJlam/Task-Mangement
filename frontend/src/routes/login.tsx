@@ -53,7 +53,7 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <p className="text-xs text-primary-foreground/50">Melbourne Arts Collective</p>
+        <p className="text-xs text-primary-foreground/50">Monash Association of Coding</p>
         <div
           aria-hidden="true"
           className="absolute -right-28 -bottom-28 size-80 rounded-full border border-primary-foreground/10"
@@ -89,7 +89,7 @@ export function LoginPage() {
                 Sign In with Google
               </Button>
               <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">
-                Access is limited to invited Melbourne Arts Collective members.
+                Access is limited to invited Monash Association of Coding members.
               </p>
             </CardContent>
           </Card>
