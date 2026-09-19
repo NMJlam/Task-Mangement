@@ -1,5 +1,7 @@
 import { eventResponseSchema, type EventDetail } from "@ctp/shared";
 import { useCallback, useEffect, useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
+import type { EventDates, EventDatesSave } from "@/lib/event-dates";
 
 type EventState =
   | { status: "loading" }
@@ -71,5 +73,46 @@ export function useEvent(id: string | undefined) {
     }
   }, [id]);
 
-  return { state, cancelEvent, busy, mutationError };
+  /**
+   * Rescheduling, through the same `PATCH /api/events/:id` every other event
+   * edit uses. The response is the full detail, so the page's own state is
+   * replaced with what the server stored rather than with the draft.
+   *
+   * Never throws: a refusal comes back as `{ ok: false }` with the sentence to
+   * show. The route's `warnings` ride along on success — a date move can leave
+   * task deadlines behind the event, and the route reports it instead of moving
+   * them.
+   */
+  const updateDates = useCallback(
+    async (dates: EventDates): Promise<EventDatesSave> => {
+      if (!id) return { ok: false, message: "No event to update." };
+      setBusy(true);
+      setMutationError(undefined);
+      try {
+        const response = await fetch(`/api/events/${id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            startsAt: dates.startsAt.toISOString(),
+            endsAt: dates.endsAt?.toISOString() ?? null,
+          }),
+        });
+        const body: unknown = await response.json().catch(() => null);
+        if (!response.ok) {
+          return { ok: false, message: apiErrorMessage(body) ?? "Failed to update the event" };
+        }
+        const parsed = eventResponseSchema.parse(body);
+        setState({ status: "ok", event: parsed.event, warnings: parsed.warnings });
+        return { ok: true, warnings: parsed.warnings ?? [] };
+      } catch {
+        return { ok: false, message: "Failed to update the event. Try again." };
+      } finally {
+        setBusy(false);
+      }
+    },
+    [id],
+  );
+
+  return { state, cancelEvent, updateDates, busy, mutationError };
 }

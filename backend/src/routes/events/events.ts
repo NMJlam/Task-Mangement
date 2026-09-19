@@ -451,6 +451,9 @@ eventsRouter.get(
             startsAt: events.startsAt,
             endsAt: events.endsAt,
             status: events.status,
+            // The owner decides who may move the event; the client checks the
+            // same rule the PATCH route enforces.
+            ownerId: events.owner,
           })
           .from(events)
           .where(and(...filters))
