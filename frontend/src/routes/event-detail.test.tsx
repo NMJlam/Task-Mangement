@@ -29,6 +29,9 @@ vi.mock("@dnd-kit/react", () => ({
 }));
 
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000001";
+/** The signed-in member, as `/api/me` reports it. */
+const ME_ID = "018f3a4b-0000-7000-8000-00000000000f";
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const CHANNEL_ID = "018f3a4b-0000-7000-8000-000000000003";
 
 const eventFixture = {
@@ -71,6 +74,8 @@ const eventFixture = {
 };
 
 const eventTask = eventFixture.tasks[0]!;
+/** The fixture's start, parsed: the picker shows it in local time. */
+const stored = new Date(eventFixture.startsAt);
 const GLOBAL_TASK_ID = "018f3a4b-0000-7000-8000-0000000000ff";
 
 const progressFixture = {
@@ -252,6 +257,76 @@ describe("EventDetailPage", () => {
     expect(await screen.findByText(/file attachments are not built yet/i)).toBeInTheDocument();
   });
 
+  it("reschedules the event through the shared visual picker", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubEvent({ role: "president", tier: 2 });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Edit Dates" }));
+    const dialog = await screen.findByRole("dialog");
+
+    // Pre-filled from what is stored; the start is required so it offers no Clear.
+    expect(within(dialog).getByLabelText("Start date")).toHaveTextContent(
+      dateFormat.format(stored),
+    );
+    expect(within(dialog).queryByRole("button", { name: /^clear start/i })).not.toBeInTheDocument();
+
+    const nextDay = new Date(2026, 6, 24, 18, 0);
+    await user.click(within(dialog).getByLabelText("Start date"));
+    const picker = await screen.findByRole("dialog", { name: "Pick the start date" });
+    const cell = document.querySelector('[data-day="2026-07-24"]');
+    if (!cell) throw new Error("No calendar cell for 2026-07-24");
+    await user.click(within(cell as HTMLElement).getByRole("button"));
+    const timeField = within(picker).getByLabelText("Start time");
+    await user.clear(timeField);
+    await user.type(timeField, "18:00");
+    await user.click(within(picker).getByRole("button", { name: "Apply" }));
+
+    await user.click(within(dialog).getByRole("button", { name: "Save dates" }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(String((call as [string, RequestInit])[1].body))).toEqual({
+        startsAt: nextDay.toISOString(),
+        // No end time stored, so there is none to move.
+        endsAt: null,
+      });
+    });
+
+    // The page then shows the instants the server returned.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.querySelector(`time[datetime="${nextDay.toISOString()}"]`)).toBeInTheDocument();
+  });
+
+  // The route's rule, not a capability: owner or lead-and-above.
+  it("offers Edit Dates to the owner and to leads, but not to an outsider", async () => {
+    stubEvent({ role: "officer", tier: 0 });
+    const { unmount } = renderDetail();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "Edit Dates" })).not.toBeInTheDocument();
+    unmount();
+
+    // Owning it is one half of the rule…
+    stubEvent({
+      role: "officer",
+      tier: 0,
+      event: { ...eventFixture, owner: { id: ME_ID, name: "Me" } },
+    });
+    const owned = renderDetail();
+    expect(await screen.findByRole("button", { name: "Edit Dates" })).toBeInTheDocument();
+    owned.unmount();
+
+    // …and being a lead is the other.
+    stubEvent({ role: "director", tier: 1 });
+    renderDetail();
+    expect(await screen.findByRole("button", { name: "Edit Dates" })).toBeInTheDocument();
+  });
+
   it("offers cancel to the president only", async () => {
     // Tier 2 also holds the treasurer — event:cancel is the president's alone,
     // so a tier check would wrongly let this through.
@@ -327,15 +402,22 @@ function stubEvent({
   messages = [] as unknown[],
   members = [] as unknown[],
   tasks = eventFixture.tasks,
+  event = eventFixture,
 }: {
   role?: string;
   tier?: number;
   messages?: unknown[];
   members?: unknown[];
   tasks?: unknown[];
+  event?: Record<string, unknown>;
 } = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (init?.method === "DELETE") return Promise.resolve({ ok: true, status: 204 });
+    // Rescheduling echoes the stored row back, which is what the route returns.
+    if (url === `/api/events/${EVENT_ID}` && init?.method === "PATCH") {
+      const patch = JSON.parse(String(init.body)) as { startsAt: string; endsAt: string | null };
+      return Promise.resolve(ok({ event: { ...event, ...patch } }));
+    }
     // The Tasks tab's shared dialog edits the task in place; echo the patch back
     // the way the route does, so the dialog can show the stored row.
     if (url === `/api/tasks/${eventTask.id}` && init?.method === "PATCH") {
@@ -363,7 +445,7 @@ function stubEvent({
         }),
       );
     }
-    return Promise.resolve(ok({ event: eventFixture }));
+    return Promise.resolve(ok({ event }));
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;

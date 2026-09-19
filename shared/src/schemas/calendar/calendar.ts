@@ -38,6 +38,10 @@ const calendarEventItemSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date().nullable(),
   status: eventStatusSchema,
+  // Who owns it, so a client can tell whether the caller may move it without
+  // fetching the full detail: the edit rule is owner-or-tier, and tier alone
+  // cannot answer for a tier-0 member.
+  ownerId: z.uuid().nullable(),
 });
 
 const calendarTaskItemSchema = z.object({

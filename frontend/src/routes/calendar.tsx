@@ -1,9 +1,19 @@
-import { type CalendarItem, type EventDetail } from "@ctp/shared";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { type AuthUser, type CalendarItem, type EventDetail } from "@ctp/shared";
+import { Accessibility } from "@dnd-kit/dom";
+import {
+  DragDropProvider,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/react";
+import { CalendarDays, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import { useRef, useState, type RefObject } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
+import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +26,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCalendar } from "@/hooks/use-calendar";
 import { useEvent } from "@/hooks/use-event";
-import { addDays, lastInstant, sameDay, startOfDay } from "@/lib/dates";
+import { useMe } from "@/hooks/use-me";
+import { addDays, daysBetween, lastInstant, sameDay, shiftDays, startOfDay } from "@/lib/dates";
+import type { EventDates } from "@/lib/event-dates";
+import { canEditEvent } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 type View = "day" | "week" | "month";
@@ -111,17 +124,25 @@ function rangeLabel(view: View, days: Date[], anchor: Date): string {
   return monthYear.format(anchor);
 }
 
-/** The calendar (R6) as a day, week or month grid of events. */
+function titleOf(data: Record<string, unknown> | undefined): string {
+  return typeof data?.title === "string" ? data.title : "The event";
+}
+
+/** The calendar (R6) as a day, week or month grid of events, drag to reschedule. */
 export function CalendarPage() {
   const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   // The open preview, by id: the dialog fetches that event's full detail.
   const [openId, setOpenId] = useState<string>();
+  // What the last write reported — a refusal, or the tasks left behind by a move.
+  const [notice, setNotice] = useState<{ kind: "info" | "error"; text: string }>();
   // Radix hands focus back to a `DialogTrigger`, and no trigger exists here
   // because these buttons live in the grid — so the button that opened the
   // dialog is remembered instead, and focused again on close. Without it a
   // keyboard user returns to the top of the document, having lost the day.
   const opener = useRef<HTMLElement | null>(null);
+  const me = useMe();
+  const user = me.status === "ok" ? me.user : undefined;
   const { days, from, to } = rangeFor(view, anchor);
   const calendar = useCalendar(from, to);
   const events =
@@ -134,6 +155,17 @@ export function CalendarPage() {
     setOpenId(id);
   }
 
+  async function moveEvent(id: string, dates: EventDates) {
+    const result = await calendar.reschedule(id, dates);
+    if (!result.ok) {
+      setNotice({ kind: "error", text: result.message });
+      return;
+    }
+    setNotice(
+      result.warnings.length > 0 ? { kind: "info", text: result.warnings.join(" ") } : undefined,
+    );
+  }
+
   function step(direction: -1 | 1) {
     if (view === "day") setAnchor(addDays(anchor, direction));
     else if (view === "week") setAnchor(addDays(anchor, direction * 7));
@@ -141,89 +173,191 @@ export function CalendarPage() {
     else setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1));
   }
 
+  /** A drop: move the event by the same number of days the chip travelled. */
+  function handleDragEnd({ operation, canceled }: DragEndEvent) {
+    if (canceled) return;
+    const eventId = typeof operation.source?.data?.id === "string" ? operation.source.data.id : "";
+    const fromIndex = operation.source?.data?.dayIndex;
+    const toIndex = Number(operation.target?.id);
+    const dragged = events.find((candidate) => candidate.id === eventId);
+    const sourceDay = typeof fromIndex === "number" ? days[fromIndex] : undefined;
+    const targetDay = Number.isInteger(toIndex) ? days[toIndex] : undefined;
+    if (!dragged || !sourceDay || !targetDay) return;
+    // Whole local days between the two cells — the cells are always a whole
+    // number of days apart, so this is the shift the event takes.
+    const delta = daysBetween(sourceDay, targetDay);
+    if (delta === 0) return;
+    void moveEvent(dragged.id, {
+      startsAt: shiftDays(dragged.startsAt, delta),
+      endsAt: dragged.endsAt ? shiftDays(dragged.endsAt, delta) : null,
+    });
+  }
+
+  /** A readable name for a cell, for the drag announcements. */
+  const dayName = (index: unknown) => {
+    const day = typeof index === "number" ? days[index] : undefined;
+    return day ? mediumDate.format(day) : "another day";
+  };
+  // The board's idiom: the library's id-only sentences are useless, so only the
+  // announcements are replaced. Repeating "Over <day>" while the pointer stays
+  // in one cell is noise, hence the last-announced tracker.
+  const announced = useRef<unknown>(undefined);
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-      <PageHeader title="Calendar" description={rangeLabel(view, days, anchor)} />
+      <PageHeader
+        title="Calendar"
+        description={`${rangeLabel(view, days, anchor)} · Drag an event to another day to move it.`}
+      />
 
-      <Tabs
-        value={view}
-        // Radix unmounts the inactive panel, so the switch also decides which
-        // grid renders — one surface at a time, not three hidden ones.
-        onValueChange={(next) => setView(next as View)}
-        className="mt-6 gap-4"
+      <DragDropProvider
+        plugins={(defaults) =>
+          defaults.map((plugin) =>
+            plugin === Accessibility
+              ? Accessibility.configure({
+                  screenReaderInstructions: {
+                    draggable:
+                      "Press Space to pick up an event. Use the arrow keys to move it towards another day, holding Shift for bigger steps. Press Space to drop, or Escape to cancel.",
+                  },
+                  announcements: {
+                    dragstart: (event: DragStartEvent) => {
+                      announced.current = event.operation.source?.data?.dayIndex;
+                      return `Picked up ${titleOf(event.operation.source?.data)} from ${dayName(event.operation.source?.data?.dayIndex)}.`;
+                    },
+                    dragover: (event: DragOverEvent) => {
+                      const over = event.operation.target?.id;
+                      if (over === announced.current) return undefined;
+                      announced.current = over;
+                      return `Over ${dayName(Number(over))}.`;
+                    },
+                    dragend: (event: DragEndEvent) => {
+                      const title = titleOf(event.operation.source?.data);
+                      const from = dayName(event.operation.source?.data?.dayIndex);
+                      if (event.canceled) return `Drop cancelled. ${title} stays on ${from}.`;
+                      if (!event.operation.target)
+                        return `Dropped ${title} outside a day. It stays on ${from}.`;
+                      return `Moved ${title} to ${dayName(Number(event.operation.target.id))}.`;
+                    },
+                  },
+                })
+              : plugin,
+          )
+        }
+        onDragEnd={handleDragEnd}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList aria-label="Calendar view">
-            {(["day", "week", "month"] as const).map((option) => (
-              <TabsTrigger key={option} value={option}>
-                {viewLabels[option]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={`Previous ${view}`}
-              onClick={() => step(-1)}
-            >
-              <ChevronLeft aria-hidden="true" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>
-              Today
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={`Next ${view}`}
-              onClick={() => step(1)}
-            >
-              <ChevronRight aria-hidden="true" />
-            </Button>
+        <Tabs
+          value={view}
+          // Radix unmounts the inactive panel, so the switch also decides which
+          // grid renders — one surface at a time, not three hidden ones.
+          onValueChange={(next) => setView(next as View)}
+          className="mt-6 gap-4"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <TabsList aria-label="Calendar view">
+              {(["day", "week", "month"] as const).map((option) => (
+                <TabsTrigger key={option} value={option}>
+                  {viewLabels[option]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={`Previous ${view}`}
+                onClick={() => step(-1)}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>
+                Today
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={`Next ${view}`}
+                onClick={() => step(1)}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {calendar.state.status === "loading" && (
-          <p className="text-sm text-muted-foreground" role="status">
-            Loading the Calendar…
-          </p>
-        )}
-        {calendar.state.status === "error" && (
-          <p className="text-sm text-destructive" role="alert">
-            Couldn&apos;t load the calendar: {calendar.state.message}. Refresh the page to try
-            again.
-          </p>
-        )}
+          {notice && (
+            <p
+              className={cn(
+                "text-sm",
+                notice.kind === "error" ? "text-destructive" : "text-muted-foreground",
+              )}
+              role={notice.kind === "error" ? "alert" : "status"}
+            >
+              {notice.text}
+            </p>
+          )}
+          {calendar.state.status === "loading" && (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading the Calendar…
+            </p>
+          )}
+          {calendar.state.status === "error" && (
+            <p className="text-sm text-destructive" role="alert">
+              Couldn&apos;t load the calendar: {calendar.state.message}. Refresh the page to try
+              again.
+            </p>
+          )}
 
-        {calendar.state.status === "ok" && (
-          <>
-            <TabsContent value="day">
-              <div className="rounded-lg border">
-                <DayColumn
-                  date={days[0]!}
-                  events={eventsOn(days[0]!, events)}
-                  onOpen={openEvent}
-                  detailed
-                />
-              </div>
-            </TabsContent>
+          {calendar.state.status === "ok" && (
+            <>
+              <TabsContent value="day">
+                <div className="rounded-lg border">
+                  <DayColumn
+                    dayIndex={0}
+                    date={days[0]!}
+                    events={eventsOn(days[0]!, events)}
+                    user={user}
+                    busyId={calendar.busyId}
+                    onOpen={openEvent}
+                    detailed
+                  />
+                </div>
+              </TabsContent>
 
-            <TabsContent value="week">
-              <div className="overflow-x-auto">
-                <WeekGrid days={days} events={events} onOpen={openEvent} />
-              </div>
-            </TabsContent>
+              <TabsContent value="week">
+                <div className="overflow-x-auto">
+                  <WeekGrid
+                    days={days}
+                    events={events}
+                    user={user}
+                    busyId={calendar.busyId}
+                    onOpen={openEvent}
+                  />
+                </div>
+              </TabsContent>
 
-            <TabsContent value="month">
-              <div className="overflow-x-auto">
-                <MonthGrid days={days} events={events} anchor={anchor} onOpen={openEvent} />
-              </div>
-            </TabsContent>
-          </>
-        )}
-      </Tabs>
+              <TabsContent value="month">
+                <div className="overflow-x-auto">
+                  <MonthGrid
+                    days={days}
+                    events={events}
+                    anchor={anchor}
+                    user={user}
+                    busyId={calendar.busyId}
+                    onOpen={openEvent}
+                  />
+                </div>
+              </TabsContent>
+            </>
+          )}
+        </Tabs>
+      </DragDropProvider>
 
-      <EventOverviewDialog id={openId} opener={opener} onClose={() => setOpenId(undefined)} />
+      <EventOverviewDialog
+        id={openId}
+        opener={opener}
+        user={user}
+        onRescheduled={calendar.reload}
+        onClose={() => setOpenId(undefined)}
+      />
     </main>
   );
 }
@@ -256,10 +390,14 @@ function WeekdayHeadings() {
 function WeekGrid({
   days,
   events,
+  user,
+  busyId,
   onOpen,
 }: {
   days: Date[];
   events: CalendarEvent[];
+  user: AuthUser | undefined;
+  busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
 }) {
   return (
@@ -269,9 +407,16 @@ function WeekGrid({
       <WeekdayHeadings />
       <tbody>
         <tr>
-          {days.map((day) => (
+          {days.map((day, index) => (
             <td key={day.toISOString()} className="w-[14.28%] align-top">
-              <DayColumn date={day} events={eventsOn(day, events)} onOpen={onOpen} />
+              <DayColumn
+                dayIndex={index}
+                date={day}
+                events={eventsOn(day, events)}
+                user={user}
+                busyId={busyId}
+                onOpen={onOpen}
+              />
             </td>
           ))}
         </tr>
@@ -285,11 +430,15 @@ function MonthGrid({
   days,
   events,
   anchor,
+  user,
+  busyId,
   onOpen,
 }: {
   days: Date[];
   events: CalendarEvent[];
   anchor: Date;
+  user: AuthUser | undefined;
+  busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
 }) {
   return (
@@ -299,7 +448,7 @@ function MonthGrid({
       <tbody>
         {Array.from({ length: MONTH_ROWS }, (_, row) => (
           <tr key={row}>
-            {days.slice(row * 7, row * 7 + 7).map((day) => (
+            {days.slice(row * 7, row * 7 + 7).map((day, column) => (
               <td
                 key={day.toISOString()}
                 className={cn(
@@ -312,7 +461,15 @@ function MonthGrid({
                   day.getMonth() !== anchor.getMonth() && "bg-muted/40",
                 )}
               >
-                <DayColumn date={day} events={eventsOn(day, events)} onOpen={onOpen} compact />
+                <DayColumn
+                  dayIndex={row * 7 + column}
+                  date={day}
+                  events={eventsOn(day, events)}
+                  user={user}
+                  busyId={busyId}
+                  onOpen={onOpen}
+                  compact
+                />
               </td>
             ))}
           </tr>
@@ -323,33 +480,45 @@ function MonthGrid({
 }
 
 /**
- * One dated cell: the date, then the events it holds in start order.
+ * One dated cell: the date, then the events it holds in start order. Also the
+ * drop target for a drag — dropping on the cell body, not just on a chip, is how
+ * an event reaches a day that is empty.
  *
  * Empty days stay rendered and say so, rather than being collapsed away — a gap
  * in a calendar is information.
  */
 function DayColumn({
+  dayIndex,
   date,
   events,
+  user,
+  busyId,
   onOpen,
   detailed = false,
   compact = false,
 }: {
+  /** Position in the visible range; doubles as this cell's drop-target id. */
+  dayIndex: number;
   date: Date;
   events: CalendarEvent[];
+  user: AuthUser | undefined;
+  busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
   /** Day view: the full date as a heading, and no grid-imposed cell padding. */
   detailed?: boolean;
   /** Month view: a bare day number. */
   compact?: boolean;
 }) {
+  const { ref, isDropTarget } = useDroppable({ id: String(dayIndex), accept: "event" });
   const isToday = sameDay(date, new Date());
 
   return (
     <div
+      ref={ref}
       className={cn(
         "grid content-start gap-1 rounded-lg",
         compact ? "min-h-24 p-1.5" : "min-h-20 p-2",
+        isDropTarget && "bg-accent/60 ring-2 ring-ring/40 ring-inset",
       )}
     >
       <div className={cn("flex items-baseline gap-1.5", detailed && "border-b pb-2")}>
@@ -378,7 +547,14 @@ function DayColumn({
       <ul className="grid gap-1">
         {events.map((event) => (
           <li key={event.id}>
-            <EventChip event={event} date={date} onOpen={onOpen} />
+            <EventChip
+              event={event}
+              date={date}
+              dayIndex={dayIndex}
+              movable={canEditEvent(user, event.ownerId)}
+              busy={busyId === event.id}
+              onOpen={onOpen}
+            />
           </li>
         ))}
       </ul>
@@ -398,33 +574,78 @@ function DayColumn({
 }
 
 /**
- * One event on one day. A multi-day event renders one chip per day it occupies,
- * so the accessible name carries the day — without it every chip of the same
- * event would be announced identically.
+ * One event on one day.
+ *
+ * Two real controls, deliberately separate — the same split `TaskCard` makes. The
+ * title opens the preview; the grip is the only drag activator. Making the whole
+ * chip the handle would give Space two meanings at once, and a drag that starts
+ * from the grip leaves the body free for the click, Enter and Space that open the
+ * dialog.
+ *
+ * A multi-day event renders one chip per day it occupies, so the draggable id is
+ * the PAIR (event, day): two chips of the same event are two elements, and the
+ * day half is also what makes "drag Wednesday's strip to Friday" mean two days.
  */
 function EventChip({
   event,
   date,
+  dayIndex,
+  movable,
+  busy,
   onOpen,
 }: {
   event: CalendarEvent;
   date: Date;
+  dayIndex: number;
+  /** Owner or lead-and-above — the rule the PATCH route enforces server-side. */
+  movable: boolean;
+  busy: boolean;
   onOpen: (id: string, trigger: HTMLElement) => void;
 }) {
+  const { ref, handleRef, isDragging } = useDraggable({
+    id: `${event.id}:${dayIndex}`,
+    type: "event",
+    disabled: !movable || busy,
+    data: { id: event.id, dayIndex, title: event.title },
+  });
+
   return (
-    <button
-      type="button"
-      aria-label={`Open ${event.title} on ${mediumDate.format(date)}`}
-      onClick={(click) => onOpen(event.id, click.currentTarget)}
-      className="w-full cursor-pointer rounded-md bg-secondary px-1.5 py-0.5 text-left transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    <div
+      ref={ref}
+      className={cn(
+        "flex items-start gap-0.5 rounded-md bg-secondary px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
+        isDragging ? "opacity-60" : "hover:bg-accent",
+      )}
     >
-      <span className="block truncate text-xs font-medium">{event.title}</span>
-      {/* The start time only on the day the event starts; later days of a
-          multi-day event are continuations of the same single start. */}
-      <span className="block truncate text-[0.6875rem] text-secondary-foreground">
-        {sameDay(event.startsAt, date) ? clock.format(event.startsAt) : "Continues"}
-      </span>
-    </button>
+      <button
+        type="button"
+        // The day is in the name because a multi-day event renders one button per
+        // day it occupies — without it every one of them would be announced
+        // identically.
+        aria-label={`Open ${event.title} on ${mediumDate.format(date)}`}
+        onClick={(click) => onOpen(event.id, click.currentTarget)}
+        className="min-w-0 flex-1 cursor-pointer rounded-sm text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <span className="block truncate text-xs font-medium">{event.title}</span>
+        {/* The start time only on the day the event starts; later days of a
+            multi-day event are continuations of the same single start. */}
+        <span className="block truncate text-[0.6875rem] text-secondary-foreground">
+          {sameDay(event.startsAt, date) ? clock.format(event.startsAt) : "Continues"}
+        </span>
+      </button>
+      {movable && (
+        <Button
+          ref={handleRef}
+          variant="ghost"
+          size="icon-xs"
+          disabled={busy}
+          aria-label={`Move ${event.title} from ${mediumDate.format(date)}`}
+          className="size-5 shrink-0 touch-none text-muted-foreground"
+        >
+          <GripVertical aria-hidden="true" className="size-3.5" />
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -439,10 +660,15 @@ function EventChip({
 function EventOverviewDialog({
   id,
   opener,
+  user,
+  onRescheduled,
   onClose,
 }: {
   id: string | undefined;
   opener: RefObject<HTMLElement | null>;
+  user: AuthUser | undefined;
+  /** The grid re-reads once the preview has written new dates of its own. */
+  onRescheduled: () => void;
   onClose: () => void;
 }) {
   return (
@@ -461,15 +687,27 @@ function EventOverviewDialog({
             opener.current?.focus();
           }}
         >
-          <EventOverview key={id} id={id} />
+          <EventOverview key={id} id={id} user={user} onRescheduled={onRescheduled} />
         </DialogContent>
       )}
     </Dialog>
   );
 }
 
-function EventOverview({ id }: { id: string }) {
-  const { state } = useEvent(id);
+function EventOverview({
+  id,
+  user,
+  onRescheduled,
+}: {
+  id: string;
+  user: AuthUser | undefined;
+  onRescheduled: () => void;
+}) {
+  const detail = useEvent(id);
+  const { state } = detail;
+  const [editing, setEditing] = useState(false);
+  // A move that leaves task deadlines behind reports it rather than fixing it.
+  const [warnings, setWarnings] = useState<string[]>([]);
   const event = state.status === "ok" ? state.event : undefined;
 
   return (
@@ -489,12 +727,45 @@ function EventOverview({ id }: { id: string }) {
           Couldn&apos;t load the event: {state.message}. Try again.
         </p>
       )}
-      {event && <EventOverviewBody event={event} />}
+      {event && (
+        <EventOverviewBody
+          event={event}
+          canEdit={canEditEvent(user, event.owner?.id ?? null)}
+          onEditDates={() => setEditing(true)}
+          warnings={warnings}
+        />
+      )}
+
+      {/* Nested inside the preview so the dates can be fixed without losing the
+          place in the calendar. The write goes through the preview's own
+          `useEvent`, not the calendar's optimistic `reschedule`: the dialog is
+          about to show the stored row, and only this hook holds it — the grid is
+          told separately, and re-reads. */}
+      <EventDatesDialog
+        event={editing ? event : undefined}
+        onClose={() => setEditing(false)}
+        onSave={async (dates) => {
+          const result = await detail.updateDates(dates);
+          if (result.ok) onRescheduled();
+          return result;
+        }}
+        onSaved={setWarnings}
+      />
     </>
   );
 }
 
-function EventOverviewBody({ event }: { event: EventDetail }) {
+function EventOverviewBody({
+  event,
+  canEdit,
+  onEditDates,
+  warnings,
+}: {
+  event: EventDetail;
+  canEdit: boolean;
+  onEditDates: () => void;
+  warnings: string[];
+}) {
   return (
     <>
       <DialogHeader>
@@ -507,7 +778,19 @@ function EventOverviewBody({ event }: { event: EventDetail }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={event.status} />
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={onEditDates}>
+            <CalendarDays aria-hidden="true" />
+            Edit dates
+          </Button>
+        )}
       </div>
+
+      {warnings.length > 0 && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {warnings.join(" ")}
+        </p>
+      )}
 
       <dl className="grid gap-3 border-t pt-4 text-sm">
         <Row label="Starts" value={dateTime.format(event.startsAt)} />

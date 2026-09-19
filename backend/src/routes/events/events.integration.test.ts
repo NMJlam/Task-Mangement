@@ -494,6 +494,49 @@ describe("/api/events", () => {
       expect(item.assigneeIds.sort()).toEqual([officer.id, director.id].sort());
     });
 
+    it("moves an event when its dates are patched, and warns about stranded tasks", async () => {
+      const owner = await member("owner", "officer");
+      signedInAs(owner);
+      const event = await seedEvent({
+        title: "test-event-calendar-move",
+        owner: owner.id,
+        startsAt: new Date(Date.now() + HOUR),
+        endsAt: new Date(Date.now() + 3 * HOUR),
+      });
+      // Inside the event's window as it stands, so moving the event earlier is
+      // what leaves it behind.
+      await seedTask(event.id, [], { dueAt: new Date(Date.now() + 2 * HOUR) });
+
+      const moved = new Date(Date.now() - 2 * HOUR);
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({
+          startsAt: moved.toISOString(),
+          endsAt: new Date(moved.getTime() + HOUR).toISOString(),
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.event.startsAt).toBe(moved.toISOString());
+      expect(response.body.warnings).toEqual(["1 task now falls after the event date"]);
+    });
+
+    it("422s an end before the start, which is the one invalid pair a move can send", async () => {
+      const owner = await member("owner", "officer");
+      signedInAs(owner);
+      const event = await seedEvent({
+        title: "test-event-calendar-inverted",
+        owner: owner.id,
+        startsAt: new Date(Date.now() + 2 * HOUR),
+      });
+
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ endsAt: new Date(Date.now() + HOUR).toISOString() });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.fields.endsAt).toEqual(["endsAt must not precede startsAt"]);
+    });
+
     it("returns an event that started before the range but ends inside it", async () => {
       const officer = await member("officer", "officer");
       signedInAs(officer);

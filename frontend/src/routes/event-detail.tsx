@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { EventRiskPanel } from "@/components/events/event-risk-panel";
 import { TaskBoard } from "@/components/tasks/task-board";
@@ -17,6 +18,7 @@ import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
 import { useThreadMessages } from "@/hooks/use-threads";
+import { canEditEvent } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
@@ -44,9 +46,19 @@ export function EventDetailPage() {
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const me = useMe();
   const [confirming, setConfirming] = useState(false);
+  const [editingDates, setEditingDates] = useState(false);
+  // Warnings the last successful move came back with — a date change can leave
+  // task deadlines behind the event, which the route reports rather than fixing.
+  const [dateWarnings, setDateWarnings] = useState<string[]>([]);
   // `event:cancel` is the president's alone — tier 2 also holds the VP, treasurer
   // and secretary, so a tier check cannot express this.
   const canCancel = me.status === "ok" && can(me.user.role, "event:cancel");
+  // Rescheduling is the route's owner-or-lead rule, not a capability — see
+  // `lib/permissions.ts`.
+  const canEdit = canEditEvent(
+    me.status === "ok" ? me.user : undefined,
+    state.status === "ok" ? (state.event.owner?.id ?? null) : null,
+  );
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams);
@@ -85,6 +97,11 @@ export function EventDetailPage() {
         actions={
           <>
             <StatusBadge status={event.status} />
+            {canEdit && event.status !== "cancelled" && (
+              <Button variant="outline" onClick={() => setEditingDates(true)}>
+                Edit Dates
+              </Button>
+            )}
             {canCancel && event.status !== "cancelled" && (
               <Button variant="outline" onClick={() => setConfirming(true)}>
                 Cancel Event
@@ -119,6 +136,11 @@ export function EventDetailPage() {
       {detail.mutationError && (
         <p className="mt-4 text-sm text-destructive" role="alert">
           {detail.mutationError}. Try again.
+        </p>
+      )}
+      {dateWarnings.length > 0 && (
+        <p className="mt-4 text-sm text-muted-foreground" role="status">
+          {dateWarnings.join(" ")}. Open the Tasks tab to reschedule them.
         </p>
       )}
 
@@ -304,6 +326,13 @@ export function EventDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <EventDatesDialog
+        event={editingDates ? event : undefined}
+        onClose={() => setEditingDates(false)}
+        onSave={detail.updateDates}
+        onSaved={setDateWarnings}
+      />
     </main>
   );
 }

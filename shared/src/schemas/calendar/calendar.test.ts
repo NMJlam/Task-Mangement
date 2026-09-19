@@ -32,8 +32,23 @@ describe("calendarItemSchema", () => {
       startsAt: "2026-11-01T10:00:00Z",
       endsAt: null,
       status: "planning",
+      ownerId: null,
     });
     expect("clashes" in event).toBe(false);
+  });
+
+  it("carries the owner, which is half of the edit rule a client checks", () => {
+    const ownerId = "018f3a4b-0000-7000-8000-000000000005";
+    const event = calendarItemSchema.parse({
+      kind: "event",
+      id: "018f3a4b-0000-7000-8000-000000000001",
+      title: "AGM",
+      startsAt: "2026-11-01T10:00:00Z",
+      endsAt: null,
+      status: "planning",
+      ownerId,
+    });
+    expect(event.kind === "event" && event.ownerId).toBe(ownerId);
   });
 
   it("discriminates on kind", () => {
