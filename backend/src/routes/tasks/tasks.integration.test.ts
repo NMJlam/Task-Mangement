@@ -480,6 +480,56 @@ describe("/api/tasks", () => {
 
       expect(response.status).toBe(404);
     });
+
+    // The marker is backend operational state; these two rows are what make the
+    // nightly sweep once per overdue cycle rather than every night (R10).
+    it("starts a new overdue cycle when the deadline moves, and clears it outright", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const escalatedAt = new Date();
+      const existing = await seedTask(teamId, {
+        dueAt: new Date(Date.now() - HOUR),
+        priority: "urgent",
+        overdueEscalatedAt: escalatedAt,
+      });
+      signedInAs(actor);
+
+      // A priority edit is not a new cycle: the marker stands, which is what
+      // preserves a user's change past the next sweep.
+      await request(app).patch(`/api/tasks/${existing.id}`).send({ priority: "low" });
+      const [afterPriority] = await db.select().from(tasks).where(eq(tasks.id, existing.id));
+      expect(afterPriority!.overdueEscalatedAt).toEqual(escalatedAt);
+
+      // A moved deadline is: the sweep may escalate the task again.
+      await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ dueAt: new Date(Date.now() + HOUR).toISOString() });
+      const [afterMove] = await db.select().from(tasks).where(eq(tasks.id, existing.id));
+      expect(afterMove!.overdueEscalatedAt).toBeNull();
+
+      // As is clearing it entirely.
+      await db
+        .update(tasks)
+        .set({ overdueEscalatedAt: new Date() })
+        .where(eq(tasks.id, existing.id));
+      await request(app).patch(`/api/tasks/${existing.id}`).send({ dueAt: null });
+      const [afterClear] = await db.select().from(tasks).where(eq(tasks.id, existing.id));
+      expect(afterClear!.overdueEscalatedAt).toBeNull();
+    });
+
+    it("never returns the escalation marker on the wire", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      const existing = await seedTask(teamId, { overdueEscalatedAt: new Date() });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${existing.id}`)
+        .send({ title: "Renamed" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task).not.toHaveProperty("overdueEscalatedAt");
+    });
   });
 
   describe("PATCH /api/tasks/:id/status", () => {
