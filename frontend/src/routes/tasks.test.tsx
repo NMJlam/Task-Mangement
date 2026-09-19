@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TasksPage } from "./tasks";
 
@@ -46,6 +47,8 @@ const taskId = "018f3a4b-0000-7000-8000-000000000001";
 const ada = { id: "018f3a4b-0000-7000-8000-00000000000a", name: "Ada Lovelace" };
 const grace = { id: "018f3a4b-0000-7000-8000-00000000000b", name: "Grace Hopper" };
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000010";
+/** The `datetime-local` wire format: no zone, so `new Date()` reads it as local. */
+const DUE_AT_LOCAL = "2026-11-05T14:30";
 
 /** The card's column is read off the DOM, which is the observable result. */
 function columnOf(title: string, label: string) {
@@ -66,17 +69,36 @@ function dropCard(status: string) {
   });
 }
 
+/** The dialog links to `/events/:id`, so the page needs a router in scope. */
+function renderPage() {
+  return render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <TasksPage />
+    </MemoryRouter>,
+  );
+}
+
 describe("TasksPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("creates tasks and shows them on the board", async () => {
+  it("creates a task through the Add Tasks modal and shows it on the board", async () => {
+    const user = userEvent.setup();
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/tasks" && init?.method === "POST")
         return Promise.resolve(
           response({
-            task: { ...task, id: "018f3a4b-0000-7000-8000-000000000002", title: "Book AV" },
+            task: {
+              ...task,
+              id: "018f3a4b-0000-7000-8000-000000000002",
+              title: "Book AV",
+              // Echoed the way the route returns the stored row: trimmed.
+              description: "Two mics and the AV cart.",
+              priority: "urgent",
+              eventId: EVENT_ID,
+              assigneeIds: [ada.id, grace.id],
+            },
           }),
         );
       if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
@@ -85,17 +107,92 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
 
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/^task$/i), { target: { value: "Book AV" } });
-    fireEvent.click(screen.getByRole("button", { name: /add task/i }));
-    await waitFor(() => expect(screen.getByText("Book AV")).toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add Tasks" }));
+    const dialog = await screen.findByRole("dialog");
+    // The event list has loaded by now, so the control offers real choices.
+    await waitFor(() => expect(within(dialog).getByLabelText(/^linked event$/i)).toBeEnabled());
+
+    await user.type(within(dialog).getByLabelText(/^task$/i), "Book AV");
+    await user.type(within(dialog).getByLabelText(/^description$/i), "Two mics and the AV cart.");
+    await user.selectOptions(within(dialog).getByLabelText(/^priority$/i), "urgent");
+    await user.selectOptions(within(dialog).getByLabelText(/^linked event$/i), EVENT_ID);
+    await user.type(within(dialog).getByLabelText(/^due date$/i), DUE_AT_LOCAL);
+
+    // The same searchable picker as the task modal, including its filter: a mixed
+    // -case query narrows the roster before anything is clicked.
+    await user.click(within(dialog).getByRole("button", { name: /^add member to this task$/i }));
+    fireEvent.change(screen.getByLabelText(/search members/i), { target: { value: "aDA" } });
+    expect(
+      screen.queryByRole("button", { name: /^assign grace hopper$/i }),
+    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /^assign ada lovelace$/i }));
+
+    await user.click(screen.getByRole("button", { name: /^assign grace hopper$/i }));
+    await user.click(within(dialog).getByRole("button", { name: "Add Task" }));
+
+    // The exact wire body: what the user chose, plus the schema's own defaults.
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeDefined();
+      const body = JSON.parse(String(post?.[1]?.body));
+      expect(body).toMatchObject({
+        title: "Book AV",
+        description: "Two mics and the AV cart.",
+        priority: "urgent",
+        eventId: EVENT_ID,
+        // Selection order is what the picker reported.
+        assigneeIds: [ada.id, grace.id],
+      });
+      // `datetime-local` carries no zone, so compare instants, not strings.
+      expect(new Date(body.dueAt).getTime()).toBe(new Date(DUE_AT_LOCAL).getTime());
+    });
+
+    // A successful create closes the modal and puts the card on the board.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("Book AV")).toBeInTheDocument();
+    expect(screen.getByText("Winter Showcase")).toBeInTheDocument();
+
+    // The description typed at creation is on the card it created.
+    await user.click(screen.getByRole("button", { name: "Open Book AV" }));
+    expect(await screen.findByLabelText(/^description$/i)).toHaveValue("Two mics and the AV cart.");
   });
 
-  it("links a task to an event", async () => {
+  it("keeps the modal open with its entries when the create fails", async () => {
     const user = userEvent.setup();
     const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks" && init?.method === "POST")
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Add Tasks" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^task$/i), "Book AV");
+    await user.click(within(dialog).getByRole("button", { name: "Add Task" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Failed to create task. Try again.",
+    );
+    // Nothing typed is thrown away, so the retry is one click.
+    expect(within(dialog).getByLabelText(/^task$/i)).toHaveValue("Book AV");
+  });
+
+  it("links a task to an event and exposes the event page from the modal", async () => {
+    const user = userEvent.setup();
+    const task = { ...buildTask(), eventId: EVENT_ID };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === `/api/tasks/${task.id}` && init?.method === "PATCH") {
@@ -107,17 +204,87 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: /^open confirm venue access$/i }));
-    await user.selectOptions(screen.getByLabelText("Linked event"), EVENT_ID);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("link", { name: "View event" })).toHaveAttribute(
+      "href",
+      `/events/${EVENT_ID}`,
+    );
+
+    await user.selectOptions(within(dialog).getByLabelText("Linked event"), "");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         `/api/tasks/${task.id}`,
-        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ eventId: EVENT_ID }) }),
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ eventId: null }) }),
       );
     });
+  });
+
+  it("changes a task's priority from the modal", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/tasks/${task.id}` && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return Promise.resolve(response({ task: { ...task, ...body } }));
+      }
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /^open confirm venue access$/i }));
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/^priority$/i);
+    expect(select).toHaveValue("high");
+
+    await user.selectOptions(select, "low");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${task.id}`,
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ priority: "low" }) }),
+      );
+    });
+    // The dialog shows what the server returned, not the raw selection.
+    await waitFor(() => expect(within(dialog).getByLabelText(/^priority$/i)).toHaveValue("low"));
+  });
+
+  it("filters the board by title, case-insensitively", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const other = { ...buildTask(), id: "018f3a4b-0000-7000-8000-000000000003", title: "Book AV" };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task, other] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Book AV")).toBeInTheDocument());
+
+    const search = screen.getByLabelText(/search tasks/i);
+    await user.type(search, "BOOK av");
+
+    expect(screen.queryByText("Confirm venue access")).not.toBeInTheDocument();
+    expect(screen.getByText("Book AV")).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "nothing like this");
+    expect(screen.getByText("No tasks match your search.")).toBeInTheDocument();
+
+    await user.clear(search);
+    expect(screen.getByText("Confirm venue access")).toBeInTheDocument();
+    expect(screen.getByText("Book AV")).toBeInTheDocument();
   });
 
   it("moves a dropped card into the new column and PATCHes its status", async () => {
@@ -132,7 +299,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
     expect(columnOf("Confirm venue access", "To Do")).toBe(true);
 
@@ -167,7 +334,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
 
     dropCard("in_progress");
@@ -197,7 +364,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /^open confirm venue access$/i }));
@@ -246,7 +413,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^open confirm venue access$/i }));
     const dialog = await screen.findByRole("dialog");
@@ -286,7 +453,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^open confirm venue access$/i }));
     const dialog = await screen.findByRole("dialog");
@@ -323,7 +490,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -349,12 +516,12 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
 
     expect(await screen.findByTitle("2 assignees")).toHaveTextContent("2");
   });
 
-  it("shows an empty state when the search matches nobody", async () => {
+  it("shows an empty state when the member search matches nobody", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/tasks") return Promise.resolve(response({ tasks: [buildTask()] }));
@@ -363,7 +530,7 @@ describe("TasksPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<TasksPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /^open confirm venue access$/i }));
