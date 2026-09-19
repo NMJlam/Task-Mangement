@@ -30,11 +30,30 @@ function DialogOverlay({
   );
 }
 
+/**
+ * Two dialogs, two sizes, and the size is the point: `default` is a focused
+ * single-column confirmation, `wide` is the task card back — wide enough for a
+ * metadata strip and tall enough that the description is the main surface
+ * rather than a footnote.
+ *
+ * `wide` also owns the flex column, because that is what lets the description
+ * claim the leftover height with `flex-1` while the header, metadata and
+ * actions stay pinned. `cn` is tailwind-merge, so `flex` here replaces the base
+ * `grid` rather than fighting it.
+ */
+const dialogSizes = {
+  default: "max-w-lg",
+  wide: "flex h-[min(88vh,64rem)] max-w-6xl flex-col",
+};
+
 function DialogContent({
   className,
   children,
+  size = "default",
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  size?: keyof typeof dialogSizes;
+}) {
   return (
     <DialogPrimitive.Portal>
       {/* Centred by a GRID, not `top-1/2 left-1/2 -translate-1/2`: a transform
@@ -54,7 +73,8 @@ function DialogContent({
             // dialog. Scrolling works here because the dialog content is the
             // scroll-lock shard — anything portaled outside it has its wheel
             // events cancelled by react-remove-scroll.
-            "relative z-50 grid max-h-[calc(100vh-2rem)] w-full max-w-lg gap-4 overflow-y-auto overscroll-contain rounded-lg border bg-card p-6 shadow-lg",
+            "relative z-50 grid max-h-[calc(100vh-2rem)] w-full gap-4 overflow-y-auto overscroll-contain rounded-lg border bg-card p-6 shadow-lg",
+            dialogSizes[size],
             className,
           )}
           {...props}

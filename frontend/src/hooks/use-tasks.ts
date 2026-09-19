@@ -1,8 +1,8 @@
 import {
   taskListResponseSchema,
   taskResponseSchema,
+  type CreateTask,
   type Task,
-  type TaskPriority,
   type TaskStatus,
   type UpdateTask,
 } from "@ctp/shared";
@@ -60,7 +60,7 @@ export function useTasks({
     };
   }, [enabled, eventId]);
 
-  const createTask = useCallback(async (title: string, priority: TaskPriority) => {
+  const createTask = useCallback(async (input: CreateTask) => {
     setBusy("new");
     setMutationError(undefined);
     try {
@@ -68,7 +68,7 @@ export function useTasks({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, priority }),
+        body: JSON.stringify(input),
       });
       if (!response.ok) throw new Error("Failed to create task");
       const created = taskResponseSchema.parse(await response.json()).task;
