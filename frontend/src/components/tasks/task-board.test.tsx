@@ -1,6 +1,8 @@
 import type { Task } from "@ctp/shared";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TaskBoard } from "./task-board";
 
@@ -72,10 +74,22 @@ function drop(overrides: { targetId?: string; canceled?: boolean } = {}) {
   });
 }
 
+/**
+ * The dialog links to the task's event, so every render needs a router in
+ * scope even when the assertion has nothing to do with navigation.
+ */
+function renderBoard(ui: ReactElement) {
+  return render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      {ui}
+    </MemoryRouter>,
+  );
+}
+
 describe("TaskBoard", () => {
   it("changes status when a card is dropped on another column", () => {
     const onStatusChange = vi.fn();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -91,7 +105,7 @@ describe("TaskBoard", () => {
 
   it("writes nothing for a cancelled drag, a same-column drop, or an unknown target", () => {
     const onStatusChange = vi.fn();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -109,7 +123,7 @@ describe("TaskBoard", () => {
   });
 
   it("gives the drag handle and the open action distinct accessible names", () => {
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -124,7 +138,7 @@ describe("TaskBoard", () => {
 
   // The column a card sits in is the only status control now.
   it("renders no status selector", () => {
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -138,7 +152,7 @@ describe("TaskBoard", () => {
   });
 
   it("renders the supplied empty message", () => {
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[]}
         emptyMessage="No tasks yet. Add the first task above."
@@ -151,7 +165,7 @@ describe("TaskBoard", () => {
 
   it("opens a task's details in a modal and names the assignee", async () => {
     const user = userEvent.setup();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -173,7 +187,7 @@ describe("TaskBoard", () => {
 
   it("closes the modal on Escape", async () => {
     const user = userEvent.setup();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -192,7 +206,7 @@ describe("TaskBoard", () => {
 
   it("says nobody is assigned rather than inventing a name", async () => {
     const user = userEvent.setup();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[{ ...task, assigneeIds: [] }]}
         members={members}
@@ -208,7 +222,7 @@ describe("TaskBoard", () => {
 
   it("lists every assignee, and names an id the roster no longer holds", async () => {
     const user = userEvent.setup();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[
           {
@@ -228,11 +242,11 @@ describe("TaskBoard", () => {
     expect(screen.getByText("Former Member")).toBeInTheDocument();
   });
 
-  // Assignment changes belong to the /tasks page; the event Tasks tab must stay
-  // read-only, which it does simply by not passing the callback.
+  // A caller that wires no mutation still gets the read-only presentation of the
+  // same fields, which is what a board with no `onUpdate` relies on.
   it("offers no assignment editor without an onUpdate handler", async () => {
     const user = userEvent.setup();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -252,7 +266,7 @@ describe("TaskBoard", () => {
   it("forwards a dialog patch for the open task when onUpdate is given", async () => {
     const user = userEvent.setup();
     const onUpdate = vi.fn();
-    render(
+    renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
@@ -270,5 +284,10 @@ describe("TaskBoard", () => {
 
     expect(onUpdate).toHaveBeenCalledWith(task, { description: "Chairs" });
     expect(within(dialog).getByRole("button", { name: /add member to/i })).toBeInTheDocument();
+
+    // The priority selector writes through the same channel, tagged with the
+    // open task — the board, not the dialog, owns which task is being edited.
+    await user.selectOptions(within(dialog).getByLabelText(/^priority$/i), "urgent");
+    expect(onUpdate).toHaveBeenCalledWith(task, { priority: "urgent" });
   });
 });

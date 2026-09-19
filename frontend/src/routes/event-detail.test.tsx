@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -171,20 +171,47 @@ describe("EventDetailPage", () => {
     );
   });
 
-  // Task details are editable on /tasks alone; the event tab passes no onUpdate.
-  it("keeps the event task dialog read-only", async () => {
+  // The event Tasks tab now wires the same shared dialog mutations as /tasks.
+  it("edits an event task's description and priority in place", async () => {
     const user = userEvent.setup();
-    stubEvent();
+    const fetchMock = stubEvent();
     renderDetail("?tab=tasks");
 
     await user.click(await screen.findByRole("button", { name: "Open Confirm lighting" }));
-
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Confirm lighting" })).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText(/^description$/i)).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole("button", { name: /add member to/i }),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "View event" })).toHaveAttribute(
+      "href",
+      `/events/${EVENT_ID}`,
+    );
+
+    const field = within(dialog).getByLabelText(/^description$/i);
+    fireEvent.change(field, { target: { value: "Book the rig." } });
+    fireEvent.blur(field);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${eventTask.id}`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ description: "Book the rig." }),
+        }),
+      ),
+    );
+    // The dialog shows the row the server returned.
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText(/^description$/i)).toHaveValue("Book the rig."),
+    );
+
+    await user.selectOptions(within(dialog).getByLabelText(/^priority$/i), "low");
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${eventTask.id}`,
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ priority: "low" }) }),
+      ),
+    );
+    await waitFor(() => expect(within(dialog).getByLabelText(/^priority$/i)).toHaveValue("low"));
   });
 
   it("takes the open tab from the URL", async () => {
@@ -309,6 +336,13 @@ function stubEvent({
 } = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (init?.method === "DELETE") return Promise.resolve({ ok: true, status: 204 });
+    // The Tasks tab's shared dialog edits the task in place; echo the patch back
+    // the way the route does, so the dialog can show the stored row.
+    if (url === `/api/tasks/${eventTask.id}` && init?.method === "PATCH") {
+      return Promise.resolve(
+        ok({ task: { ...eventTask, ...(JSON.parse(String(init.body)) as object) } }),
+      );
+    }
     if (url === "/api/me") {
       return Promise.resolve(
         ok({ user: { id: "018f3a4b-0000-7000-8000-00000000000f", email: "a@b.c", role, tier } }),
