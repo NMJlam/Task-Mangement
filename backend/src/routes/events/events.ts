@@ -425,8 +425,12 @@ eventsRouter.get(
         const filters = [
           lte(events.minTier, userTier),
           ne(events.status, "cancelled"),
-          gte(events.startsAt, query.from),
+          // Interval OVERLAP, not "starts inside the range": a multi-day event
+          // has to appear on every visible day it occupies, which includes the
+          // days after its start. `COALESCE` covers the nullable end — an event
+          // with no end time occupies its start instant alone.
           lte(events.startsAt, query.to),
+          sql`COALESCE(${events.endsAt}, ${events.startsAt}) >= ${query.from}`,
         ];
         if (query.teamId) {
           filters.push(

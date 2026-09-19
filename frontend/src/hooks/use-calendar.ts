@@ -6,8 +6,14 @@ type CalendarState =
   | { status: "ok"; items: CalendarItem[] }
   | { status: "error"; message: string };
 
-/** ViewModel for the calendar agenda (GET /api/calendar). `from`/`to` are required. */
-export function useCalendar(from: Date, to: Date, teamId?: string): CalendarState {
+/**
+ * ViewModel for the calendar (GET /api/calendar). `from`/`to` are required.
+ *
+ * `include=events` is fixed, not a parameter: `/calendar` is an events calendar,
+ * so its one caller never wants the task union. The task branch stays on the API
+ * for other consumers, but there is nothing to configure here.
+ */
+export function useCalendar(from: Date, to: Date, teamId?: string) {
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
   const [state, setState] = useState<CalendarState>({ status: "loading" });
@@ -16,7 +22,7 @@ export function useCalendar(from: Date, to: Date, teamId?: string): CalendarStat
     let active = true;
     setState({ status: "loading" });
 
-    const params = new URLSearchParams({ from: fromIso, to: toIso });
+    const params = new URLSearchParams({ from: fromIso, to: toIso, include: "events" });
     if (teamId) params.set("teamId", teamId);
 
     fetch(`/api/calendar?${params.toString()}`, { credentials: "include" })
@@ -42,5 +48,5 @@ export function useCalendar(from: Date, to: Date, teamId?: string): CalendarStat
     };
   }, [fromIso, toIso, teamId]);
 
-  return state;
+  return { state };
 }
