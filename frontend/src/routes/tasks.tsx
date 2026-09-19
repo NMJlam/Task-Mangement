@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { AssigneeField } from "@/components/tasks/assignee-field";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
   DialogClose,
@@ -36,9 +37,12 @@ export function TasksPage() {
   // create body is a single POST, so writing per toggle would have to create the
   // task before it has been filled in.
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  // The member popover portals into the dialog, not `document.body` — body sits
-  // outside the scroll-lock shard, so a popover there cannot scroll. See
-  // `AssigneeField`.
+  // The due-date popover is a draft too: nothing is written until submit, and a
+  // closed dialog forgets it along with the assignments.
+  const [dueAt, setDueAt] = useState<Date | null>(null);
+  // The member picker's popover portals into the dialog, not `document.body` —
+  // body sits outside the scroll-lock shard, so a popover there cannot scroll.
+  // `DateTimePicker` shares it for the same reason. See `AssigneeField`.
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : undefined;
@@ -55,7 +59,6 @@ export function TasksPage() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const dueAt = String(data.get("dueAt") ?? "");
     // The shared schema owns the shape: it trims the title, rejects one that is
     // blank once trimmed, collapses an empty description to `null`, and fills the
     // defaults the API would apply anyway.
@@ -64,7 +67,9 @@ export function TasksPage() {
       description: String(data.get("description") ?? ""),
       priority: data.get("priority"),
       eventId: String(data.get("eventId") ?? "") || undefined,
-      dueAt: dueAt ? new Date(dueAt) : undefined,
+      // From the picker's draft, not `FormData`: the control is a popover, not a
+      // native form field, so it has no entry in the form's own data.
+      dueAt: dueAt ?? undefined,
       // From the picker's draft, not `FormData`: the assignment control is not a
       // native form field, since it has to be searchable.
       assigneeIds,
@@ -124,6 +129,7 @@ export function TasksPage() {
           if (!next) {
             setValidationError(undefined);
             setAssigneeIds([]);
+            setDueAt(null);
             setPortalTarget(null);
           }
         }}
@@ -171,7 +177,15 @@ export function TasksPage() {
 
               <div className="grid gap-2">
                 <Label htmlFor="new-task-due">Due date</Label>
-                <Input id="new-task-due" name="dueAt" type="datetime-local" />
+                <DateTimePicker
+                  id="new-task-due"
+                  label="due date"
+                  timeLabel="Deadline time"
+                  value={dueAt}
+                  onChange={setDueAt}
+                  portalTarget={portalTarget}
+                  disabled={tasks.busy === "new"}
+                />
               </div>
 
               <div className="grid gap-2">

@@ -242,6 +242,47 @@ describe("TaskBoard", () => {
     expect(screen.getByText("Former Member")).toBeInTheDocument();
   });
 
+  // The dialog's Due date row is the same control the create modal uses, so a
+  // card's deadline is edited through one popover, not a second code path.
+  it("edits a card's deadline through the shared date picker", async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    const dialog = await screen.findByRole("dialog");
+
+    // The stored deadline is what the trigger shows and what the grid opens on.
+    const stored = task.dueAt!;
+    await user.click(within(dialog).getByLabelText(/^due date$/i));
+    // A day other than the stored one, still inside a 42-cell month grid.
+    const next = new Date(stored.getFullYear(), stored.getMonth(), stored.getDate() + 1);
+    const isoDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(
+      next.getDate(),
+    ).padStart(2, "0")}`;
+    const cell = document.querySelector(`[data-day="${isoDate}"]`);
+    if (!cell) throw new Error(`No calendar cell for ${isoDate}`);
+    await user.click(within(cell as HTMLElement).getByRole("button"));
+    // The field opens holding the stored deadline's time, so it is replaced
+    // rather than appended to.
+    const timeField = screen.getByLabelText("Deadline time");
+    await user.clear(timeField);
+    await user.type(timeField, "11:00");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(onUpdate).toHaveBeenCalledWith(task, {
+      dueAt: new Date(next.getFullYear(), next.getMonth(), next.getDate(), 11, 0),
+    });
+  });
+
   // A caller that wires no mutation still gets the read-only presentation of the
   // same fields, which is what a board with no `onUpdate` relies on.
   it("offers no assignment editor without an onUpdate handler", async () => {
@@ -260,6 +301,8 @@ describe("TaskBoard", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.queryByLabelText(/search members/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add member to/i })).not.toBeInTheDocument();
+    // The due date is shown as text in this branch, with no picker to open.
+    expect(screen.queryByLabelText(/^due date$/i)).not.toBeInTheDocument();
   });
 
   // With `onUpdate` given the dialog edits the task; the board supplies the task.
