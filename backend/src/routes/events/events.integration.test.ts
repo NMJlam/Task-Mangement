@@ -493,5 +493,39 @@ describe("/api/events", () => {
       );
       expect(item.assigneeIds.sort()).toEqual([officer.id, director.id].sort());
     });
+
+    it("returns an event that started before the range but ends inside it", async () => {
+      const officer = await member("officer", "officer");
+      signedInAs(officer);
+      const from = new Date(Date.now() + HOUR);
+      const to = new Date(from.getTime() + 6 * HOUR);
+      const straddling = await seedEvent({
+        title: "test-event-calendar-straddle",
+        startsAt: new Date(from.getTime() - 2 * HOUR),
+        endsAt: new Date(from.getTime() + HOUR),
+      });
+      // Over and done before the window opens.
+      const finished = await seedEvent({
+        title: "test-event-calendar-finished",
+        startsAt: new Date(from.getTime() - 3 * HOUR),
+        endsAt: new Date(from.getTime() - HOUR),
+      });
+      // No end time: a point event occupies its start instant alone.
+      const point = await seedEvent({
+        title: "test-event-calendar-point",
+        startsAt: new Date(from.getTime() - HOUR),
+        endsAt: null,
+      });
+
+      const response = await request(app)
+        .get("/api/calendar")
+        .query({ from: from.toISOString(), to: to.toISOString(), include: "events" });
+
+      expect(response.status).toBe(200);
+      const ids = response.body.items.map((item: { id: string }) => item.id);
+      expect(ids).toContain(straddling.id);
+      expect(ids).not.toContain(finished.id);
+      expect(ids).not.toContain(point.id);
+    });
   });
 });
