@@ -28,11 +28,16 @@ export interface TaskLink {
  *
  * Reads links for the SELECTED task ids only — never the whole junction table:
  * a list page's 50 rows are a filter, not a starting point for a scan.
+ *
+ * `overdueEscalatedAt` is backend operational state with no place in the wire
+ * shape, so it is dropped here — the one choke point every task read passes
+ * through. The constraint declares it optional, so a full-row `.select()` and a
+ * narrow projection (the calendar's) both satisfy it.
  */
-export async function assembleTasks<T extends { id: string }>(
+export async function assembleTasks<T extends { id: string; overdueEscalatedAt?: Date | null }>(
   db: Queryable,
   rows: readonly T[],
-): Promise<(T & { assigneeIds: string[] })[]> {
+): Promise<(Omit<T, "overdueEscalatedAt"> & { assigneeIds: string[] })[]> {
   if (rows.length === 0) return [];
   const links = await db
     .select()
@@ -43,7 +48,7 @@ export async function assembleTasks<T extends { id: string }>(
         rows.map((row) => row.id),
       ),
     );
-  return rows.map((row) => ({
+  return rows.map(({ overdueEscalatedAt: _marker, ...row }) => ({
     ...row,
     assigneeIds: links.filter((link) => link.taskId === row.id).map((link) => link.userId),
   }));
