@@ -442,12 +442,22 @@ field** — `{}` is a `422`.
 { "event": {}, "warnings": ["2 tasks now fall after the event date"] }
 ```
 
-| Response               | When                                                     |
-| ---------------------- | -------------------------------------------------------- |
-| `200 { "event": … }`   | Updated. `warnings` present only for the case below.     |
-| `403 FORBIDDEN`        | Tier 0 and not the owner.                                |
-| `404 EVENT_NOT_FOUND`  | No such event, or above your tier.                       |
-| `409 BUDGET_EXCEEDED`  | New `allocationCents` breaks the club budget.            |
+| Response             | When                                                 |
+| -------------------- | ---------------------------------------------------- |
+| `200 { "event": … }` | Updated. `warnings` present only for the case below. |
+
+Because `warnings` matter to the person who moved the dates (they say how many
+tasks now fall after the event), both reschedule surfaces show them: the event
+page under its header, and the calendar preview inside its dialog. `warnings` is
+omitted — not empty — on every other response.
+
+`startsAt`/`endsAt` is the one PATCH the calendar issues. Dragging a chip sends
+both ends shifted by the same number of whole local days (the time of day is
+kept); the Edit-dates form sends the two instants the user picked, and moves the
+end only when the start would otherwise overtake it.
+| `403 FORBIDDEN` | Tier 0 and not the owner. |
+| `404 EVENT_NOT_FOUND` | No such event, or above your tier. |
+| `409 BUDGET_EXCEEDED` | New `allocationCents` breaks the club budget. |
 | `422 VALIDATION_ERROR` | `endsAt` before `startsAt`, or the `minTier` rule below. |
 
 - **Dates are validated merged, not per-body.** `PATCH { startsAt }` is checked
@@ -512,7 +522,8 @@ Query: `?from&to` (**both required**), plus `?teamId` and
       "title": "O-Week Booth",
       "startsAt": "2026-10-01T09:00:00.000Z",
       "endsAt": null,
-      "status": "planning"
+      "status": "planning",
+      "ownerId": "<uuid> | null"
     },
     {
       "kind": "task",
@@ -526,15 +537,28 @@ Query: `?from&to` (**both required**), plus `?teamId` and
 }
 ```
 
-One list discriminated on `kind`, sorted by date across both types. Events are
-ranged on `startsAt`, tasks on `dueAt`; both are filtered by your tier, and
-cancelled events never appear.
+One list discriminated on `kind`, sorted by date across both types. **Events are
+ranged by interval overlap** — `starts_at <= to AND COALESCE(ends_at, starts_at)
+
+> = from`— so a multi-day event is returned by every window it occupies, not
+only the one its start falls in. A NULL`ends_at`is a point event at`starts_at`. Tasks are still ranged on `dueAt`. Both are filtered by your tier,
+> and cancelled events never appear.
 
 - **`teamId` excludes standing tasks.** `task.team_id` is nullable — committee
   work belonging to no team can't match a team filter.
 - **No clash detection.** Deliberately absent: "clash" has no agreed definition
   (same-day vs. interval overlap) and `endsAt` is nullable, so half the rows
   have no interval to overlap. There is no `clashes` field.
+
+`/calendar` in the app sends `include=events`: the page is an events calendar
+(day/week/month grid), so it never asks for the task union. The task branch and
+its response shape stay for other consumers.
+
+`ownerId` is on each event row so the page can decide whether to offer a move
+without fetching the full detail first — the same owner-or-tier-1 rule
+`PATCH /api/events/:id` enforces (see `lib/permissions.ts` on the frontend). The
+grid's drag-to-reschedule and the preview's **Edit dates** both write through
+that PATCH, so both are subject to it.
 
 ## Threads
 
@@ -818,12 +842,28 @@ No body. Marks every unread notification belonging to the caller as read.
 
 ## Cron
 
-`GET /api/cron/warm` → `{ "ok": true }` and `GET /api/cron/reminders` →
-`{ "ok": true, "sent": 0 }`. Both are stubs.
+`GET /api/cron/warm` → `{ "ok": true }` (still a stub; not scheduled on Hobby —
+RR6).
 
-No session — they need `Authorization: Bearer <CRON_SECRET>`, and answer
-`401 UNAUTHORISED` otherwise. `CRON_SECRET` is empty by default locally, which
-makes **every** call `401` until you set one.
+`GET /api/cron/reminders` → `{ "ok": true, "escalated": 1, "sent": 0 }`,
+scheduled daily at 09:00 UTC in `vercel.json`. It escalates overdue work in ONE
+set-based statement: rows with `due_at < now()`, `status <> 'done'` and
+`overdue_escalated_at IS NULL` become `priority = 'urgent'`, and the marker is
+stamped with the sweep time. `escalated` is the number of rows the statement
+touched; `sent` is reserved for a notification fan-out that does not exist yet.
+
+The marker is what makes this **once per overdue cycle** rather than every
+night, so a user's post-escalation priority change survives the next sweep. It
+is cleared — starting a new cycle — only when the deadline moves
+(`PATCH /api/tasks/:id` with `dueAt`) or a completed task is reopened
+(`PATCH /api/tasks/:id/status` from a stored `done`). A priority-only edit and an
+open-to-open status move leave it alone. `overdue_escalated_at` is backend
+operational state and never appears in a task response; "overdue" as a
+read-time count stays `status <> 'done' AND due_at < now()`.
+
+Neither route takes a session — they need `Authorization: Bearer <CRON_SECRET>`,
+and answer `401 UNAUTHORISED` otherwise. `CRON_SECRET` is empty by default
+locally, which makes **every** call `401` until you set one.
 
 ## Fixture routes
 
