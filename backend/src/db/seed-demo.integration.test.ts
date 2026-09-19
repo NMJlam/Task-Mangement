@@ -1,3 +1,8 @@
+// Side-effect import, and it MUST stay first: `sourceUrl` below is read at module
+// scope, and this is the one integration file that reaches the env without going
+// through `client.ts`/`app.ts`. CI exports DATABASE_URL as a real variable, so
+// only a local `npm run test:integration` ever needed the repo-root `.env`.
+import "../config/load-env.js";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
