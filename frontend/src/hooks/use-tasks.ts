@@ -3,6 +3,7 @@ import {
   taskResponseSchema,
   type CreateTask,
   type Task,
+  type TaskPriority,
   type TaskStatus,
   type UpdateTask,
 } from "@ctp/shared";
@@ -12,17 +13,46 @@ type TasksState =
   { status: "loading" } | { status: "ok"; items: Task[] } | { status: "error"; message: string };
 
 /**
- * ViewModel for a task board. With no `eventId` it reads the whole `/api/tasks`
- * list (the `/tasks` board); with one it reads that event's tasks alone.
- *
- * `enabled: false` keeps the hook idle — `event-detail` calls it above its early
- * returns, where the route param may still be missing, and an idle hook must
- * never fall back to the global list.
+ * What narrows the board. Every field is a server-side filter on the same
+ * endpoints the API already exposes, so a filtered board is a read of the whole
+ * set rather than a view over the capped page the client happens to hold —
+ * which is the difference between "no urgent tasks" and "no urgent tasks on the
+ * page I was given".
+ */
+export type TasksQuery = {
+  eventId?: string;
+  /** Membership, not identity: a multi-assignee task matches for each holder. */
+  assignee?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  /**
+   * Switches the read to `/api/tasks/overdue`, where overdue is derived
+   * (`due_at < now() AND status <> 'done'`) and `status` therefore has no
+   * meaning — the endpoint defines the status filter itself.
+   */
+  overdue?: boolean;
+  /**
+   * `enabled: false` keeps the hook idle — `event-detail` calls it above its
+   * early returns, where the route param may still be missing, and an idle hook
+   * must never fall back to the global list. The dashboard uses it to wait for
+   * the caller's own id before asking for their tasks.
+   */
+  enabled?: boolean;
+};
+
+/**
+ * ViewModel for a task board. With no filter it reads the whole `/api/tasks`
+ * list (the `/tasks` board); with an `eventId` it reads that event's tasks
+ * alone; every other option narrows the same read.
  */
 export function useTasks({
   eventId,
+  assignee,
+  status,
+  priority,
+  overdue = false,
   enabled = true,
-}: { eventId?: string; enabled?: boolean } = {}) {
+}: TasksQuery = {}) {
   const [state, setState] = useState<TasksState>({ status: "loading" });
   const [busy, setBusy] = useState<string>();
   const [mutationError, setMutationError] = useState<string>();
@@ -37,9 +67,18 @@ export function useTasks({
 
     let active = true;
     setState({ status: "loading" });
-    const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "";
 
-    fetch(`/api/tasks${query}`, { credentials: "include" })
+    const params = new URLSearchParams();
+    if (eventId) params.set("eventId", eventId);
+    if (assignee) params.set("assignee", assignee);
+    if (priority) params.set("priority", priority);
+    // The overdue read owns its own status rule, so sending one would be a
+    // contradiction rather than a further narrowing.
+    if (status && !overdue) params.set("status", status);
+    const search = params.toString();
+    const url = `/api/tasks${overdue ? "/overdue" : ""}${search ? `?${search}` : ""}`;
+
+    fetch(url, { credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load tasks");
         return taskListResponseSchema.parse(await response.json()).tasks;
@@ -58,7 +97,7 @@ export function useTasks({
     return () => {
       active = false;
     };
-  }, [enabled, eventId]);
+  }, [enabled, eventId, assignee, status, priority, overdue]);
 
   const createTask = useCallback(async (input: CreateTask) => {
     setBusy("new");

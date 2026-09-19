@@ -7,6 +7,13 @@ export type EventsQuery = {
   from?: string;
   to?: string;
   ownerId?: string;
+  /**
+   * Direction of the keyset read. `asc` is what "soonest first" means over a
+   * capped page: sorting the returned rows on the client would only reorder the
+   * ones that page happens to hold, and the soonest event of all could be the
+   * one the limit dropped.
+   */
+  order?: "asc" | "desc";
 };
 
 type EventsState =
@@ -22,6 +29,7 @@ function toSearch(query: EventsQuery, cursor?: string) {
   if (query.from) params.set("from", query.from);
   if (query.to) params.set("to", query.to);
   if (query.ownerId) params.set("ownerId", query.ownerId);
+  if (query.order) params.set("order", query.order);
   if (cursor) params.set("cursor", cursor);
   const search = params.toString();
   return search ? `?${search}` : "";
@@ -36,18 +44,30 @@ function toSearch(query: EventsQuery, cursor?: string) {
  * into upcoming/past on the client would show groups that stay partial until the
  * reader pages all the way to the bottom; `from`/`to` let the server answer the
  * question instead.
+ *
+ * `enabled: false` keeps the hook idle while still reporting "loading" — the
+ * same contract `useTasks` has. A filter that depends on the caller's own
+ * identity (the events page's "My Events") must not fall back to the unfiltered
+ * list while that identity is unresolved: the unfiltered list answers a
+ * different question, and nothing on screen would say so.
  */
-export function useEvents(query: EventsQuery = {}) {
-  const { teamId, status, from, to, ownerId } = query;
+export function useEvents(query: EventsQuery = {}, { enabled = true }: { enabled?: boolean } = {}) {
+  const { teamId, status, from, to, ownerId, order } = query;
   const [state, setState] = useState<EventsState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ status: "loading" });
+      setMutationError(undefined);
+      return;
+    }
+
     let active = true;
     setState({ status: "loading" });
 
-    fetch(`/api/events${toSearch({ teamId, status, from, to, ownerId })}`, {
+    fetch(`/api/events${toSearch({ teamId, status, from, to, ownerId, order })}`, {
       credentials: "include",
     })
       .then(async (res) => {
@@ -69,14 +89,14 @@ export function useEvents(query: EventsQuery = {}) {
     return () => {
       active = false;
     };
-  }, [teamId, status, from, to, ownerId]);
+  }, [enabled, teamId, status, from, to, ownerId, order]);
 
   const loadMore = useCallback(async () => {
     if (state.status !== "ok" || !state.nextCursor || loadingMore) return;
     setLoadingMore(true);
     setMutationError(undefined);
     try {
-      const search = toSearch({ teamId, status, from, to, ownerId }, state.nextCursor);
+      const search = toSearch({ teamId, status, from, to, ownerId, order }, state.nextCursor);
       const res = await fetch(`/api/events${search}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load more events");
       const parsed = listEventsResponseSchema.parse(await res.json());
@@ -94,7 +114,7 @@ export function useEvents(query: EventsQuery = {}) {
     } finally {
       setLoadingMore(false);
     }
-  }, [state, loadingMore, teamId, status, from, to, ownerId]);
+  }, [state, loadingMore, teamId, status, from, to, ownerId, order]);
 
   // Creating an event lives on `/events/new` (`useCreateEvent`), which validates
   // the full `createEventSchema` before posting. This hook stays read-only.

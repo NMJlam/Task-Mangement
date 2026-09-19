@@ -3,6 +3,7 @@ import {
   changeEventStatusSchema,
   createEventSchema,
   eventStatusSchema,
+  eventStatusTransitions,
   getEventQuerySchema,
   taskCountsSchema,
   updateEventSchema,
@@ -76,6 +77,33 @@ describe("changeEventStatusSchema", () => {
 
   it("rejects cancelled — cancelling has exactly one door, DELETE", () => {
     expect(changeEventStatusSchema.safeParse({ status: "cancelled" }).success).toBe(false);
+  });
+});
+
+describe("eventStatusTransitions", () => {
+  it("covers every status, so a new one cannot be added without an edge", () => {
+    expect(Object.keys(eventStatusTransitions).sort()).toEqual(
+      [...eventStatusSchema.options].sort(),
+    );
+  });
+
+  it("never targets cancelled — DELETE owns that state", () => {
+    const targets = Object.values(eventStatusTransitions).flat();
+    expect(targets).not.toContain("cancelled");
+  });
+
+  it("keeps every edge inside the vocabulary the status endpoint accepts", () => {
+    for (const targets of Object.values(eventStatusTransitions)) {
+      for (const target of targets) {
+        expect(changeEventStatusSchema.safeParse({ status: target }).success).toBe(true);
+      }
+    }
+  });
+
+  it("carries the planning → live → wrapped path the event page renders", () => {
+    expect(eventStatusTransitions.planning).toEqual(["live"]);
+    expect(eventStatusTransitions.live).toEqual(["wrapped"]);
+    expect(eventStatusTransitions.wrapped).toEqual(["live"]);
   });
 });
 

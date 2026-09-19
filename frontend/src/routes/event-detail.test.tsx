@@ -327,6 +327,134 @@ describe("EventDetailPage", () => {
     expect(await screen.findByRole("button", { name: "Edit Dates" })).toBeInTheDocument();
   });
 
+  it("edits the event's details through the shared PATCH, dates excluded", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubEvent({ role: "director", tier: 1 });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Edit Details" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Edit event details" })).toBeInTheDocument();
+    // Dates belong to their own dialog; this one must not offer a second picker.
+    expect(within(dialog).queryByLabelText(/start date/i)).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Venue"), {
+      target: { value: "Macquarie Theatre" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Description"), {
+      target: { value: "  Doors at 6.  " },
+    });
+    await user.selectOptions(within(dialog).getByLabelText("Visibility"), "1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save details" }));
+
+    // The whole patch, in the field names the route validates.
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(String((call as [string, RequestInit])[1].body))).toMatchObject({
+        title: "Winter Showcase",
+        venue: "Macquarie Theatre",
+        // Trimmed by the shared schema before it is sent, not by the dialog.
+        description: "Doors at 6.",
+        attendanceEstimate: 120,
+        allocationCents: 50000,
+        minTier: 1,
+      });
+    });
+
+    // And the page shows what the server returned, not the draft.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("Macquarie Theatre")).toBeInTheDocument();
+  });
+
+  it("moves the event along its lifecycle, and reports a blocked wrap in the route's own words", async () => {
+    const user = userEvent.setup();
+    let wrapBlocked = false;
+    // The event page's own stub, wrapped so the status route can be driven. The
+    // inner mock is captured ONCE: calling `stubEvent` per request would
+    // re-stub the global mid-flight and record the calls nowhere.
+    const base = stubEvent({ role: "director", tier: 1 });
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url === `/api/events/${EVENT_ID}/status` && init?.method === "PATCH") {
+        const { status } = JSON.parse(String(init.body)) as { status: string };
+        if (status === "wrapped" && wrapBlocked) {
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: async () => ({
+              id: EVENT_ID,
+              status: "live",
+              blockers: ["2 pending expenses must be resolved before wrapping"],
+            }),
+          });
+        }
+        return Promise.resolve(ok({ id: EVENT_ID, status, blockers: [] }));
+      }
+      return base(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderDetail();
+
+    // Planning offers exactly one next state, and it is the legal one.
+    await user.click(await screen.findByRole("button", { name: "Move to Live" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/events/${EVENT_ID}/status`,
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "live" }) }),
+      ),
+    );
+    expect(await screen.findByText("Live")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move to Live" })).not.toBeInTheDocument();
+
+    // A refused wrap must not become a generic error: the blockers ARE the
+    // message, and the status stays where it was.
+    wrapBlocked = true;
+    await user.click(await screen.findByRole("button", { name: "Mark Wrapped" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The event status did not change.");
+    expect(alert).toHaveTextContent("2 pending expenses must be resolved before wrapping");
+    expect(screen.queryByText("Wrapped")).not.toBeInTheDocument();
+  });
+
+  it("hides the lifecycle control from tier 0, which the route would refuse", async () => {
+    stubEvent({ role: "officer", tier: 0 });
+    renderDetail();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: /move to live|mark wrapped/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a navigation route and a heading on the failure states", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url === "/api/me") {
+          return Promise.resolve(
+            ok({ user: { id: ME_ID, email: "a@b.c", role: "officer", tier: 0 } }),
+          );
+        }
+        if (url.includes("/progress")) return Promise.resolve(ok(progressFixture));
+        if (url.startsWith("/api/members")) return Promise.resolve(ok({ members: [] }));
+        if (url.startsWith("/api/tasks")) return Promise.resolve(ok({ tasks: [] }));
+        if (url.startsWith("/api/events/"))
+          return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        return Promise.resolve(ok({ event: eventFixture }));
+      }),
+    );
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Event not found" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute("href", "/events");
+    expect(screen.getByRole("alert")).toHaveTextContent("This event could not be found.");
+  });
+
   it("offers cancel to the president only", async () => {
     // Tier 2 also holds the treasurer — event:cancel is the president's alone,
     // so a tier check would wrongly let this through.

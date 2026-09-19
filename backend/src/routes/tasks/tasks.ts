@@ -214,6 +214,7 @@ tasksRouter.get(
         ne(tasks.status, "done"),
         query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
+        query.priority ? eq(tasks.priority, query.priority) : undefined,
         query.assignee ? assignedTo(query.assignee) : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 

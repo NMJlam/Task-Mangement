@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TasksPage } from "./tasks";
 
 /**
@@ -92,12 +92,44 @@ function dropCard(status: string) {
 }
 
 /** The dialog links to `/events/:id`, so the page needs a router in scope. */
-function renderPage() {
+function renderPage(initialPath = "/tasks") {
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter
+      initialEntries={[initialPath]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <TasksPage />
+      {/* The URL IS the filter state, so a test has to be able to read it. */}
+      <LocationProbe />
     </MemoryRouter>,
   );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <p data-testid="tasks-location">{location.pathname + location.search}</p>;
+}
+
+/** The signed-in member, as `/api/me` reports it. */
+function me() {
+  return {
+    id: "018f3a4b-0000-7000-8000-00000000000f",
+    email: "me@example.com",
+    role: "officer",
+    tier: 0,
+  };
+}
+
+/** The board's last read, whichever endpoint the page chose for it. */
+function taskRequest(fetchMock: Mock): URL | undefined {
+  const call = fetchMock.mock.calls
+    .filter(
+      ([input, init]) =>
+        (init as RequestInit | undefined)?.method === undefined &&
+        String(input).startsWith("/api/tasks"),
+    )
+    .at(-1);
+  return call ? new URL(String(call[0]), "http://localhost") : undefined;
 }
 
 describe("TasksPage", () => {
@@ -181,8 +213,13 @@ describe("TasksPage", () => {
 
     // A successful create closes the modal and puts the card on the board.
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("Book AV")).toBeInTheDocument();
-    expect(screen.getByText("Winter Showcase")).toBeInTheDocument();
+    const created = screen
+      .getByRole("button", { name: "Open Book AV" })
+      .closest("[data-slot='card']");
+    expect(created).not.toBeNull();
+    // The event chip belongs to THAT card, not merely to the page — the filter
+    // bar's event picker also names the event.
+    expect(within(created as HTMLElement).getByText("Winter Showcase")).toBeInTheDocument();
 
     // The description typed at creation is on the card it created.
     await user.click(screen.getByRole("button", { name: "Open Book AV" }));
@@ -351,11 +388,120 @@ describe("TasksPage", () => {
 
     await user.clear(search);
     await user.type(search, "nothing like this");
-    expect(screen.getByText("No tasks match your search.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No tasks match these filters: matching “nothing like this”\./),
+    ).toBeInTheDocument();
 
     await user.clear(search);
     expect(screen.getByText("Confirm venue access")).toBeInTheDocument();
     expect(screen.getByText("Book AV")).toBeInTheDocument();
+  });
+
+  it("turns the URL's filters into a server read, and Clear Filters back into /tasks", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Promise.resolve(response({ user: me() }));
+      if (url.startsWith("/api/tasks")) return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      if (url.startsWith("/api/events")) return Promise.resolve(response({ items: [] }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage(`/tasks?scope=mine&status=todo&priority=urgent&event=${EVENT_ID}&overdue=true`);
+
+    // Overdue IS `status <> 'done'`, so the status parameter is dropped rather
+    // than sent as a contradiction, and the read goes to the derived endpoint.
+    await waitFor(() => expect(taskRequest(fetchMock)).toBeDefined());
+    const request = taskRequest(fetchMock)!;
+    expect(request.pathname).toBe("/api/tasks/overdue");
+    expect(Object.fromEntries(request.searchParams)).toEqual({
+      assignee: me().id,
+      eventId: EVENT_ID,
+      priority: "urgent",
+    });
+
+    // The board shows only what came back — filtering is the server's answer,
+    // not a view over a page the client happened to hold.
+    expect(await screen.findByText("Confirm venue access")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear Filters" }));
+
+    // The canonical unfiltered URL, with every defaulted key dropped.
+    await waitFor(() => expect(screen.getByTestId("tasks-location")).toHaveTextContent("/tasks"));
+    expect(screen.getByTestId("tasks-location")).not.toHaveTextContent("overdue");
+    await waitFor(() => expect(taskRequest(fetchMock)!.search).toBe(""));
+    expect(taskRequest(fetchMock)!.pathname).toBe("/api/tasks");
+  });
+
+  it("falls back to defaults for filter values the URL invents", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Promise.resolve(response({ user: me() }));
+      if (url.startsWith("/api/tasks")) return Promise.resolve(response({ tasks: [] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage("/tasks?status=urgent-ish&priority=nonsense&event=not-a-uuid&scope=everyone");
+
+    await waitFor(() => expect(taskRequest(fetchMock)).toBeDefined());
+    // Nothing invalid reaches the API, and the whole board is read.
+    expect(Object.fromEntries(taskRequest(fetchMock)!.searchParams)).toEqual({});
+    expect(screen.getByLabelText("Status")).toHaveValue("");
+    expect(screen.getByLabelText("Priority")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "All Tasks" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByRole("button", { name: "Clear Filters" })).not.toBeInTheDocument();
+  });
+
+  it("names the active filters and offers Clear Filters when nothing matches", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Promise.resolve(response({ user: me() }));
+      if (url.startsWith("/api/tasks")) return Promise.resolve(response({ tasks: [] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage("/tasks?scope=mine&priority=urgent&overdue=true");
+
+    expect(
+      await screen.findByText(
+        "No tasks match these filters: assigned to you, overdue, urgent priority. Use Clear Filters to widen the board.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Filters" })).toBeInTheDocument();
+    // Filtering swaps the cards with no other cue, so the count is announced.
+    expect(screen.getByRole("status")).toHaveTextContent("0 tasks match the current filters.");
+  });
+
+  it("cannot answer a scope=mine read without identity, and says so instead of guessing", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      if (url.startsWith("/api/tasks")) return Promise.resolve(response({ tasks: [] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage("/tasks?scope=mine");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your membership, so your tasks can't be listed.",
+    );
+    // The unfiltered list is never issued as a stand-in: it answers a different
+    // question and nothing on screen would say so.
+    expect(taskRequest(fetchMock)).toBeUndefined();
+    expect(screen.getByRole("link", { name: "Show all tasks" })).toHaveAttribute("href", "/tasks");
   });
 
   it("moves a dropped card into the new column and PATCHes its status", async () => {

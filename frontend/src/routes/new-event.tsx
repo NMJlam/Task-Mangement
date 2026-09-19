@@ -1,23 +1,34 @@
 import { createEventSchema } from "@ctp/shared";
 import { ArrowLeft, CalendarPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateEvent } from "@/hooks/use-create-event";
+import { parseLocalDate, toIsoDate } from "@/lib/dates";
 
 export function NewEventPage() {
   const navigate = useNavigate();
   const creation = useCreateEvent();
+  const [searchParams] = useSearchParams();
+  // The calendar's day cells and its "New Event" action link here with the day
+  // they were showing. Anything that is not a real date is ignored, so a
+  // hand-edited URL opens the same empty form as the nav link does.
+  const seedDate = parseLocalDate(searchParams.get("date"));
   const [validationError, setValidationError] = useState<string>();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const startsAt = String(form.get("startsAt"));
+    // The start is a date and a time in one field's place: a `datetime-local`
+    // cannot be seeded with a date alone, and pre-filling a midnight the reader
+    // never chose would quietly write an event at 00:00.
+    const startDate = String(form.get("startsAtDate") ?? "");
+    const startTime = String(form.get("startsAtTime") ?? "");
+    const startsAt = startDate && startTime ? new Date(`${startDate}T${startTime}`) : undefined;
     const endsAt = String(form.get("endsAt"));
     const attendance = String(form.get("attendanceEstimate"));
     const allocation = String(form.get("allocation"));
@@ -25,7 +36,7 @@ export function NewEventPage() {
       title: form.get("title"),
       description: form.get("description") || undefined,
       venue: form.get("venue") || undefined,
-      startsAt: startsAt ? new Date(startsAt) : undefined,
+      startsAt,
       endsAt: endsAt ? new Date(endsAt) : undefined,
       attendanceEstimate: attendance ? Number(attendance) : undefined,
       allocationCents: allocation ? Math.round(Number(allocation) * 100) : undefined,
@@ -77,8 +88,26 @@ export function NewEventPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="event-start">Starts</Label>
-                <Input id="event-start" name="startsAt" type="datetime-local" required />
+                <Label htmlFor="event-start-date">Starts</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    id="event-start-date"
+                    name="startsAtDate"
+                    type="date"
+                    required
+                    defaultValue={seedDate ? toIsoDate(seedDate) : ""}
+                    className="min-w-40 flex-1"
+                  />
+                  {/* The time is left empty on purpose — see `submit`. */}
+                  <Input
+                    id="event-start-time"
+                    name="startsAtTime"
+                    type="time"
+                    required
+                    aria-label="Start time"
+                    className="w-32"
+                  />
+                </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="event-end">Ends</Label>

@@ -172,11 +172,13 @@ export const listTasksQuerySchema = z.object({
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 
 /** Overdue is derived (`status <> 'done' AND due_at < now()`), never stored,
- * so this query takes no `status` filter. */
+ * so this query takes no `status` filter. `priority` is orthogonal to that
+ * derivation and therefore belongs here. */
 export const overdueTasksQuerySchema = z.object({
   eventId: z.uuid().optional(),
   teamId: z.uuid().optional(),
   assignee: z.uuid().optional(),
+  priority: taskPrioritySchema.optional(),
   ...paginationShape,
 });
 

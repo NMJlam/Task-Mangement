@@ -1,4 +1,10 @@
-import { can, type Message, type RosterMember } from "@ctp/shared";
+import {
+  can,
+  eventStatusTransitions,
+  type ChangeableEventStatus,
+  type Message,
+  type RosterMember,
+} from "@ctp/shared";
 import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -6,6 +12,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
+import { EventDetailsDialog } from "@/components/events/event-details-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { EventRiskPanel } from "@/components/events/event-risk-panel";
 import { TaskBoard } from "@/components/tasks/task-board";
@@ -27,6 +34,17 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
 });
 const money = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" });
 
+/**
+ * What each lifecycle button promises, in the words of the move it makes. Read
+ * off the shared transition table's targets, so a status the UI never offers
+ * cannot appear here either.
+ */
+const STATUS_ACTIONS: Record<string, string> = {
+  planning: "Restore to Planning",
+  live: "Move to Live",
+  wrapped: "Mark Wrapped",
+};
+
 export function EventDetailPage() {
   const { id } = useParams();
   const detail = useEvent(id);
@@ -47,9 +65,13 @@ export function EventDetailPage() {
   const me = useMe();
   const [confirming, setConfirming] = useState(false);
   const [editingDates, setEditingDates] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
   // Warnings the last successful move came back with — a date change can leave
   // task deadlines behind the event, which the route reports rather than fixing.
   const [dateWarnings, setDateWarnings] = useState<string[]>([]);
+  // What a refused status change came back with: the route's own blocker
+  // sentences for a blocked wrap, or one line for an illegal hop.
+  const [statusMessages, setStatusMessages] = useState<string[]>([]);
   // `event:cancel` is the president's alone — tier 2 also holds the VP, treasurer
   // and secretary, so a tier check cannot express this.
   const canCancel = me.status === "ok" && can(me.user.role, "event:cancel");
@@ -59,6 +81,9 @@ export function EventDetailPage() {
     me.status === "ok" ? me.user : undefined,
     state.status === "ok" ? (state.event.owner?.id ?? null) : null,
   );
+  // `PATCH /:id/status` sits behind `authorise(1)`, and it is a different axis
+  // from the owner-or-lead edit rule above.
+  const canChangeStatus = me.status === "ok" && me.user.tier >= 1;
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams);
@@ -66,21 +91,38 @@ export function EventDetailPage() {
     setSearchParams(params);
   }
 
+  async function changeStatus(next: ChangeableEventStatus) {
+    const result = await detail.changeStatus(next);
+    setStatusMessages(result.ok ? [] : result.messages);
+  }
+
   if (state.status === "loading") {
-    return <PageState role="status">Loading Event…</PageState>;
+    return (
+      <PageState heading="Event" role="status">
+        Loading Event…
+      </PageState>
+    );
   }
   if (state.status === "not_found") {
-    return <PageState role="alert">This event could not be found.</PageState>;
+    return (
+      <PageState heading="Event not found" role="alert">
+        This event could not be found. It may have been cancelled.
+      </PageState>
+    );
   }
   if (state.status === "error") {
     return (
-      <PageState role="alert">
+      <PageState heading="Event" role="alert">
         Couldn&apos;t load the event: {state.message}. Refresh the page to try again.
       </PageState>
     );
   }
 
   const { event } = state;
+  // Cancelled is excluded on purpose: the confirmation copy tells the reader
+  // cancellation cannot be undone, and the restore edge is not a workflow this
+  // page offers.
+  const nextStatuses = event.status === "cancelled" ? [] : eventStatusTransitions[event.status];
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -98,10 +140,26 @@ export function EventDetailPage() {
           <>
             <StatusBadge status={event.status} />
             {canEdit && event.status !== "cancelled" && (
-              <Button variant="outline" onClick={() => setEditingDates(true)}>
-                Edit Dates
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setEditingDetails(true)}>
+                  Edit Details
+                </Button>
+                <Button variant="outline" onClick={() => setEditingDates(true)}>
+                  Edit Dates
+                </Button>
+              </>
             )}
+            {canChangeStatus &&
+              nextStatuses.map((next) => (
+                <Button
+                  key={next}
+                  variant="outline"
+                  disabled={detail.busy}
+                  onClick={() => void changeStatus(next)}
+                >
+                  {STATUS_ACTIONS[next]}
+                </Button>
+              ))}
             {canCancel && event.status !== "cancelled" && (
               <Button variant="outline" onClick={() => setConfirming(true)}>
                 Cancel Event
@@ -110,6 +168,23 @@ export function EventDetailPage() {
           </>
         }
       />
+
+      {statusMessages.length > 0 && (
+        // The route's own sentences, verbatim: a blocked wrap lists the
+        // preconditions still to clear, and paraphrasing them into "something
+        // went wrong" would throw away the only actionable part.
+        <div
+          className="mt-6 rounded-lg border border-destructive/30 bg-red-50 p-3 text-sm text-destructive dark:bg-red-950/40"
+          role="alert"
+        >
+          <p className="font-medium">The event status did not change.</p>
+          <ul className="mt-1 list-disc pl-5">
+            {statusMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {confirming && (
         <Card className="mt-6 shadow-none">
@@ -164,7 +239,7 @@ export function EventDetailPage() {
       </div>
 
       <Tabs value={tab} onValueChange={selectTab} className="mt-8">
-        <TabsList>
+        <TabsList aria-label="Event sections">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="thread">Thread</TabsTrigger>
@@ -327,6 +402,13 @@ export function EventDetailPage() {
         </TabsContent>
       </Tabs>
 
+      <EventDetailsDialog
+        event={editingDetails ? event : undefined}
+        onClose={() => setEditingDetails(false)}
+        onSave={detail.updateEvent}
+        onSaved={setDateWarnings}
+      />
+
       <EventDatesDialog
         event={editingDates ? event : undefined}
         onClose={() => setEditingDates(false)}
@@ -337,11 +419,34 @@ export function EventDetailPage() {
   );
 }
 
-function PageState({ children, role }: { children: ReactNode; role: "status" | "alert" }) {
+/**
+ * The loading / not-found / error shell. It carries the same back link and the
+ * same shape as the loaded page, because a failure that strands the reader
+ * without a way back is a worse outcome than the failure itself.
+ */
+function PageState({
+  heading,
+  children,
+  role,
+}: {
+  heading: string;
+  children: ReactNode;
+  role: "status" | "alert";
+}) {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
+      <Link
+        to="/events"
+        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <ArrowLeft aria-hidden="true" className="size-4" />
+        Events
+      </Link>
+
+      <PageHeader title={heading} />
+
       <p
-        className={cn("text-sm text-muted-foreground", role === "alert" && "text-destructive")}
+        className={cn("mt-6 text-sm text-muted-foreground", role === "alert" && "text-destructive")}
         role={role}
       >
         {children}

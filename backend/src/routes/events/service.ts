@@ -1,4 +1,12 @@
-import type { EventProgress, Risk, TaskCounts, Tier } from "@ctp/shared";
+import {
+  eventStatusTransitions,
+  type ChangeableEventStatus,
+  type EventProgress,
+  type EventStatus,
+  type Risk,
+  type TaskCounts,
+  type Tier,
+} from "@ctp/shared";
 import { and, lte, ne, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { CLUB_TIMEZONE } from "../../config/club.js";
@@ -127,19 +135,17 @@ export async function cancelBlockers(tx: Queryable, eventId: string): Promise<st
 // ── Status transitions ───────────────────────────────────────────────────────
 
 /**
- * `cancelled` has exactly one door (`DELETE`) and is never a legal target
- * here. `planning` is reachable only by restoring a cancelled event; a
- * freshly-created event starts in `planning` via `POST`, not this endpoint.
+ * The current statuses a guarded update to `target` is allowed to move from —
+ * the INVERSE of `eventStatusTransitions` in `@ctp/shared`, which is the one
+ * definition of the lifecycle both sides read (the event page renders a control
+ * from its forward edges). Inverting it here rather than keeping a second table
+ * is what stops a button appearing for a hop this route would refuse.
  */
-const STATUS_TRANSITIONS = {
-  planning: ["cancelled"],
-  live: ["planning", "wrapped"],
-  wrapped: ["live"],
-} as const satisfies Record<"planning" | "live" | "wrapped", readonly string[]>;
+// The record is exhaustive, so its own keys ARE the status vocabulary.
+const ALL_STATUSES = Object.keys(eventStatusTransitions) as EventStatus[];
 
-/** The current statuses a guarded update to `target` is allowed to move from. */
-export function allowedFromStatuses(target: "planning" | "live" | "wrapped"): readonly string[] {
-  return STATUS_TRANSITIONS[target];
+export function allowedFromStatuses(target: ChangeableEventStatus): readonly string[] {
+  return ALL_STATUSES.filter((from) => eventStatusTransitions[from].includes(target));
 }
 
 // ── Cross-field validation ────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { EventsPage } from "./events";
 
 describe("EventsPage", () => {
@@ -56,15 +56,109 @@ describe("EventsPage", () => {
     );
   });
 
-  it("asks the API for upcoming events by default", async () => {
+  it("asks the API for upcoming events by default, in start order", async () => {
     const fetchMock = stubFetch({ items: [], nextCursor: null });
     renderPage();
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toContain("/api/events?");
-    expect(url).toContain("from=");
-    expect(url).not.toContain("to=");
+    const url = await waitFor(() => {
+      const request = lastEventsRequest(fetchMock);
+      expect(request).toBeDefined();
+      return request!;
+    });
+    expect(url.pathname).toBe("/api/events");
+    expect(url.searchParams.get("from")).toBeTruthy();
+    expect(url.searchParams.get("to")).toBeNull();
+    // Soonest first is part of the READ: the default order is newest-first, so a
+    // capped upcoming page would hold the furthest-future events.
+    expect(url.searchParams.get("order")).toBe("asc");
+  });
+
+  it("keeps Past and All in the default order, which needs no client re-sort", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubFetch({ items: [], nextCursor: null });
+    renderPage();
+    await waitFor(() => expect(lastEventsRequest(fetchMock)).toBeDefined());
+
+    await user.click(screen.getByRole("button", { name: "Past" }));
+    await waitFor(() => expect(lastEventsRequest(fetchMock)!.searchParams.get("to")).toBeTruthy());
+    expect(lastEventsRequest(fetchMock)!.searchParams.get("order")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      const params = lastEventsRequest(fetchMock)!.searchParams;
+      expect(params.get("to")).toBeNull();
+      expect(params.get("from")).toBeNull();
+    });
+    expect(lastEventsRequest(fetchMock)!.searchParams.get("order")).toBeNull();
+  });
+
+  it("owns the list in the URL, and clears every filter at once", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "officer", tier: 0 }) }));
+      return Promise.resolve(ok({ items: [], nextCursor: null }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage("/events?time=past&status=live&owner=mine");
+
+    // Every filter in the URL becomes a query parameter, including the owner.
+    const filtered = await waitFor(() => {
+      const request = lastEventsRequest(fetchMock);
+      expect(request).toBeDefined();
+      return request!;
+    });
+    expect(filtered.searchParams.get("ownerId")).toBe(idFor("me"));
+    expect(filtered.searchParams.get("status")).toBe("live");
+    expect(filtered.searchParams.get("to")).toBeTruthy();
+
+    expect(await screen.findByText("0 events match.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear Filters" }));
+
+    await waitFor(() =>
+      expect(lastEventsRequest(fetchMock)!.searchParams.get("ownerId")).toBeNull(),
+    );
+    expect(lastEventsRequest(fetchMock)!.searchParams.get("status")).toBeNull();
+    expect(lastEventsRequest(fetchMock)!.searchParams.get("from")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upcoming" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("names the active filters when the list comes back empty", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "officer", tier: 0 }) }));
+      return Promise.resolve(ok({ items: [], nextCursor: null }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage("/events?time=past&status=live&owner=mine");
+
+    expect(
+      await screen.findByText(/No events match these filters: owned by you, live/),
+    ).toBeInTheDocument();
+  });
+
+  it("cannot answer My Events without identity, and says so instead of listing everyone's", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation((url: string) =>
+          url === "/api/me"
+            ? Promise.resolve({ ok: false, status: 500, json: async () => ({}) })
+            : Promise.resolve(ok({ items: [], nextCursor: null })),
+        ),
+    );
+    renderPage("/events?owner=mine");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your membership, so your events can't be listed.",
+    );
+    expect(screen.getByRole("link", { name: "Show all events" })).toHaveAttribute(
+      "href",
+      "/events",
+    );
   });
 
   it("swaps from= for to= when the reader asks for past events", async () => {
@@ -143,12 +237,23 @@ describe("EventsPage", () => {
   });
 });
 
-function renderPage() {
+function renderPage(initialPath = "/events") {
   render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter
+      initialEntries={[initialPath]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <EventsPage />
     </MemoryRouter>,
   );
+}
+
+/** The event-list read. `useMe` also fetches, and the page may reorder its calls. */
+function lastEventsRequest(fetchMock: Mock): URL | undefined {
+  const call = fetchMock.mock.calls
+    .filter(([input]) => String(input).startsWith("/api/events"))
+    .at(-1);
+  return call ? new URL(String(call[0]), "http://localhost") : undefined;
 }
 
 function ok(body: unknown) {
