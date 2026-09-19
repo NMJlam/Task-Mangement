@@ -6,3 +6,7 @@ playwright-report
 test-results
 coverage
 package-lock.json
+
+# Vendored third-party agent skills — kept byte-identical to upstream
+# (see skills-lock.json), so Prettier must not reflow them.
+.agents/skills/

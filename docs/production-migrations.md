@@ -7,10 +7,10 @@ https://club-task-management-nmjlams-projects.vercel.app/.
 
 There are two lookalike Neon projects. The app reads exactly one:
 
-| | Project | IDs | Status |
-|---|---|---|---|
-| ✅ | `capstone`, branch `production` | `--project-id steep-sun-09078807 --org-id org-small-heart-08695357` (personal "Nathan" org) | **The real production DB** |
-| ❌ | `neon-indigo-park` (still-queen-34355465) | Vercel-integration org `org-rapid-salad-61405315` | Auto-created by the Vercel↔Neon integration, unused |
+|     | Project                                   | IDs                                                                                         | Status                                              |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| ✅  | `capstone`, branch `production`           | `--project-id steep-sun-09078807 --org-id org-small-heart-08695357` (personal "Nathan" org) | **The real production DB**                          |
+| ❌  | `neon-indigo-park` (still-queen-34355465) | Vercel-integration org `org-rapid-salad-61405315`                                           | Auto-created by the Vercel↔Neon integration, unused |
 
 `neonctl` defaults to the wrong one. Always pass `--project-id` and `--org-id`
 explicitly (also required inside `$(...)` — no TTY means no interactive prompt).
