@@ -60,6 +60,22 @@ export const tasks = pgTable(
 
     completedAt: timestamp("completed_at", { withTimezone: true }),
 
+    /**
+     * When the nightly sweep last escalated this task to `urgent` for being
+     * overdue; NULL while the task is inside an un-escalated cycle.
+     *
+     * Escalation is PERSISTED rather than computed at read time because the
+     * priority has to stay editable afterwards: a user's swap back to `medium`
+     * must survive the next sweep, and a derived `urgent` would overwrite it
+     * every night. The marker is what makes the sweep once-per-cycle — it is
+     * cleared only when the deadline moves or a completed task is reopened, so
+     * those two transitions are what start a new overdue cycle.
+     *
+     * Operational state, not part of the wire `Task`: on the backend alone, and
+     * stripped by `assembleTasks` (routes/tasks/service.ts) before any response.
+     */
+    overdueEscalatedAt: timestamp("overdue_escalated_at", { withTimezone: true }),
+
     // The one line of AI provenance: "which tasks did the assistant create?".
     aiRunId: uuid("ai_run_id").references(() => aiRuns.id, { onDelete: "set null" }),
 
