@@ -211,8 +211,6 @@ export function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          {/* No `onUpdate`: task details stay read-only on the event tab, and
-              assignment stays owned by the `/tasks` page. */}
           {tasks.mutationError && (
             <p className="mb-3 text-sm text-destructive" role="alert">
               {tasks.mutationError}. Try again.
@@ -232,10 +230,17 @@ export function EventDetailPage() {
             <TaskBoard
               tasks={tasks.state.items}
               members={memberItems}
+              // The dialog and the cards resolve the linked event's title from
+              // this list. On this page there is exactly one candidate, and it is
+              // already loaded, so no extra request is needed.
+              events={[event]}
               busyId={tasks.busy}
               error={tasks.mutationError}
               emptyMessage="No tasks are linked to this event yet."
               onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
+              // Same shared dialog controls as `/tasks`: description, priority
+              // and assignment all edit in place here too.
+              onUpdate={(task, patch) => void tasks.updateTask(task, patch)}
             />
           )}
         </TabsContent>
