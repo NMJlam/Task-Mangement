@@ -77,6 +77,8 @@ const eventTask = eventFixture.tasks[0]!;
 /** The fixture's start, parsed: the picker shows it in local time. */
 const stored = new Date(eventFixture.startsAt);
 const GLOBAL_TASK_ID = "018f3a4b-0000-7000-8000-0000000000ff";
+/** The id the stubbed create hands back to a card made on this page. */
+const NEW_TASK_ID = "018f3a4b-0000-7000-8000-0000000000fe";
 
 const progressFixture = {
   percentComplete: 0,
@@ -150,6 +152,41 @@ describe("EventDetailPage", () => {
       credentials: "include",
     });
     expect(screen.queryByText("Sweep the storeroom")).not.toBeInTheDocument();
+  });
+
+  it("creates a card that belongs to this event from the Tasks tab", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubEvent();
+    renderDetail("?tab=tasks");
+
+    await user.click(await screen.findByRole("button", { name: "Add Task" }));
+
+    const dialog = await screen.findByRole("dialog");
+    // The link is the page, not a choice: a picker with a single option would be
+    // a control the reader cannot operate.
+    expect(within(dialog).queryByLabelText(/^linked event$/i)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/Adds a card to Winter Showcase/)).toBeInTheDocument();
+
+    await user.type(within(dialog).getByLabelText(/^task$/i), "Book the rig");
+    await user.click(within(dialog).getByRole("button", { name: "Add Task" }));
+
+    // The event id is not `FormData` — the field is not rendered — so this is
+    // what proves a card made here is filed under the event it was made in.
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          url === "/api/tasks" && (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(String((call as [string, RequestInit])[1].body))).toMatchObject({
+        eventId: EVENT_ID,
+        title: "Book the rig",
+      });
+    });
+
+    // A successful create closes the modal and puts the card on this board.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("Book the rig")).toBeInTheDocument();
   });
 
   it("changes an event task's status through the status endpoint", async () => {
@@ -564,6 +601,16 @@ function stubEvent({
     // The board's own request. Answering the unfiltered list with a task the
     // event does not own is what proves the filter is really applied.
     if (url === `/api/tasks?eventId=${EVENT_ID}`) return Promise.resolve(ok({ tasks }));
+    // The create dialog's POST: the stored row comes back, id and defaults
+    // included, exactly as the route answers.
+    if (url === "/api/tasks" && init?.method === "POST") {
+      const input = JSON.parse(String(init.body)) as { title: string };
+      return Promise.resolve(
+        ok({
+          task: { ...eventTask, id: NEW_TASK_ID, title: input.title, priority: "medium" },
+        }),
+      );
+    }
     if (url === "/api/tasks") {
       return Promise.resolve(
         ok({
