@@ -32,18 +32,21 @@ function DialogOverlay({
 
 /**
  * Two dialogs, two sizes, and the size is the point: `default` is a focused
- * single-column confirmation, `wide` is the task card back — wide enough for a
- * metadata strip and tall enough that the description is the main surface
- * rather than a footnote.
+ * single-column confirmation, `wide` is the task card back — wide enough for the
+ * metadata strip, with the description as its largest field rather than a
+ * footnote under the metadata.
  *
- * `wide` also owns the flex column, because that is what lets the description
- * claim the leftover height with `flex-1` while the header, metadata and
- * actions stay pinned. `cn` is tailwind-merge, so `flex` here replaces the base
- * `grid` rather than fighting it.
+ * `wide` also owns the flex column, because that is what keeps the header,
+ * metadata and actions pinned while the description holds its own fixed height.
+ * Its height is content-driven under the usual cap: with a fixed height the
+ * description's size would be whatever slack was left over, so capping the
+ * description would leave a void at the bottom instead of a shorter dialog.
+ * `cn` is tailwind-merge, so `flex` here replaces the base `grid` rather than
+ * fighting it.
  */
 const dialogSizes = {
   default: "max-w-lg",
-  wide: "flex h-[min(88vh,64rem)] max-w-6xl flex-col",
+  wide: "flex max-h-[min(88vh,64rem)] max-w-6xl flex-col",
 };
 
 function DialogContent({
