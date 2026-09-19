@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/common/status-badge";
 import { AssigneeField } from "@/components/tasks/assignee-field";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
   DialogContent,
@@ -211,6 +212,31 @@ function TaskDetailBody({
           </div>
         ) : (
           <Row label="Priority" value={capitalise(task.priority)} />
+        )}
+        {onUpdate ? (
+          <div className="flex items-center justify-between gap-3">
+            <dt>
+              <label htmlFor={`task-due-${task.id}`} className="text-muted-foreground">
+                Due date
+              </label>
+            </dt>
+            <dd className="min-w-0 flex-1 sm:max-w-56">
+              {/* Writes through the same channel as the priority and assignee
+                  controls: `null` clears the deadline. The popover portals into
+                  this dialog for the scroll-lock reason `AssigneeField` explains. */}
+              <DateTimePicker
+                id={`task-due-${task.id}`}
+                label="due date"
+                timeLabel="Deadline time"
+                value={task.dueAt}
+                disabled={busy}
+                portalTarget={portalTarget}
+                onChange={(next) => onUpdate({ dueAt: next })}
+              />
+            </dd>
+          </div>
+        ) : (
+          <Row label="Due date" value={task.dueAt ? stamp.format(task.dueAt) : "No due date set"} />
         )}
         {task.completedAt && <Row label="Completed" value={stamp.format(task.completedAt)} />}
         <Row label="Created" value={stamp.format(task.createdAt)} />

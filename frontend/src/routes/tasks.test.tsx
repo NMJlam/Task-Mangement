@@ -47,8 +47,30 @@ const taskId = "018f3a4b-0000-7000-8000-000000000001";
 const ada = { id: "018f3a4b-0000-7000-8000-00000000000a", name: "Ada Lovelace" };
 const grace = { id: "018f3a4b-0000-7000-8000-00000000000b", name: "Grace Hopper" };
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000010";
-/** The `datetime-local` wire format: no zone, so `new Date()` reads it as local. */
-const DUE_AT_LOCAL = "2026-11-05T14:30";
+
+/**
+ * The day the picker's grid is showing, and the instant a time on it means.
+ *
+ * Read from the real clock because the popover opens on the current month with
+ * nothing selected: `data-day` is the library's handle on a cell (its accessible
+ * name is locale-formatted), and the composed value is local wall-clock time,
+ * which is what the deadline is.
+ */
+function todayLocal() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return {
+    isoDate: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    at: (hours: number, minutes: number) =>
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes),
+  };
+}
+
+function dayCell(isoDate: string) {
+  const cell = document.querySelector(`[data-day="${isoDate}"]`);
+  if (!cell) throw new Error(`No calendar cell for ${isoDate}`);
+  return within(cell as HTMLElement).getByRole("button");
+}
 
 /** The card's column is read off the DOM, which is the observable result. */
 function columnOf(title: string, label: string) {
@@ -84,6 +106,7 @@ describe("TasksPage", () => {
   it("creates a task through the Add Tasks modal and shows it on the board", async () => {
     const user = userEvent.setup();
     const task = buildTask();
+    const due = todayLocal();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/tasks" && init?.method === "POST")
@@ -121,7 +144,11 @@ describe("TasksPage", () => {
     await user.type(within(dialog).getByLabelText(/^description$/i), "Two mics and the AV cart.");
     await user.selectOptions(within(dialog).getByLabelText(/^priority$/i), "urgent");
     await user.selectOptions(within(dialog).getByLabelText(/^linked event$/i), EVENT_ID);
-    await user.type(within(dialog).getByLabelText(/^due date$/i), DUE_AT_LOCAL);
+    // The due date is a popover, not a form field: a day and a time, then Apply.
+    await user.click(within(dialog).getByLabelText(/^due date$/i));
+    await user.click(dayCell(due.isoDate));
+    await user.type(screen.getByLabelText("Deadline time"), "14:30");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
 
     // The same searchable picker as the task modal, including its filter: a mixed
     // -case query narrows the roster before anything is clicked.
@@ -148,8 +175,8 @@ describe("TasksPage", () => {
         // Selection order is what the picker reported.
         assigneeIds: [ada.id, grace.id],
       });
-      // `datetime-local` carries no zone, so compare instants, not strings.
-      expect(new Date(body.dueAt).getTime()).toBe(new Date(DUE_AT_LOCAL).getTime());
+      // The wall-clock deadline the picker composed, as an instant on the wire.
+      expect(body.dueAt).toBe(due.at(14, 30).toISOString());
     });
 
     // A successful create closes the modal and puts the card on the board.
@@ -255,6 +282,50 @@ describe("TasksPage", () => {
     });
     // The dialog shows what the server returned, not the raw selection.
     await waitFor(() => expect(within(dialog).getByLabelText(/^priority$/i)).toHaveValue("low"));
+  });
+
+  it("moves an existing card's deadline from the modal, then clears it", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const due = todayLocal();
+    const sentBodies: unknown[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/tasks/${task.id}` && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        sentBodies.push(body);
+        return Promise.resolve(response({ task: { ...task, dueAt: body.dueAt } }));
+      }
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /^open confirm venue access$/i }));
+    const dialog = await screen.findByRole("dialog");
+    // The card had no deadline, so the row offers the control's empty state.
+    const dueRow = () => within(dialog).getByLabelText(/^due date$/i);
+    expect(dueRow()).toHaveTextContent("Select due date");
+
+    await user.click(dueRow());
+    await user.click(dayCell(due.isoDate));
+    await user.type(screen.getByLabelText("Deadline time"), "09:15");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    // The same `PATCH /api/tasks/:id` channel as priority and assignees.
+    await waitFor(() => expect(sentBodies).toEqual([{ dueAt: due.at(9, 15).toISOString() }]));
+    await waitFor(() => expect(dueRow()).toBeEnabled());
+
+    // Clear is a real edit, not an omission: `null` removes the deadline.
+    await user.click(dueRow());
+    await user.click(screen.getByRole("button", { name: "Clear due date" }));
+
+    await waitFor(() =>
+      expect(sentBodies).toEqual([{ dueAt: due.at(9, 15).toISOString() }, { dueAt: null }]),
+    );
+    await waitFor(() => expect(dueRow()).toHaveTextContent("Select due date"));
   });
 
   it("filters the board by title, case-insensitively", async () => {
