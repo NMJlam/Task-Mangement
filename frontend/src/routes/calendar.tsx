@@ -8,11 +8,11 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/react";
-import { CalendarDays, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
-import { useRef, useState, type RefObject } from "react";
-import { Link } from "react-router-dom";
+import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
-import { StatusBadge } from "@/components/common/status-badge";
+import { StatusBadge, statusStyles } from "@/components/common/status-badge";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCalendar } from "@/hooks/use-calendar";
 import { useEvent } from "@/hooks/use-event";
 import { useMe } from "@/hooks/use-me";
-import { addDays, daysBetween, lastInstant, sameDay, shiftDays, startOfDay } from "@/lib/dates";
+import {
+  addDays,
+  daysBetween,
+  lastInstant,
+  parseLocalDate,
+  sameDay,
+  shiftDays,
+  startOfDay,
+  toIsoDate,
+} from "@/lib/dates";
 import type { EventDates } from "@/lib/event-dates";
 import { canEditEvent } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -42,6 +52,11 @@ type View = "day" | "week" | "month";
 type CalendarEvent = Extract<CalendarItem, { kind: "event" }>;
 
 const viewLabels: Record<View, string> = { day: "Day", week: "Week", month: "Month" };
+
+/** `view` is optional in the URL, and Month is the view left out. */
+function readView(value: string | null): View {
+  return value === "day" || value === "week" ? value : "month";
+}
 
 const monthYear = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const fullDate = new Intl.DateTimeFormat(undefined, {
@@ -130,8 +145,13 @@ function titleOf(data: Record<string, unknown> | undefined): string {
 
 /** The calendar (R6) as a day, week or month grid of events, drag to reschedule. */
 export function CalendarPage() {
-  const [view, setView] = useState<View>("month");
-  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = readView(searchParams.get("view"));
+  const dateParam = searchParams.get("date");
+  // Memoised on the PARAMETER, not on the clock: `rangeFor` and `useCalendar`
+  // both key off the range the anchor produces, and a fresh `Date` per render
+  // would re-issue the same read forever.
+  const anchor = useMemo(() => parseLocalDate(dateParam) ?? startOfDay(new Date()), [dateParam]);
   // The open preview, by id: the dialog fetches that event's full detail.
   const [openId, setOpenId] = useState<string>();
   // What the last write reported — a refusal, or the tasks left behind by a move.
@@ -150,6 +170,22 @@ export function CalendarPage() {
       ? calendar.state.items.filter((item): item is CalendarEvent => item.kind === "event")
       : [];
 
+  // A notice belongs to the range that produced it. Stepping to another month
+  // must not leave "moved to Tuesday" hanging over a week the move never
+  // touched, and a retry that fixes an error has to clear the old message too.
+  useEffect(() => {
+    setNotice(undefined);
+  }, [view, anchor]);
+
+  /** The one write path to the URL: what is shown IS what the address says. */
+  function show(nextView: View, nextAnchor: Date) {
+    const params = new URLSearchParams();
+    if (nextView !== "month") params.set("view", nextView);
+    const iso = toIsoDate(nextAnchor);
+    if (iso !== toIsoDate(new Date())) params.set("date", iso);
+    setSearchParams(params);
+  }
+
   function openEvent(id: string, trigger: HTMLElement) {
     opener.current = trigger;
     setOpenId(id);
@@ -167,10 +203,10 @@ export function CalendarPage() {
   }
 
   function step(direction: -1 | 1) {
-    if (view === "day") setAnchor(addDays(anchor, direction));
-    else if (view === "week") setAnchor(addDays(anchor, direction * 7));
+    if (view === "day") show(view, addDays(anchor, direction));
+    else if (view === "week") show(view, addDays(anchor, direction * 7));
     // The 1st, so stepping from the 31st does not skip a short month.
-    else setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1));
+    else show(view, new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1));
   }
 
   /** A drop: move the event by the same number of days the chip travelled. */
@@ -200,14 +236,31 @@ export function CalendarPage() {
   };
   // The board's idiom: the library's id-only sentences are useless, so only the
   // announcements are replaced. Repeating "Over <day>" while the pointer stays
-  // in one cell is noise, hence the last-announced tracker.
-  const announced = useRef<unknown>(undefined);
+  // in one cell is noise, hence the last-announced tracker. The target id is
+  // normalised to a string first: a drop target's id is a number in the library's
+  // type and a string in ours, so an unnormalised comparison would re-announce
+  // the same cell on every event.
+  const announced = useRef<string | undefined>(undefined);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Calendar"
         description={`${rangeLabel(view, days, anchor)} · Drag an event to another day to move it.`}
+        actions={
+          // `/events/new` is guarded at minTier 1 — hiding the link keeps a
+          // guaranteed bounce off screen. The anchor day travels with it, so
+          // "New Event" from a day cell starts on that day.
+          user !== undefined &&
+          user.tier >= 1 && (
+            <Button asChild>
+              <Link to={`/events/new?date=${toIsoDate(anchor)}`}>
+                <Plus aria-hidden="true" />
+                New Event
+              </Link>
+            </Button>
+          )
+        }
       />
 
       <DragDropProvider
@@ -221,14 +274,20 @@ export function CalendarPage() {
                   },
                   announcements: {
                     dragstart: (event: DragStartEvent) => {
-                      announced.current = event.operation.source?.data?.dayIndex;
-                      return `Picked up ${titleOf(event.operation.source?.data)} from ${dayName(event.operation.source?.data?.dayIndex)}.`;
+                      const origin = event.operation.source?.data?.dayIndex;
+                      announced.current = typeof origin === "number" ? String(origin) : undefined;
+                      return `Picked up ${titleOf(event.operation.source?.data)} from ${dayName(origin)}.`;
                     },
                     dragover: (event: DragOverEvent) => {
-                      const over = event.operation.target?.id;
+                      // No target means the pointer is over nothing, which is
+                      // not a destination worth naming — and clearing the
+                      // tracker is what lets the cell it returns to be
+                      // announced again.
+                      const target = event.operation.target;
+                      const over = target ? String(target.id) : undefined;
                       if (over === announced.current) return undefined;
                       announced.current = over;
-                      return `Over ${dayName(Number(over))}.`;
+                      return over === undefined ? undefined : `Over ${dayName(Number(over))}.`;
                     },
                     dragend: (event: DragEndEvent) => {
                       const title = titleOf(event.operation.source?.data);
@@ -249,7 +308,7 @@ export function CalendarPage() {
           value={view}
           // Radix unmounts the inactive panel, so the switch also decides which
           // grid renders — one surface at a time, not three hidden ones.
-          onValueChange={(next) => setView(next as View)}
+          onValueChange={(next) => show(next as View, anchor)}
           className="mt-6 gap-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -260,7 +319,7 @@ export function CalendarPage() {
                 </TabsTrigger>
               ))}
             </TabsList>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 size="icon-sm"
@@ -269,7 +328,11 @@ export function CalendarPage() {
               >
                 <ChevronLeft aria-hidden="true" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => show(view, startOfDay(new Date()))}
+              >
                 Today
               </Button>
               <Button
@@ -280,6 +343,24 @@ export function CalendarPage() {
               >
                 <ChevronRight aria-hidden="true" />
               </Button>
+              {/* A native date field rather than a picker component: the browser
+                  already ships one with keyboard entry and a locale format, and
+                  this is a jump, not a scheduled value. */}
+              <Label htmlFor="calendar-date" className="text-sm text-muted-foreground">
+                Jump to date
+              </Label>
+              <input
+                id="calendar-date"
+                type="date"
+                value={toIsoDate(anchor)}
+                onChange={(event) => {
+                  const next = parseLocalDate(event.target.value);
+                  // A half-typed or impossible date (Feb 30) leaves the range
+                  // where it was rather than jumping somewhere arbitrary.
+                  if (next) show(view, next);
+                }}
+                className="h-9 cursor-pointer rounded-md border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
             </div>
           </div>
 
@@ -300,10 +381,17 @@ export function CalendarPage() {
             </p>
           )}
           {calendar.state.status === "error" && (
-            <p className="text-sm text-destructive" role="alert">
-              Couldn&apos;t load the calendar: {calendar.state.message}. Refresh the page to try
-              again.
-            </p>
+            <div className="flex flex-col items-start gap-2" role="alert">
+              <p className="text-sm text-destructive">
+                Couldn&apos;t load the calendar: {calendar.state.message}
+              </p>
+              {/* A retry the reader can act on. "Refresh the page" throws away
+                  whatever they had open, and a range read is the one thing this
+                  page can simply re-ask for. */}
+              <Button variant="outline" size="sm" onClick={calendar.reload}>
+                Try Again
+              </Button>
+            </div>
           )}
 
           {calendar.state.status === "ok" && (
@@ -317,6 +405,7 @@ export function CalendarPage() {
                     user={user}
                     busyId={calendar.busyId}
                     onOpen={openEvent}
+                    onSelectDay={(day) => show("day", day)}
                     detailed
                   />
                 </div>
@@ -330,6 +419,7 @@ export function CalendarPage() {
                     user={user}
                     busyId={calendar.busyId}
                     onOpen={openEvent}
+                    onSelectDay={(day) => show("day", day)}
                   />
                 </div>
               </TabsContent>
@@ -343,6 +433,7 @@ export function CalendarPage() {
                     user={user}
                     busyId={calendar.busyId}
                     onOpen={openEvent}
+                    onSelectDay={(day) => show("day", day)}
                   />
                 </div>
               </TabsContent>
@@ -393,12 +484,14 @@ function WeekGrid({
   user,
   busyId,
   onOpen,
+  onSelectDay,
 }: {
   days: Date[];
   events: CalendarEvent[];
   user: AuthUser | undefined;
   busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
+  onSelectDay: (day: Date) => void;
 }) {
   return (
     // `min-w` inside a scrolling parent: a phone shows two or three days and
@@ -416,6 +509,7 @@ function WeekGrid({
                 user={user}
                 busyId={busyId}
                 onOpen={onOpen}
+                onSelectDay={onSelectDay}
               />
             </td>
           ))}
@@ -433,6 +527,7 @@ function MonthGrid({
   user,
   busyId,
   onOpen,
+  onSelectDay,
 }: {
   days: Date[];
   events: CalendarEvent[];
@@ -440,6 +535,7 @@ function MonthGrid({
   user: AuthUser | undefined;
   busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
+  onSelectDay: (day: Date) => void;
 }) {
   return (
     <table className="w-full min-w-4xl border-separate border-spacing-0 rounded-lg border">
@@ -468,6 +564,7 @@ function MonthGrid({
                   user={user}
                   busyId={busyId}
                   onOpen={onOpen}
+                  onSelectDay={onSelectDay}
                   compact
                 />
               </td>
@@ -494,6 +591,7 @@ function DayColumn({
   user,
   busyId,
   onOpen,
+  onSelectDay,
   detailed = false,
   compact = false,
 }: {
@@ -504,6 +602,8 @@ function DayColumn({
   user: AuthUser | undefined;
   busyId: string | undefined;
   onOpen: (id: string, trigger: HTMLElement) => void;
+  /** Switches to the day view for this date. */
+  onSelectDay: (day: Date) => void;
   /** Day view: the full date as a heading, and no grid-imposed cell padding. */
   detailed?: boolean;
   /** Month view: a bare day number. */
@@ -523,24 +623,26 @@ function DayColumn({
     >
       <div className={cn("flex items-baseline gap-1.5", detailed && "border-b pb-2")}>
         {detailed ? (
-          <h3 className="text-sm font-semibold">{fullDate.format(date)}</h3>
-        ) : compact ? (
-          <time
-            dateTime={date.toISOString()}
+          // The day view's own heading: `h2` under the page's `h1`, which is
+          // where a screen reader's outline expects the section it names.
+          <h2 className="text-sm font-semibold">{fullDate.format(date)}</h2>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectDay(date)}
+            // A month cell shows a bare number and a week cell "Wed 12"; neither
+            // is a date on its own, so the name spells the whole local day out.
+            aria-label={`Show ${fullDate.format(date)}`}
             className={cn(
-              "text-xs font-medium tabular-nums",
-              isToday && "rounded bg-secondary px-1.5 py-0.5",
+              "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              compact && "tabular-nums",
+              isToday && "bg-secondary",
             )}
           >
-            {dayNumber.format(date)}
-          </time>
-        ) : (
-          <time
-            dateTime={date.toISOString()}
-            className={cn("text-xs font-medium", isToday && "rounded bg-secondary px-1.5 py-0.5")}
-          >
-            {cellDate.format(date)}
-          </time>
+            <time dateTime={date.toISOString()}>
+              {compact ? dayNumber.format(date) : cellDate.format(date)}
+            </time>
+          </button>
         )}
       </div>
 
@@ -608,28 +710,38 @@ function EventChip({
     disabled: !movable || busy,
     data: { id: event.id, dayIndex, title: event.title },
   });
+  // The same status vocabulary the badge on the event list uses, so a chip and
+  // the row behind it cannot disagree about what `live` looks like. Only the
+  // chip's own text colours are replaced — the handle inherits them rather than
+  // keeping `muted-foreground`, which was checked against `secondary` and not
+  // against these tints.
+  const status = statusStyles[event.status];
 
   return (
     <div
       ref={ref}
       className={cn(
-        "flex items-start gap-0.5 rounded-md bg-secondary px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
-        isDragging ? "opacity-60" : "hover:bg-accent",
+        "flex items-start gap-0.5 rounded-md px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
+        status.className,
+        // Hover is a ring, not a background swap: replacing the status tint on
+        // hover would put the status text on a colour nothing checked it against.
+        isDragging ? "opacity-60" : "hover:ring-1 hover:ring-ring/40",
       )}
     >
       <button
         type="button"
         // The day is in the name because a multi-day event renders one button per
         // day it occupies — without it every one of them would be announced
-        // identically.
-        aria-label={`Open ${event.title} on ${mediumDate.format(date)}`}
+        // identically. The status rides along because the tint is the only other
+        // place it appears, and colour is not a label.
+        aria-label={`Open ${event.title}, ${status.label}, on ${mediumDate.format(date)}`}
         onClick={(click) => onOpen(event.id, click.currentTarget)}
         className="min-w-0 flex-1 cursor-pointer rounded-sm text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         <span className="block truncate text-xs font-medium">{event.title}</span>
         {/* The start time only on the day the event starts; later days of a
             multi-day event are continuations of the same single start. */}
-        <span className="block truncate text-[0.6875rem] text-secondary-foreground">
+        <span className="block truncate text-[0.6875rem]">
           {sameDay(event.startsAt, date) ? clock.format(event.startsAt) : "Continues"}
         </span>
       </button>
@@ -640,7 +752,7 @@ function EventChip({
           size="icon-xs"
           disabled={busy}
           aria-label={`Move ${event.title} from ${mediumDate.format(date)}`}
-          className="size-5 shrink-0 touch-none text-muted-foreground"
+          className="size-5 shrink-0 touch-none"
         >
           <GripVertical aria-hidden="true" className="size-3.5" />
         </Button>
@@ -822,6 +934,7 @@ function EventOverviewBody({
           taskCounts={event.taskCounts}
           overdueCount={event.overdueCount}
           budget={event.budget}
+          subject={event.title}
         />
         <dl className="grid gap-1.5 text-sm">
           <Row label="Allocated" value={money.format(event.budget.allocationCents / 100)} />

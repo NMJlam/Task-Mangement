@@ -1,4 +1,4 @@
-import type { EventSummary, Task } from "@ctp/shared";
+import type { EventSummary, Notification, Task } from "@ctp/shared";
 import {
   Bell,
   CalendarDays,
@@ -8,6 +8,7 @@ import {
   Plus,
   UsersRound,
 } from "lucide-react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { DashboardSearch } from "@/components/common/dashboard-search";
 import { PageHeader } from "@/components/common/page-header";
@@ -22,6 +23,7 @@ import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useTasks } from "@/hooks/use-tasks";
+import { cn } from "@/lib/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const headingDate = new Intl.DateTimeFormat(undefined, {
@@ -44,40 +46,72 @@ const activityDate = new Intl.DateTimeFormat(undefined, {
 
 export function DashboardPage() {
   const me = useMe();
-  const tasks = useTasks();
-  const events = useEvents();
+  // One reading of the clock per mount. Every window below derives from it, and
+  // the events request is keyed on the bound it produces — a fresh `Date` each
+  // render would re-issue that request forever.
+  const now = useMemo(() => new Date(), []);
+  const today = useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()), [now]);
+  const tomorrow = useMemo(() => new Date(today.getTime() + DAY_MS), [today]);
+  // "The next 7 days" measured from NOW, which is also what the request asks for,
+  // so the widget and the read agree on one window.
+  const horizon = useMemo(() => new Date(now.getTime() + 7 * DAY_MS), [now]);
+  const memberId = me.status === "ok" ? me.user.id : undefined;
+
+  // Two task reads, deliberately. The club-wide list feeds committee load and
+  // ⌘K search. The personal one is a SERVER filter: "my open tasks" derived from
+  // the shared capped page was the bug — a member's own task could sit past the
+  // 50-row limit behind newer club work, and the Overview then claimed they had
+  // none. `enabled` holds the personal read until the caller's id is known, so
+  // an unresolved identity can never issue an unfiltered read instead.
+  const clubTasks = useTasks();
+  const myTasks = useTasks({ assignee: memberId, enabled: memberId !== undefined });
+  // The week widget's window, and `asc` so the cap keeps the SOONEST events.
+  // The lower bound is NOW, not midnight: with a midnight bound the first page of
+  // an ascending read is the day's already-finished events, so a busy day pushes
+  // the whole rest of the week past the 25-row cap — which is precisely how the
+  // widget empties itself while looking complete.
+  const events = useEvents({
+    from: now.toISOString(),
+    to: horizon.toISOString(),
+    order: "asc",
+  });
   const notifications = useNotifications();
   const members = useMembers();
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + DAY_MS);
-  const nextWeek = new Date(today.getTime() + 7 * DAY_MS);
 
-  const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
+  const clubTaskItems = clubTasks.state.status === "ok" ? clubTasks.state.items : [];
+  const myTaskItems = myTasks.state.status === "ok" ? myTasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : [];
   const notificationItems = notifications.state.status === "ok" ? notifications.state.items : [];
   const memberItems = members.state.status === "ok" ? members.state.items : [];
-  const memberId = me.status === "ok" ? me.user.id : undefined;
+  const eventsLoaded = events.state.status === "ok";
+  // "No personal data" and "no personal data YET" are different claims, so the
+  // personal widgets are gated on this rather than on an empty array.
+  const personalLoaded = memberId !== undefined && myTasks.state.status === "ok";
+  const personalFailed =
+    me.status === "error" || (memberId !== undefined && myTasks.state.status === "error");
 
-  const myOpenTasks = taskItems
-    .filter(
-      (task) =>
-        memberId !== undefined && task.assigneeIds.includes(memberId) && task.status !== "done",
-    )
+  const myOpenTasks = myTaskItems
+    .filter((task) => task.status !== "done")
     .sort((a, b) => dueTime(a) - dueTime(b));
   const overdueCount = myOpenTasks.filter(
     (task) => task.dueAt && task.dueAt.getTime() < today.getTime(),
   ).length;
   const dueThisWeek = myOpenTasks.filter(
-    (task) => task.dueAt && task.dueAt >= today && task.dueAt < nextWeek,
+    (task) => task.dueAt && task.dueAt >= today && task.dueAt < horizon,
   );
+  // The request already starts at now, so this only has to hold the upper end —
+  // and to re-assert the lower one, since a render can outlive the instant the
+  // request was issued.
   const upcomingEvents = eventItems
-    .filter((event) => event.startsAt >= today && event.startsAt < nextWeek)
+    .filter((event) => event.startsAt >= now && event.startsAt < horizon)
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  // The window read is capped at the API's page size, so the count is a floor
+  // whenever the server still has a cursor to give.
+  const moreEvents = events.state.status === "ok" && events.state.nextCursor !== null;
   const unreadCount = notifications.state.status === "ok" ? notifications.state.unreadCount : 0;
   const eventNames = new Map(eventItems.map((event) => [event.id, event.title]));
   const openTasksByMember = new Map<string, number>();
-  taskItems.forEach((task) => {
+  clubTaskItems.forEach((task) => {
     // Every holder counts: a multi-assignee task is open work for each of them,
     // so the load bar has to grow for all of them or it under-reports.
     if (task.status !== "done") {
@@ -99,7 +133,7 @@ export function DashboardPage() {
         kind: "task" as const,
         title: task.title,
         at: task.dueAt!,
-        to: "/tasks",
+        to: "/tasks?scope=mine",
       })),
     ...eventItems
       .filter((event) => event.startsAt >= today && event.startsAt < tomorrow)
@@ -116,13 +150,15 @@ export function DashboardPage() {
 
   const loading =
     me.status === "loading" ||
-    tasks.state.status === "loading" ||
+    clubTasks.state.status === "loading" ||
+    myTasks.state.status === "loading" ||
     events.state.status === "loading" ||
     notifications.state.status === "loading" ||
     members.state.status === "loading";
   const failedSections = [
-    me.status === "error" ? "your tasks" : undefined,
-    tasks.state.status === "error" ? "tasks" : undefined,
+    me.status === "error" ? "your profile" : undefined,
+    myTasks.state.status === "error" ? "your tasks" : undefined,
+    clubTasks.state.status === "error" ? "club tasks" : undefined,
     events.state.status === "error" ? "events" : undefined,
     members.state.status === "error" ? "committee load" : undefined,
   ].filter((label): label is string => Boolean(label));
@@ -134,7 +170,7 @@ export function DashboardPage() {
         description={`${headingDate.format(now)} · Your club’s work, events, and updates at a glance.`}
         actions={
           <>
-            <DashboardSearch tasks={taskItems} events={eventItems} members={memberItems} />
+            <DashboardSearch tasks={clubTaskItems} events={eventItems} members={memberItems} />
             {me.status === "ok" && me.user.tier >= 1 && (
               <Button asChild>
                 <Link to="/events/new">
@@ -166,19 +202,35 @@ export function DashboardPage() {
           >
             <Metric
               label="My Open Tasks"
-              value={myOpenTasks.length}
-              detail={`${myOpenTasks.filter((task) => task.status === "in_progress").length} in progress`}
+              value={personalLoaded ? myOpenTasks.length : undefined}
+              detail={
+                personalLoaded
+                  ? `${myOpenTasks.filter((task) => task.status === "in_progress").length} in progress`
+                  : "Couldn’t load your tasks"
+              }
             />
             <Metric
               label="Due Next 7 Days"
-              value={dueThisWeek.length}
-              detail={overdueCount ? `${overdueCount} overdue` : "Nothing overdue"}
+              value={personalLoaded ? dueThisWeek.length : undefined}
+              detail={
+                !personalLoaded
+                  ? "Couldn’t load your tasks"
+                  : overdueCount
+                    ? `${overdueCount} overdue`
+                    : "Nothing overdue"
+              }
               tone={overdueCount ? "danger" : undefined}
             />
             <Metric
               label="Upcoming Events"
-              value={upcomingEvents.length}
-              detail="In the next 7 days"
+              value={eventsLoaded ? upcomingEvents.length : undefined}
+              detail={
+                !eventsLoaded
+                  ? "Couldn’t load events"
+                  : moreEvents
+                    ? `More than ${upcomingEvents.length} in the next 7 days`
+                    : "In the next 7 days"
+              }
             />
             <Metric
               label="Unread Updates"
@@ -190,9 +242,18 @@ export function DashboardPage() {
           <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="grid gap-6">
               <Card className="gap-0 py-0 shadow-none">
-                <SectionHeading title="My Tasks" to="/tasks" action="View All" />
+                <SectionHeading title="My Tasks" to="/tasks?scope=mine" action="View All" />
                 <CardContent className="px-5 pb-2 sm:px-6">
-                  {myOpenTasks.length === 0 ? (
+                  {!personalLoaded ? (
+                    <EmptyState
+                      icon={CheckSquare2}
+                      message={
+                        personalFailed
+                          ? "Your tasks are unavailable right now."
+                          : "Waiting for your membership…"
+                      }
+                    />
+                  ) : myOpenTasks.length === 0 ? (
                     <EmptyState icon={CheckSquare2} message="No open tasks are assigned to you." />
                   ) : (
                     <div className="divide-y">
@@ -207,12 +268,27 @@ export function DashboardPage() {
                     </div>
                   )}
                 </CardContent>
+                {/* The widget is capped at five, so it says how much it left out
+                    instead of letting the list read as the whole of one's work. */}
+                {personalLoaded && myOpenTasks.length > 5 && (
+                  <div className="border-t px-5 py-2.5 sm:px-6">
+                    <Link
+                      to="/tasks?scope=mine"
+                      className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      {myOpenTasks.length - 5} more open task
+                      {myOpenTasks.length - 5 === 1 ? "" : "s"}
+                    </Link>
+                  </div>
+                )}
               </Card>
 
               <Card className="gap-0 py-0 shadow-none">
                 <SectionHeading title="This Week’s Events" to="/events" action="All Events" />
                 <CardContent className="px-5 pb-2 sm:px-6">
-                  {upcomingEvents.length === 0 ? (
+                  {!eventsLoaded ? (
+                    <EmptyState icon={CalendarDays} message="Events are unavailable right now." />
+                  ) : upcomingEvents.length === 0 ? (
                     <EmptyState
                       icon={CalendarDays}
                       message="No events are scheduled in the next 7 days."
@@ -235,8 +311,18 @@ export function DashboardPage() {
               <Card className="gap-0 py-0 shadow-none">
                 <SectionHeading title="Today" to="/calendar" action="Calendar" compact />
                 <CardContent className="px-5 pb-5">
-                  {todayItems.length === 0 ? (
-                    <EmptyState icon={Clock3} message="Nothing is scheduled for today." compact />
+                  {!personalLoaded || !eventsLoaded ? (
+                    <EmptyState
+                      icon={Clock3}
+                      message="Today’s schedule is unavailable right now."
+                      compact
+                    />
+                  ) : todayItems.length === 0 ? (
+                    <EmptyState
+                      icon={Clock3}
+                      message="Nothing else is scheduled for today."
+                      compact
+                    />
                   ) : (
                     <div className="grid gap-4">
                       {todayItems.map((item) => {
@@ -282,20 +368,7 @@ export function DashboardPage() {
                   ) : (
                     <div className="grid gap-4">
                       {notificationItems.slice(0, 4).map((notification) => (
-                        <div key={notification.id} className="flex min-w-0 gap-3">
-                          <span className="mt-0.5 rounded-md bg-secondary p-1.5 text-muted-foreground">
-                            <Bell aria-hidden="true" className="size-3.5" />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="line-clamp-2 text-sm leading-5">{notification.body}</p>
-                            <time
-                              dateTime={notification.createdAt.toISOString()}
-                              className="mt-0.5 block text-xs text-muted-foreground"
-                            >
-                              {activityDate.format(notification.createdAt)}
-                            </time>
-                          </div>
-                        </div>
+                        <ActivityRow key={notification.id} notification={notification} />
                       ))}
                     </div>
                   )}
@@ -327,6 +400,7 @@ export function DashboardPage() {
                                 aria-valuenow={count}
                                 aria-valuemin={0}
                                 aria-valuemax={maxLoad}
+                                aria-valuetext={`${count} open task${count === 1 ? "" : "s"}`}
                                 className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary"
                               >
                                 <div
@@ -357,7 +431,8 @@ function Metric({
   tone,
 }: {
   label: string;
-  value: number;
+  /** Absent when the read behind it failed: a failed read is not a zero. */
+  value?: number;
   detail: string;
   tone?: "danger";
 }) {
@@ -367,7 +442,8 @@ function Metric({
       <p
         className={`text-3xl font-semibold tracking-[-0.04em] tabular-nums ${tone === "danger" ? "text-destructive" : ""}`}
       >
-        {value}
+        {value ?? "—"}
+        {value === undefined && <span className="sr-only">unavailable</span>}
       </p>
       <p className="text-xs text-muted-foreground">{detail}</p>
     </Card>
@@ -404,27 +480,88 @@ function SectionHeading({
 }
 
 function TaskRow({ task, eventName, today }: { task: Task; eventName?: string; today: Date }) {
+  const overdue = Boolean(task.dueAt && task.dueAt < today);
+  // An event link with no loaded title is not the same as no event at all: the
+  // dashboard only reads a one-week window of events, so claiming "Standalone
+  // Task" here would be a fact the loaded data cannot support.
+  const context = eventName ?? (task.eventId ? "Linked to an event" : "Standalone Task");
+
   return (
     <div className="flex min-w-0 items-center gap-3 py-3.5">
       <PriorityDot priority={task.priority} />
       <div className="min-w-0 flex-1">
         <Link
-          to="/tasks"
+          to="/tasks?scope=mine"
           className="block truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           {task.title}
         </Link>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {eventName ?? "Standalone Task"}
-        </p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{context}</p>
       </div>
       <StatusBadge status={task.status} className="hidden sm:inline-flex" />
-      <time
-        dateTime={task.dueAt?.toISOString()}
-        className={`w-24 shrink-0 text-right text-xs tabular-nums ${task.dueAt && task.dueAt < today ? "font-medium text-destructive" : "text-muted-foreground"}`}
-      >
-        {task.dueAt ? shortDate.format(task.dueAt) : "No Due Date"}
-      </time>
+      <div className="w-24 shrink-0 text-right">
+        <time
+          dateTime={task.dueAt?.toISOString()}
+          className={`block text-xs tabular-nums ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}
+        >
+          {task.dueAt ? shortDate.format(task.dueAt) : "No Due Date"}
+        </time>
+        {/* A word, not just red text: colour alone is not a status cue for
+            anyone who cannot see it. */}
+        {overdue && (
+          <span className="mt-0.5 block text-[0.6875rem] font-medium text-destructive">
+            Overdue
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One activity item. A row is a link only where the notification's own
+ * `entityType`/`entityId` name a route that exists — a task or message
+ * notification has nowhere to go yet, and linking it to a list would be a
+ * promise the URL cannot keep.
+ */
+function ActivityRow({ notification }: { notification: Notification }) {
+  const to =
+    notification.entityType === "event" && notification.entityId
+      ? `/events/${notification.entityId}`
+      : notification.entityType === "expense"
+        ? "/finance"
+        : undefined;
+  const unread = !notification.readAt;
+  const body = (
+    <>
+      {unread && <span className="sr-only">Unread: </span>}
+      {notification.body}
+    </>
+  );
+
+  return (
+    <div className={cn("relative flex min-w-0 gap-3 rounded-md", unread && "bg-accent/35 p-2")}>
+      <span className="mt-0.5 shrink-0 rounded-md bg-secondary p-1.5 text-muted-foreground">
+        <Bell aria-hidden="true" className="size-3.5" />
+      </span>
+      <div className="min-w-0">
+        {to ? (
+          <Link
+            to={to}
+            className="line-clamp-2 rounded-sm text-sm leading-5 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            {body}
+          </Link>
+        ) : (
+          <p className="line-clamp-2 text-sm leading-5">{body}</p>
+        )}
+        <time
+          dateTime={notification.createdAt.toISOString()}
+          className="mt-0.5 block text-xs text-muted-foreground"
+        >
+          {activityDate.format(notification.createdAt)}
+        </time>
+      </div>
     </div>
   );
 }
@@ -454,6 +591,7 @@ function EventRow({ event }: { event: EventSummary }) {
           taskCounts={event.taskCounts}
           overdueCount={event.overdueCount}
           budget={event.budget}
+          subject={event.title}
         />
       </div>
     </div>

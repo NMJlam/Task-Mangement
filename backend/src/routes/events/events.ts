@@ -288,9 +288,15 @@ eventsRouter.get(
       if (query.from) filters.push(sql`e.starts_at >= ${query.from}`);
       if (query.to) filters.push(sql`e.starts_at <= ${query.to}`);
       if (query.ownerId) filters.push(sql`e.owner = ${query.ownerId}`);
+      // The cursor is a POSITION in the ORDER BY, so its comparison has to flip
+      // with the direction. A cursor issued under one order and replayed under
+      // the other would page away from the rows the reader is looking at.
+      const ascending = query.order === "asc";
+      const direction = ascending ? sql`ASC` : sql`DESC`;
+      const compare = ascending ? sql`>` : sql`<`;
       if (cursor) {
         filters.push(
-          sql`(e.starts_at < ${cursor.startsAt} OR (e.starts_at = ${cursor.startsAt} AND e.id < ${cursor.id}))`,
+          sql`(e.starts_at ${compare} ${cursor.startsAt} OR (e.starts_at = ${cursor.startsAt} AND e.id ${compare} ${cursor.id}))`,
         );
       }
 
@@ -299,7 +305,7 @@ eventsRouter.get(
       const result = await getDb().execute<EventRow>(sql`
         ${EVENT_ROW_SELECT}
         WHERE ${sql.join(filters, sql` AND `)}
-        ORDER BY e.starts_at DESC, e.id DESC
+        ORDER BY e.starts_at ${direction}, e.id ${direction}
         LIMIT ${query.limit + 1}
       `);
 

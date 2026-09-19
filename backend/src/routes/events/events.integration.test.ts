@@ -132,6 +132,42 @@ describe("/api/events", () => {
       expect(seenIds).toHaveLength(new Set(seenIds).size); // no duplicate across pages
     });
 
+    it("order=asc returns the soonest event first and pages that direction too", async () => {
+      const officer = await member("officer", "officer");
+      // A private window at the far end of the calendar, for the same reason
+      // the cursor test uses FAR_FUTURE: nothing ambient can interleave.
+      const near = new Date("9998-01-01T00:00:00Z");
+      const far = new Date("9998-01-02T00:00:00Z");
+      const [first, second] = await Promise.all([
+        seedEvent({ title: "test-event-asc-first", startsAt: near }),
+        seedEvent({ title: "test-event-asc-second", startsAt: far }),
+      ]);
+      signedInAs(officer);
+
+      const response = await request(app).get(
+        `/api/events?from=${near.toISOString()}&limit=2&order=asc`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([
+        first.id,
+        second.id,
+      ]);
+
+      // The cursor is a position in THIS order, so the next page continues
+      // forward rather than jumping back to the far end of the table.
+      const head = await request(app).get(
+        `/api/events?from=${near.toISOString()}&limit=1&order=asc`,
+      );
+      expect(head.body.items.map((item: { id: string }) => item.id)).toEqual([first.id]);
+      expect(head.body.nextCursor).toBeTruthy();
+
+      const page = await request(app).get(
+        `/api/events?from=${near.toISOString()}&limit=1&order=asc&cursor=${encodeURIComponent(head.body.nextCursor)}`,
+      );
+      expect(page.status).toBe(200);
+      expect(page.body.items[0].id).toBe(second.id);
+    });
+
     it("includes blocked in taskCounts and keeps overdueCount as a sibling, not a fifth bucket", async () => {
       const officer = await member("officer", "officer");
       const event = await seedEvent({ title: "test-event-counts" });

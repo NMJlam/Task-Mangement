@@ -3,7 +3,18 @@ import { cn } from "@/lib/utils";
 
 type Status = EventStatus | ExpenseStatus | Risk | TaskStatus;
 
-const statuses: Record<Status, { label: string; className: string }> = {
+/**
+ * The status vocabulary the app renders, in one place. Exported because the
+ * calendar's event chips colour themselves by the SAME event status the badge
+ * shows: two copies of "what does `live` look like" is how a chip and a badge
+ * drift into disagreeing about the same row.
+ *
+ * The class names are the contrast-safe pairs the palette's contrast table was
+ * computed against — `text-emerald-700` on `bg-emerald-50` and friends. They are
+ * intended to be applied to a chip that keeps its own text colours, so a chip
+ * must not add a text colour of its own on top of these.
+ */
+export const statusStyles: Record<Status, { label: string; className: string }> = {
   planning: { label: "Planning", className: "bg-accent text-accent-foreground" },
   live: { label: "Live", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950" },
   wrapped: { label: "Wrapped", className: "bg-secondary text-secondary-foreground" },
@@ -22,7 +33,7 @@ const statuses: Record<Status, { label: string; className: string }> = {
 };
 
 export function StatusBadge({ status, className }: { status: Status; className?: string }) {
-  const style = statuses[status];
+  const style = statusStyles[status];
 
   return (
     <span

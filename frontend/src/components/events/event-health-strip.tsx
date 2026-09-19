@@ -16,10 +16,17 @@ export function EventHealthStrip({
   taskCounts,
   overdueCount,
   budget,
+  subject,
 }: {
   taskCounts: TaskCounts;
   overdueCount: number;
   budget: EventBudget;
+  /**
+   * The event this strip reports on, when the surrounding page holds several.
+   * A list of cards each announcing "Tasks complete" is a list of progress bars
+   * a screen reader cannot tell apart.
+   */
+  subject?: string;
 }) {
   const total = taskCounts.todo + taskCounts.inProgress + taskCounts.blocked + taskCounts.done;
   const percentComplete = total === 0 ? 0 : Math.round((taskCounts.done / total) * 100);
@@ -32,10 +39,11 @@ export function EventHealthStrip({
     >
       <div
         role="progressbar"
-        aria-label="Tasks complete"
+        aria-label={subject ? `${subject} tasks complete` : "Tasks complete"}
         aria-valuenow={percentComplete}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={`${percentComplete}% complete`}
         className="h-2 w-24 overflow-hidden rounded-full bg-muted"
       >
         <div

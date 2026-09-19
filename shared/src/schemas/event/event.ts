@@ -73,6 +73,9 @@ export const changeEventStatusSchema = z.object({
 
 export type ChangeEventStatus = z.infer<typeof changeEventStatusSchema>;
 
+/** The statuses `PATCH /:id/status` can move an event TO — never `cancelled`. */
+export type ChangeableEventStatus = ChangeEventStatus["status"];
+
 export const changeEventStatusResponseSchema = z.object({
   id: z.uuid(),
   status: eventStatusSchema,
@@ -80,6 +83,26 @@ export const changeEventStatusResponseSchema = z.object({
 });
 
 export type ChangeEventStatusResponse = z.infer<typeof changeEventStatusResponseSchema>;
+
+/**
+ * The lifecycle's legal moves, `from → to`. Defined here because BOTH sides need
+ * it and neither direction can be derived safely on one side alone: the route
+ * enforces the transition with a guarded `UPDATE` (so it needs the allowed
+ * SOURCES of a target) and the event page renders a control (so it needs the
+ * allowed TARGETS of a source). A second copy in the UI is how a button appears
+ * for a hop the route will refuse.
+ *
+ * `cancelled` is a target nowhere here: `DELETE` is its only door, because
+ * cancelling must also release the unspent allocation. Its sole outgoing edge is
+ * the restore path, which the UI does not expose (the cancel confirmation tells
+ * the reader cancellation cannot be undone).
+ */
+export const eventStatusTransitions: Record<EventStatus, readonly ChangeableEventStatus[]> = {
+  planning: ["live"],
+  live: ["wrapped"],
+  wrapped: ["live"],
+  cancelled: ["planning"],
+};
 
 // ── GET /api/events ───────────────────────────────────────────────────────────
 
@@ -91,6 +114,12 @@ export const listEventsQuerySchema = z.object({
   ownerId: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().optional(),
+  // Direction is part of the keyset, not a client-side re-sort: a
+  // cursor-paginated page sorted by the reader would reorder only the rows it
+  // happens to hold, so "soonest first" would be a lie past the first page.
+  // A cursor is direction-specific — it is issued with the order it was read
+  // under, and replaying it against the other direction silently skips rows.
+  order: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;

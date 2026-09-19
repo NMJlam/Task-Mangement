@@ -338,6 +338,31 @@ describe("/api/tasks", () => {
       expect(response.body.tasks[0]).toMatchObject({ id: overdue.id, title: "Overdue" });
     });
 
+    it("narrows to one priority, which the derived overdue rule does not already imply", async () => {
+      const actor = await member("officer", "officer");
+      const { id: teamId } = await team();
+      await seedTask(teamId, {
+        title: "Overdue urgent",
+        priority: "urgent",
+        dueAt: new Date(Date.now() - HOUR),
+      });
+      await seedTask(teamId, {
+        title: "Overdue low",
+        priority: "low",
+        dueAt: new Date(Date.now() - HOUR),
+      });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .get("/api/tasks/overdue")
+        .query({ teamId, priority: "urgent" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.tasks.map((task: { title: string }) => task.title)).toEqual([
+        "Overdue urgent",
+      ]);
+    });
+
     it("is not captured by the /tasks/:id route", async () => {
       const actor = await member("officer", "officer");
       signedInAs(actor);

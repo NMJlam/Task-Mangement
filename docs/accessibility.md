@@ -3,8 +3,20 @@
 Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
 
 - **Automated scan**: `e2e/a11y.spec.ts` runs `@axe-core/playwright` against the
-  health page with tags `wcag2a wcag2aa wcag21a wcag21aa`. Currently **0
-  violations**. Add a scan per new page as the UI grows.
+  health page with tags `wcag2a wcag2aa wcag21a wcag21aa`, plus the signed-in
+  routes `/`, `/events`, one seeded `/events/:id`, `/tasks` and `/calendar`.
+  Currently **0 violations**. Add a scan per new page as the UI grows.
+  - The signed-in scans need a session, so they take the developer's own route
+    in: `DEV_PASSWORD_AUTH=1`, an account created at `/scratch`, and
+    `npm run db:dev-member -- <email> <role>` for the membership. Point the suite
+    at it with `E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD`. Without both the
+    scans **skip** with that reason rather than failing — a machine with no dev
+    member cannot answer the question, and a scan that silently covered only the
+    login page would be worse than one that says it did not run. A role of lead
+    or above is worth using: it renders the tier-gated controls (status
+    transitions, New Event) that a tier-0 member never sees.
+  - `axe` checks the rendered DOM, so a route still on its skeleton passes
+    trivially. Each scan waits for `main` before analysing.
 - **Radix primitives**: every interactive control comes from shadcn/Radix, which
   supplies keyboard navigation and ARIA labelling (US-21, SC 2.1.1, 1.3.1). Do
   not hand-roll interactive elements; if you must, document the keyboard handling
@@ -57,6 +69,37 @@ wrapper does by default, measures **2.38:1** and would fail AA — its outside
 days and this grid's cells both carry full-strength colour as a result. Event
 chips on `secondary` use `secondary-foreground` (**9.64:1**) rather than
 `muted-foreground` (**4.51:1**), which is the thinnest pair in the palette.
+
+### Status tints (Tailwind palette, not app tokens)
+
+`StatusBadge` and (since the calendar's chips took the same mapping) the event
+chips render text on Tailwind palette tints. Those pairs are not among the oklch
+tokens above, so they are measured separately — same method:
+
+| Status                                         | Pair                                  | Light     | Dark       |
+| ---------------------------------------------- | ------------------------------------- | --------- | ---------- |
+| `planning`, `approved`, `in_progress`          | `accent-foreground` on `accent`       | 6.44:1 ✅ | token pair |
+| `wrapped`, `todo`                              | `secondary-foreground` on `secondary` | 9.64:1 ✅ | token pair |
+| `live`, `paid`, `done`, `on_track`             | `emerald-700` on `emerald-50`         | 5.27:1 ✅ | **2.71:1** |
+| `pending`, `at_risk`                           | `amber-800` on `amber-50`             | 6.84:1 ✅ | **2.11:1** |
+| `cancelled`, `rejected`, `blocked`, `critical` | `red-700` on `red-50`                 | 5.92:1 ✅ | **2.50:1** |
+
+Light mode clears AA on all four. **Dark mode does not** for the three tinted
+rows: the `dark:` variant swaps the background to the `-950` shade but leaves the
+text at the `-700`/`-800` shade, which measures 2.1–2.7:1 against it. This is
+pre-existing — `StatusBadge` has shipped those classes since the palette was
+built — and the calendar's chips now inherit it, so the gap is shared rather than
+new. Fixing it means adding a `dark:` text colour (`emerald-300`, `amber-200`,
+`red-300`) to those `statusStyles` entries; it is recorded here rather than
+applied, because the UI pass that introduced the chips was scoped to preserve the
+existing text colours. Run the two dark-mode scans (`localStorage.theme = "dark"`
+before the axe pass) before shipping the MAC palette.
+
+Chips are otherwise colour-neutral where it matters: the chip body takes the
+status tint and both its lines **inherit** that colour, so no unchecked pair is
+introduced, and hover is a ring rather than a background swap for the same
+reason. The chip's status is also in its accessible name, so the tint is
+decoration rather than the only carrier of the value.
 
 ### ⚠️ Re-run this after the theme swap
 
