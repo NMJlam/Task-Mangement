@@ -107,6 +107,31 @@ function completionOf(status: TaskStatus): { completedAt: Date | null } {
   return { completedAt: status === "done" ? new Date() : null };
 }
 
+/**
+ * The `overdue_escalated_at` half of a task update — which writes start a new
+ * overdue cycle (see the column's note in `db/schema/task.ts`).
+ *
+ * A deadline that moved (or was cleared) resets the marker outright. A reopen
+ * resets it too, but only from a STORED `done`: the `CASE` reads the row's own
+ * status inside the UPDATE, so no preliminary SELECT is needed and a concurrent
+ * reopen cannot slip between a read and the write.
+ *
+ * Everything else leaves it alone — an open-to-open move (todo →
+ * in_progress), a priority-only edit, and closing a task — which is exactly what
+ * lets a user's post-escalation priority override survive the next sweep.
+ *
+ * The due-date reset takes precedence when a patch moves both fields.
+ */
+function overdueCycleReset(patch: { dueAt?: Date | null; status?: TaskStatus }): {
+  overdueEscalatedAt?: Date | null | SQL;
+} {
+  if (patch.dueAt !== undefined) return { overdueEscalatedAt: null };
+  if (patch.status === undefined || patch.status === "done") return {};
+  return {
+    overdueEscalatedAt: sql`CASE WHEN ${tasks.status} = 'done' THEN NULL ELSE ${tasks.overdueEscalatedAt} END`,
+  };
+}
+
 function notFound(res: Response): void {
   res.status(404).json({ error: { code: "TASK_NOT_FOUND", message: "Task not found." } });
 }
@@ -373,6 +398,9 @@ tasksRouter.patch(
             ...columns,
             // No `updated_at` trigger exists, so the route owns the timestamp.
             ...(columns.status ? completionOf(columns.status) : {}),
+            // A moved deadline or a reopen, in the same statement — see
+            // `overdueCycleReset`.
+            ...overdueCycleReset(columns),
             updatedAt: new Date(),
           })
           .where(eq(tasks.id, req.params.id!))
@@ -409,7 +437,13 @@ tasksRouter.patch(
       const { status } = res.locals.validated as ChangeTaskStatus;
       const [task] = await getDb()
         .update(tasks)
-        .set({ status, ...completionOf(status), updatedAt: new Date() })
+        .set({
+          status,
+          ...completionOf(status),
+          // Reopening clears the escalation marker; the other three moves do not.
+          ...overdueCycleReset({ status }),
+          updatedAt: new Date(),
+        })
         .where(eq(tasks.id, req.params.id!))
         .returning();
 
