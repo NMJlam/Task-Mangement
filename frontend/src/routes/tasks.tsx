@@ -194,9 +194,9 @@ export function TasksPage() {
               </div>
             </div>
 
-            {/* The description takes the leftover height, which is what makes it
-                the biggest field in the dialog rather than a footnote under it. */}
-            <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2">
+            {/* A fixed half-height: the description stays the largest single
+                field without the dialog's slack deciding how tall it is. */}
+            <div className="grid min-h-0 grow-0 basis-72 grid-rows-[auto_minmax(0,1fr)] gap-2">
               <Label htmlFor="new-task-description">Description</Label>
               <textarea
                 id="new-task-description"

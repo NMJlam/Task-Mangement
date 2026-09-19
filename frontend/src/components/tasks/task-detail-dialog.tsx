@@ -248,7 +248,7 @@ function Description({
 
   if (!onUpdate) {
     return (
-      <section className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 border-t pt-4">
+      <section className="grid min-h-0 grow-0 basis-72 grid-rows-[auto_minmax(0,1fr)] gap-2 border-t pt-4">
         <h2 className="text-sm font-medium">Description</h2>
         {task.description ? (
           <p className="overflow-y-auto overscroll-contain text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
@@ -262,7 +262,7 @@ function Description({
   }
 
   return (
-    <section className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 border-t pt-4">
+    <section className="grid min-h-0 grow-0 basis-72 grid-rows-[auto_minmax(0,1fr)] gap-2 border-t pt-4">
       <Label htmlFor={`description-${task.id}`}>Description</Label>
       <textarea
         id={`description-${task.id}`}
