@@ -5,7 +5,14 @@ import {
   type Message,
   type RosterMember,
 } from "@ctp/shared";
-import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CircleDollarSign,
+  ListPlus,
+  MapPin,
+  UserRound,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
@@ -16,6 +23,7 @@ import { EventDetailsDialog } from "@/components/events/event-details-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { EventRiskPanel } from "@/components/events/event-risk-panel";
 import { TaskBoard } from "@/components/tasks/task-board";
+import { TaskCreateDialog } from "@/components/tasks/task-create-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,6 +74,9 @@ export function EventDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [editingDates, setEditingDates] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  // The Tasks tab's create form. Any member may open it: `POST /api/tasks` sits
+  // behind `authorise(0)`, so there is nothing to hide.
+  const [addingTask, setAddingTask] = useState(false);
   // Warnings the last successful move came back with — a date change can leave
   // task deadlines behind the event, which the route reports rather than fixing.
   const [dateWarnings, setDateWarnings] = useState<string[]>([]);
@@ -308,7 +319,15 @@ export function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          {tasks.mutationError && (
+          {/* The board's own action, so it sits with the board rather than in the
+              page header's event-level controls. */}
+          <div className="mb-4 flex justify-end">
+            <Button onClick={() => setAddingTask(true)}>
+              <ListPlus aria-hidden="true" />
+              Add Task
+            </Button>
+          </div>
+          {tasks.mutationError && !addingTask && (
             <p className="mb-3 text-sm text-destructive" role="alert">
               {tasks.mutationError}. Try again.
             </p>
@@ -333,7 +352,7 @@ export function EventDetailPage() {
               events={[event]}
               busyId={tasks.busy}
               error={tasks.mutationError}
-              emptyMessage="No tasks are linked to this event yet."
+              emptyMessage="No tasks are linked to this event yet. Use Add Task to create the first one."
               onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
               // Same shared dialog controls as `/tasks`: description, priority
               // and assignment all edit in place here too.
@@ -407,6 +426,18 @@ export function EventDetailPage() {
         onClose={() => setEditingDetails(false)}
         onSave={detail.updateEvent}
         onSaved={setDateWarnings}
+      />
+
+      {/* The event is locked, not offered: this page IS the event, and a card
+          made here belongs to it. */}
+      <TaskCreateDialog
+        open={addingTask}
+        onOpenChange={setAddingTask}
+        members={memberItems}
+        lockedEvent={event}
+        busy={tasks.busy === "new"}
+        error={tasks.mutationError}
+        onCreate={tasks.createTask}
       />
 
       <EventDatesDialog
