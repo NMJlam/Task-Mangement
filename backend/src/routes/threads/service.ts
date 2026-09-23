@@ -67,6 +67,29 @@ export async function findThread(
   return thread;
 }
 
+/** 403 — the caller may not read this channel. Mapped by the route, in the same style as `routes/events/service.ts`'s typed errors. */
+export class ChannelForbiddenError extends Error {
+  constructor(message = "You do not have access to this channel.") {
+    super(message);
+    this.name = "ChannelForbiddenError";
+  }
+}
+
+/**
+ * Throws unless `viewer` may read `channelId`. The assistant needs a one-call
+ * gate, but the RULE stays `visibleThreads` — a second implementation is how a
+ * member ends up able to read through the assistant what they cannot read
+ * through the threads route.
+ */
+export async function assertCanReadChannel(
+  db: Queryable,
+  viewer: Viewer,
+  channelId: string,
+): Promise<void> {
+  const thread = await findThread(db, viewer, eq(channels.id, channelId));
+  if (!thread?.visible) throw new ChannelForbiddenError();
+}
+
 /**
  * Where a task's comments and files land: its event's thread if it has an
  * event, otherwise its team's. Never a fallback from one to the other — R9
