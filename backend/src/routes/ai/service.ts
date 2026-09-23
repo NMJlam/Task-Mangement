@@ -1,4 +1,4 @@
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { newId } from "../../db/id.js";
 import { aiRuns, chanMembers, channels } from "../../db/schema/index.js";
@@ -16,22 +16,46 @@ export class AiOutputError extends Error {
   }
 }
 
-/**
- * Models wrap JSON in markdown fences no matter how firmly the prompt says
- * otherwise, and sometimes prefix it with a sentence. Strip both before parsing
- * rather than burning a retry on a response that was actually correct.
- */
-export function extractJson(raw: string): string {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/u.exec(raw);
-  const body = (fenced?.[1] ?? raw).trim();
+/** The text from `text`'s first `{` to its last `}`, trimmed. Unchanged if neither is found. */
+function sliceBraces(text: string): string {
+  const body = text.trim();
   const start = body.indexOf("{");
   const end = body.lastIndexOf("}");
   return start >= 0 && end > start ? body.slice(start, end + 1) : body;
 }
 
 /**
+ * Every JSON candidate worth trying, most-likely-correct first. Models wrap
+ * JSON in markdown fences no matter how firmly the prompt says otherwise —
+ * and a chatty model may emit MORE THAN ONE fenced block (an illustrative
+ * example ahead of the real answer is an ordinary thing for a model to do,
+ * even when told not to). Scanning only the first fence would silently
+ * return the example instead of the answer.
+ *
+ * Returns each fenced block's content in order, then the raw body itself as
+ * a last-resort candidate for an unfenced reply, deduplicated — a response
+ * with a single fence makes both candidates identical.
+ */
+export function extractJson(raw: string): string[] {
+  const candidates: string[] = [];
+  const fence = /```(?:json)?\s*([\s\S]*?)```/gu;
+  for (const match of raw.matchAll(fence)) {
+    candidates.push(sliceBraces(match[1] ?? ""));
+  }
+  candidates.push(sliceBraces(raw));
+  return [...new Set(candidates)];
+}
+
+/**
  * The one place model output becomes typed data. Two attempts, then fail
- * closed: a 422 the member can act on beats a half-applied guess.
+ * closed: a 422 the member can act on beats a half-applied guess. Within one
+ * attempt, every candidate `extractJson` finds is tried in order — the
+ * attempt only counts as failed, falling through to the retry, once NONE of
+ * them satisfy the schema. `complete(prompt)` itself still runs at most
+ * twice no matter how many candidates a single response yields, and a
+ * rejection from `complete` (e.g. `AiQuotaError`) is never caught here — it
+ * propagates to the caller immediately rather than being swallowed into an
+ * `AiOutputError`.
  */
 export async function completeJson<T extends z.ZodTypeAny>(
   complete: CompletionFn,
@@ -40,11 +64,13 @@ export async function completeJson<T extends z.ZodTypeAny>(
 ): Promise<z.infer<T>> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const raw = await complete(prompt);
-    try {
-      const parsed = outputSchema.safeParse(JSON.parse(extractJson(raw)));
-      if (parsed.success) return parsed.data;
-    } catch {
-      // JSON.parse threw — fall through to the retry.
+    for (const candidate of extractJson(raw)) {
+      try {
+        const parsed = outputSchema.safeParse(JSON.parse(candidate));
+        if (parsed.success) return parsed.data;
+      } catch {
+        // JSON.parse threw on this candidate — try the next one.
+      }
     }
   }
   throw new AiOutputError();
@@ -55,13 +81,27 @@ export async function completeJson<T extends z.ZodTypeAny>(
  * kind = 'ai', a dedicated PAGE" — so each member gets exactly one, made on
  * first use. Three CHECK constraints apply: the name must be non-blank,
  * min_tier must stay 0, and both parents must be NULL.
+ *
+ * Two first-use calls for the same member can both read "no channel yet"
+ * and both insert, permanently splitting that member's history across two
+ * `kind='ai'` channels — channel_one_per_team is kind-scoped, so nothing in
+ * the schema stops it. The lock serialises the check-then-insert for this
+ * user, same idea as allocateToEvent (routes/events/service.ts) locking the
+ * settings row before checking the budget, and the same pattern
+ * routes/threads/threads.ts already uses for a dm pair; it is
+ * transaction-scoped, so it releases automatically at commit or rollback.
+ * ORDER BY keeps the read deterministic even if a duplicate already exists
+ * from before this lock did.
  */
 export async function resolveAiChannel(tx: Tx, userId: string): Promise<string> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-channel:${userId}`}))`);
+
   const [existing] = await tx
     .select({ id: channels.id })
     .from(channels)
     .innerJoin(chanMembers, eq(chanMembers.channelId, channels.id))
     .where(and(eq(channels.kind, "ai"), eq(chanMembers.userId, userId)))
+    .orderBy(asc(channels.createdAt), asc(channels.id))
     .limit(1);
   if (existing) return existing.id;
 
