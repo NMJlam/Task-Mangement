@@ -72,20 +72,20 @@ Every task's requirements implicitly include this section.
 
 **Modified**
 
-| Path                                    | Change                                                   | Task  |
-| --------------------------------------- | -------------------------------------------------------- | ----- |
-| `package.json` (root + backend)         | Add `@google/genai`                                      | 1     |
-| `backend/src/db/schema/ai-run.ts`       | Three nullable counters                                  | 2     |
-| `backend/src/db/schema/event.ts`        | `aiRunId` column                                         | 2     |
-| `backend/drizzle/`                      | One generated migration                                  | 2     |
-| `shared/src/index.ts`                   | Export the `ai` schema barrel                            | 3     |
-| `backend/src/routes/index.ts`           | Register `aiRouter`                                      | 6     |
-| `backend/src/routes/threads/threads.ts` | Extract `assertCanReadChannel` into `threads/service.ts` | 8     |
-| `frontend/src/routes/ai-breakdown.tsx`  | Becomes the assistant chat                               | 11    |
-| `frontend/src/routes/dashboard.tsx`     | Briefing card in the right rail                          | 12    |
-| `frontend/src/routes/event-detail.tsx`  | "Plan with AI" on Tasks tab; summary panel on Thread tab | 11,12 |
-| `docs/api-endpoints.md`                 | Confirm the `## AI` section matches what shipped         | 13    |
-| `docs/prd.md`                           | R15 → 🟡                                                 | 13    |
+| Path                                    | Change                                                             | Task  |
+| --------------------------------------- | ------------------------------------------------------------------ | ----- |
+| `package.json` (root + backend)         | Add `@google/genai`                                                | 1     |
+| `backend/src/db/schema/ai-run.ts`       | Three nullable counters                                            | 2     |
+| `backend/src/db/schema/event.ts`        | `aiRunId` column                                                   | 2     |
+| `backend/drizzle/`                      | One generated migration                                            | 2     |
+| `shared/src/index.ts`                   | Export the `ai` schema barrel                                      | 3     |
+| `backend/src/routes/index.ts`           | Register `aiRouter`                                                | 6     |
+| `backend/src/routes/threads/service.ts` | Add `assertCanReadChannel` over the existing `visibleThreads` rule | 5     |
+| `frontend/src/routes/ai-breakdown.tsx`  | Becomes the assistant chat                                         | 11    |
+| `frontend/src/routes/dashboard.tsx`     | Briefing card in the right rail                                    | 12    |
+| `frontend/src/routes/event-detail.tsx`  | "Plan with AI" on Tasks tab; summary panel on Thread tab           | 11,12 |
+| `docs/api-endpoints.md`                 | Confirm the `## AI` section matches what shipped                   | 13    |
+| `docs/prd.md`                           | R15 → 🟡                                                           | 13    |
 
 **Already done, do not redo:** `.env.example` and `docs/setup.md` carry the four variables and the Google AI Studio walkthrough.
 
@@ -1305,7 +1305,7 @@ Two carry rules worth stating in a comment where they live:
  */
 ```
 
-`readThread` must call `assertCanReadChannel` (extracted in Task 8) rather than
+`readThread` must call `assertCanReadChannel` (added in Step 4b above) rather than
 selecting messages directly — a member must not summarise, or ask about, a
 channel they cannot open. `readBudget` reads and returns figures; there is no
 matching write tool, which is Rule 13.
@@ -1777,7 +1777,7 @@ git commit -m "feat(ai): apply confirmed proposals in one transaction"
 
 **Interfaces:**
 
-- Consumes: Task 4; `assertCanReadChannel(db: Queryable, channelId: string, user: { id: string; tier: number }): Promise<void>` from `routes/threads/service.js` (Task 5, Step 4b); `aiThreadSummarySchema`, `aiThreadSummaryResponseSchema` from `@ctp/shared`.
+- Consumes: Task 4; `assertCanReadChannel(db: Queryable, viewer: Viewer, channelId: string): Promise<void>` from `routes/threads/service.js` (Task 5, Step 4b — parameter order follows the file's own `findThread(db, viewer, where)`); `aiThreadSummarySchema`, `aiThreadSummaryResponseSchema` from `@ctp/shared`.
 - Produces: `type PromptMessage = { id: string; author: string; body: string; createdAt: Date }`; `budgetMessages(messages: PromptMessage[], maxChars: number): PromptMessage[]`; `buildSummaryPrompt(messages: PromptMessage[]): string`; `POST /api/ai/threads/:id/summary`.
 
 - [ ] **Step 1: Confirm the visibility helper is in place**
@@ -2352,12 +2352,12 @@ Open the PR against `main` from `gkur0003/ai-assistant`.
 
 ## Risks
 
-| Risk                                                          | Likelihood | Mitigation                                                                                             |
-| ------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| Free-tier rate limit hit during the demo                      | High       | `AI_DAILY_RUN_CAP`, dropped to 10–15 for demo week; 429 renders as a readable message; E2E runs AI off |
-| `@google/genai` call shape differs from Task 1's sketch       | Medium     | Isolated in `client.ts` behind `GenAiLike`; the five unit tests fail loudly and locally                |
-| Model returns prose instead of JSON                           | Medium     | `extractJson` + one retry + `safeParse`; fails to a 422 that writes nothing                            |
-| Model loops on tool calls                                     | Medium     | `MAX_TOOL_STEPS = 6`, plus the daily cap                                                               |
-| `assertCanReadChannel` extraction regresses the threads route | Low        | `threads.integration.test.ts` must pass unchanged — that is the behaviour-preserving check             |
-| Supervisor objects to sending member messages to Google       | Medium     | `AI_ENABLED` defaults off; R14 paragraph agreed before the summary ships                               |
-| `event.ai_run_id` introduces a schema import cycle            | Low        | One-directional edge; adjust the barrel ordering in `db/schema/index.ts` if `tsc` complains            |
+| Risk                                                                         | Likelihood | Mitigation                                                                                                      |
+| ---------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
+| Free-tier rate limit hit during the demo                                     | High       | `AI_DAILY_RUN_CAP`, dropped to 10–15 for demo week; 429 renders as a readable message; E2E runs AI off          |
+| `@google/genai` call shape differs from Task 1's sketch                      | Medium     | Isolated in `client.ts` behind `GenAiLike`; the five unit tests fail loudly and locally                         |
+| Model returns prose instead of JSON                                          | Medium     | `extractJson` + one retry + `safeParse`; fails to a 422 that writes nothing                                     |
+| Model loops on tool calls                                                    | Medium     | `MAX_TOOL_STEPS = 6`, plus the daily cap                                                                        |
+| `assertCanReadChannel` diverges from `visibleThreads` instead of wrapping it | Low        | It must call `findThread`; a second visibility implementation is how the assistant reads what the member cannot |
+| Supervisor objects to sending member messages to Google                      | Medium     | `AI_ENABLED` defaults off; R14 paragraph agreed before the summary ships                                        |
+| `event.ai_run_id` introduces a schema import cycle                           | Low        | One-directional edge; adjust the barrel ordering in `db/schema/index.ts` if `tsc` complains                     |
