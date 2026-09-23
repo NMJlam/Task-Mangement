@@ -19,8 +19,18 @@ describe("toolsFor", () => {
     expect(toolsFor(0).map((tool) => tool.name)).toContain("listTasks");
   });
 
-  it("offers strictly more at tier 1 than at tier 0", () => {
-    expect(toolsFor(1).length).toBeGreaterThanOrEqual(toolsFor(0).length);
+  it("withholds a tier-1 propose tool from a tier-0 caller", () => {
+    // A length comparison alone would pass with tier filtering removed
+    // entirely — this is the security boundary, so assert membership.
+    const names = toolsFor(0).map((tool) => tool.name);
+    expect(names).not.toContain("proposeCreateEvent");
+    expect(names).not.toContain("proposeUpdateEvent");
+  });
+
+  it("offers a tier-1 propose tool to a tier-1 caller", () => {
+    const names = toolsFor(1).map((tool) => tool.name);
+    expect(names).toContain("proposeCreateEvent");
+    expect(names).toContain("proposeUpdateEvent");
   });
 
   it("never offers a tool that writes", () => {
