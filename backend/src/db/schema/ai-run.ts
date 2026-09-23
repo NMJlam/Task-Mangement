@@ -1,14 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  check,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, check, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { appUsers } from "./app-user.js";
 import { channels } from "./channel.js";
 import { uuidShape } from "./sql-uuid.js";
