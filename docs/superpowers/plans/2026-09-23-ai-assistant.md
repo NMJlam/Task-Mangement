@@ -719,51 +719,61 @@ export type AiMessageResponse = z.infer<typeof aiMessageResponseSchema>;
  * to carry AI provenance, so it is re-validated here and re-authorised per
  * operation on the server.
  */
+// zod 4 requires each branch of a discriminatedUnion to have a UNIQUE value for
+// the discriminator. Four flat branches give "create" and "update" twice, which
+// CONSTRUCTS fine and then THROWS `Duplicate discriminator value "create"` on the
+// first parse — an uncaught crash, not a safeParse failure. So discriminate on
+// `op` first, then on `entity` inside each branch. Same wire shape, same inferred
+// type. Verified against zod 4.4.3.
 const applyOperationSchema = z.discriminatedUnion("op", [
-  z.object({
-    op: z.literal("create"),
-    entity: z.literal("event"),
-    ref: aiRefSchema,
-    data: createEventSchema.omit({ allocationCents: true, teamId: true }),
-  }),
-  z.object({
-    op: z.literal("create"),
-    entity: z.literal("task"),
-    data: z.object({
-      title: titleSchema,
-      description: descriptionSchema,
-      priority: taskPrioritySchema.default("medium"),
-      dueAt: z.coerce.date().nullish(),
-      assigneeIds: z.array(z.uuid()).max(10).default([]),
-      eventId: z.uuid().optional(),
-      eventRef: aiRefSchema.optional(),
+  z.discriminatedUnion("entity", [
+    z.object({
+      op: z.literal("create"),
+      entity: z.literal("event"),
+      ref: aiRefSchema,
+      data: createEventSchema.omit({ allocationCents: true, teamId: true }),
     }),
-  }),
-  z.object({
-    op: z.literal("update"),
-    entity: z.literal("task"),
-    id: z.uuid(),
-    data: z.object({
-      title: titleSchema.optional(),
-      description: descriptionSchema,
-      priority: taskPrioritySchema.optional(),
-      dueAt: z.coerce.date().nullish(),
-      assigneeIds: z.array(z.uuid()).max(10).optional(),
+    z.object({
+      op: z.literal("create"),
+      entity: z.literal("task"),
+      data: z.object({
+        title: titleSchema,
+        description: descriptionSchema,
+        priority: taskPrioritySchema.default("medium"),
+        dueAt: z.coerce.date().nullish(),
+        assigneeIds: z.array(z.uuid()).max(10).default([]),
+        eventId: z.uuid().optional(),
+        eventRef: aiRefSchema.optional(),
+      }),
     }),
-  }),
-  z.object({
-    op: z.literal("update"),
-    entity: z.literal("event"),
-    id: z.uuid(),
-    data: z.object({
-      title: titleSchema.optional(),
-      description: descriptionSchema,
-      venue: z.string().trim().max(200).nullish(),
-      startsAt: z.coerce.date().optional(),
-      endsAt: z.coerce.date().nullish(),
-      status: changeEventStatusSchema.shape.status.optional(),
+  ]),
+  z.discriminatedUnion("entity", [
+    z.object({
+      op: z.literal("update"),
+      entity: z.literal("task"),
+      id: z.uuid(),
+      data: z.object({
+        title: titleSchema.optional(),
+        description: descriptionSchema,
+        priority: taskPrioritySchema.optional(),
+        dueAt: z.coerce.date().nullish(),
+        assigneeIds: z.array(z.uuid()).max(10).optional(),
+      }),
     }),
-  }),
+    z.object({
+      op: z.literal("update"),
+      entity: z.literal("event"),
+      id: z.uuid(),
+      data: z.object({
+        title: titleSchema.optional(),
+        description: descriptionSchema,
+        venue: z.string().trim().max(200).nullish(),
+        startsAt: z.coerce.date().optional(),
+        endsAt: z.coerce.date().nullish(),
+        status: changeEventStatusSchema.shape.status.optional(),
+      }),
+    }),
+  ]),
 ]);
 export type AiApplyOperation = z.infer<typeof applyOperationSchema>;
 
@@ -921,16 +931,14 @@ Expected: FAIL — `Cannot find module './service.js'`.
 
 ````typescript
 import { and, count, eq, gt, sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { z } from "zod";
 import { newId } from "../../db/id.js";
-import type * as schema from "../../db/schema/index.js";
 import { aiRuns, chanMembers, channels } from "../../db/schema/index.js";
 import { AiQuotaError, type CompletionFn } from "../../lib/ai/client.js";
-
-/** Same derivation as routes/events/service.ts, so it cannot drift from Drizzle. */
-export type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];
-export type Queryable = Tx | NodePgDatabase<typeof schema>;
+// `Tx` and `Queryable` are derived ONCE, in routes/events/service.ts, and
+// imported everywhere else — routes/threads/service.ts already does exactly
+// this. Re-deriving them here would be a second definition free to drift.
+import type { Queryable, Tx } from "../events/service.js";
 
 /** 422 — the model produced something that is not our schema, twice. */
 export class AiOutputError extends Error {
@@ -1072,8 +1080,7 @@ git commit -m "feat(ai): add run recording, daily cap and strict JSON parsing"
 - Create: `backend/src/routes/ai/tools/propose.ts`
 - Create: `backend/src/routes/ai/tools/registry.ts`
 - Create: `backend/src/routes/ai/tools/registry.test.ts`
-- Create: `backend/src/routes/threads/service.ts` (extract `assertCanReadChannel`)
-- Modify: `backend/src/routes/threads/threads.ts`
+- Modify: `backend/src/routes/threads/service.ts` (add `assertCanReadChannel`; the file and its visibility rule already exist)
 
 **Interfaces:**
 
@@ -1184,29 +1191,44 @@ export class HandleMap {
 Run: `npx vitest run backend/src/routes/ai/handles.test.ts`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 4b: Extract the channel-visibility check**
+- [ ] **Step 4b: Add a thin visibility gate on top of the rule that already exists**
 
-`readThread` (next step) must gate on the same rule the threads route uses, so
-extract it before writing the tool that needs it.
+**There is nothing to extract.** `backend/src/routes/threads/service.ts` already
+exists and already holds the visibility rule, factored exactly as this feature
+needs: `visibleThreads(viewer): SQL` is documented there as "the two visibility
+mechanisms from `schema/channel.ts`, in one place so no read forgets one", and
+`findThread(db, viewer, where)` returns `{ id, visible }`.
 
-Move the channel-visibility logic currently inline in
-`backend/src/routes/threads/threads.ts` into a new
-`backend/src/routes/threads/service.ts` as:
+So `readThread` must **reuse** that, never restate it. Add one small helper to
+the same file, built on the existing predicate:
 
 ```typescript
+/**
+ * Throws unless `viewer` may read `channelId`. The assistant needs a one-call
+ * gate, but the RULE stays `visibleThreads` — a second implementation is how a
+ * member ends up able to read through the assistant what they cannot read
+ * through the threads route.
+ */
 export async function assertCanReadChannel(
   db: Queryable,
+  viewer: Viewer,
   channelId: string,
-  user: { id: string; tier: number },
-): Promise<void>;
+): Promise<void> {
+  const thread = await findThread(db, viewer, eq(channels.id, channelId));
+  if (!thread?.visible) throw new ChannelForbiddenError();
+}
 ```
 
-Import it back into `threads.ts` so there is **one** implementation. Behaviour
-must not change — a member must not be able to read through the assistant what
-they cannot read through the threads route.
+`ChannelForbiddenError` is a typed error the route maps to 403, in the same
+style as `routes/events/service.ts`. Note the parameter order — `(db, viewer,
+channelId)` — matching `findThread`'s `(db, viewer, where)`, not the
+`(db, channelId, user)` shape an earlier draft of this plan used.
+
+Do not modify `threads.ts`: it already uses these helpers, and this step only
+adds to the service.
 
 Run: `npm run test:integration -- --run src/routes/threads`
-Expected: PASS, unchanged. That is the check that the extraction was faithful.
+Expected: PASS, unchanged — nothing existing was touched.
 
 - [ ] **Step 5: Write the read tools**
 
@@ -1760,10 +1782,10 @@ git commit -m "feat(ai): apply confirmed proposals in one transaction"
 
 - [ ] **Step 1: Confirm the visibility helper is in place**
 
-`assertCanReadChannel` was extracted into `backend/src/routes/threads/service.ts`
-in Task 5, Step 4b, because `readThread` needed it there. Confirm it exists and
-that `threads.ts` imports it rather than holding a second copy, then import it
-here. There must be exactly one implementation.
+`assertCanReadChannel` was added to `backend/src/routes/threads/service.ts` in
+Task 5, Step 4b, wrapping the `visibleThreads` predicate that already lived
+there. Confirm it exists and import it. Do not write a second visibility check:
+`visibleThreads` is the rule, and everything else calls it.
 
 - [ ] **Step 2: Write the failing test**
 
