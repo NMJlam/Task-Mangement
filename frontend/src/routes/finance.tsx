@@ -1,27 +1,21 @@
-import {
-  budgetResponseSchema,
-  can,
-  expenseDecisionResponseSchema,
-  expenseListResponseSchema,
-  expenseResponseSchema,
-  type BudgetSummary,
-  type Expense,
-  type ExpenseCategory,
-} from "@ctp/shared";
+import { can, type BudgetSummary, type Expense, type ExpenseCategory } from "@ctp/shared";
 import {
   ArrowDownToLine,
   CircleDollarSign,
   Landmark,
+  PiggyBank,
   ReceiptText,
   WalletCards,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useFinance } from "@/hooks/use-finance";
 import { useMe } from "@/hooks/use-me";
 
 const categories: ExpenseCategory[] = [
@@ -36,80 +30,32 @@ const categories: ExpenseCategory[] = [
 
 export function FinancePage() {
   const me = useMe();
-  const [budget, setBudget] = useState<BudgetSummary>();
-  const [expenses, setExpenses] = useState<Expense[]>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const [budgetResponse, expenseResponse] = await Promise.all([
-        fetch("/api/budget", { credentials: "include" }),
-        fetch("/api/expenses", { credentials: "include" }),
-      ]);
-      if (!budgetResponse.ok || !expenseResponse.ok) throw new Error("Failed to load finance data");
-      setBudget(budgetResponseSchema.parse(await budgetResponse.json()).budget);
-      setExpenses(expenseListResponseSchema.parse(await expenseResponse.json()).expenses);
-      setError(undefined);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to load finance data");
-    }
-  }, []);
-
-  useEffect(() => void load(), [load]);
-
+  const finance = useFinance();
   const canManage = me.status === "ok" && can(me.user.role, "expense:approve");
+  const summary = finance.budget.status === "ok" ? finance.budget.summary : undefined;
 
-  async function createExpense(event: FormEvent<HTMLFormElement>) {
+  function createExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const amount = Number(form.get("amount"));
-    setBusy(true);
-    try {
-      const response = await fetch("/api/expenses", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          description: form.get("description"),
-          amountCents: Math.round(amount * 100),
-          category: form.get("category"),
-        }),
+    void finance
+      .createExpense({
+        description: String(form.get("description") ?? ""),
+        amountCents: Math.round(Number(form.get("amount")) * 100),
+        category: String(form.get("category")) as ExpenseCategory,
+      })
+      .then((created) => {
+        if (created) formElement.reset();
       });
-      if (!response.ok) throw new Error("Failed to log expense");
-      const created = expenseResponseSchema.parse(await response.json()).expense;
-      setExpenses((current) => [created, ...(current ?? [])]);
-      formElement.reset();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to log expense");
-    } finally {
-      setBusy(false);
-    }
   }
 
-  async function decide(expense: Expense, action: "approve" | "reject" | "mark_paid") {
-    const reason = action === "reject" ? window.prompt("Why is this expense rejected?") : null;
+  function decide(expense: Expense, action: "approve" | "reject" | "mark_paid") {
+    // TODO(R8): a shadcn dialog belongs here — `window.prompt` is unstyled,
+    // blockable, and outside the keyboard/ARIA guarantees the rest of the app
+    // gets from Radix. Left as-is deliberately: replacing it is its own change.
+    const reason = action === "reject" ? window.prompt("Why is this expense rejected?") : undefined;
     if (action === "reject" && !reason?.trim()) return;
-    setBusy(true);
-    try {
-      const response = await fetch(`/api/expenses/${expense.id}/decision`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(action === "reject" ? { action, reason } : { action }),
-      });
-      if (!response.ok) throw new Error("Failed to update expense");
-      const result = expenseDecisionResponseSchema.parse(await response.json());
-      setBudget(result.budget);
-      setExpenses((current) =>
-        current?.map((row) => (row.id === result.expense.id ? result.expense : row)),
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to update expense");
-    } finally {
-      setBusy(false);
-    }
+    void finance.decide(expense, action, reason ?? undefined);
   }
 
   return (
@@ -118,33 +64,118 @@ export function FinancePage() {
         title="Finance"
         description="Track the club budget, review expense claims, and keep every payment accounted for."
       />
-      {error && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
-          {error}. Refresh the page to try again.
+
+      {finance.mutationError && (
+        <p className="mt-6 text-sm text-destructive" role="alert">
+          {finance.mutationError}. Try again.
         </p>
       )}
-
-      {budget ? (
-        <section
-          aria-labelledby="budget-heading"
-          className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        >
-          <h2 id="budget-heading" className="sr-only">
-            Club budget
-          </h2>
-          <MoneyCard icon={Landmark} label="Budget" cents={budget.budgetCents} />
-          <MoneyCard icon={WalletCards} label="Allocated" cents={budget.allocationCents} />
-          <MoneyCard icon={ReceiptText} label="Committed" cents={budget.committedCents} />
-          <MoneyCard icon={ArrowDownToLine} label="Spent" cents={budget.spentCents} />
-        </section>
-      ) : !error ? (
+      {finance.budget.status === "error" && (
+        <p className="mt-8 text-sm text-destructive" role="alert">
+          Couldn&apos;t load the budget: {finance.budget.message}. Refresh the page to try again.
+        </p>
+      )}
+      {finance.budget.status === "loading" && (
         <p className="mt-8 text-sm text-muted-foreground" role="status">
           Loading Finance Data…
         </p>
-      ) : null}
+      )}
+
+      {summary && (
+        <>
+          <section
+            aria-labelledby="budget-heading"
+            className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+          >
+            <div className="flex items-center justify-between gap-3 sm:col-span-2 xl:col-span-5">
+              <h2 id="budget-heading" className="text-xl font-semibold tracking-tight">
+                Club budget
+              </h2>
+              {/* The server computes this from every event's burn rate; it used
+                  to be parsed and discarded. */}
+              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                Overall
+                <StatusBadge status={summary.risk} />
+              </span>
+            </div>
+            <MoneyCard icon={Landmark} label="Budget" cents={summary.budgetCents} />
+            <MoneyCard icon={WalletCards} label="Allocated" cents={summary.allocationCents} />
+            {/* budget − allocated: what is left to hand to the next event. */}
+            <MoneyCard icon={PiggyBank} label="Available" cents={summary.availableCents} />
+            <MoneyCard icon={ReceiptText} label="Committed" cents={summary.committedCents} />
+            <MoneyCard icon={ArrowDownToLine} label="Spent" cents={summary.spentCents} />
+          </section>
+
+          {summary.allocations.length > 0 && (
+            <section aria-labelledby="allocations-heading" className="mt-10">
+              <h2 id="allocations-heading" className="text-xl font-semibold tracking-tight">
+                Allocation by event
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                How much of the pool each event holds, and how much of that it has used.
+              </p>
+              <div className="mt-4 overflow-x-auto rounded-xl border bg-card">
+                <table className="w-full text-sm">
+                  <caption className="sr-only">
+                    Budget allocation, commitment and spend for each event
+                  </caption>
+                  <thead className="border-b text-left text-muted-foreground">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Event
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-right font-medium">
+                        Allocated
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-right font-medium">
+                        Committed
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-right font-medium">
+                        Spent
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-right font-medium">
+                        Used
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.allocations.map((row) => (
+                      <AllocationRow key={row.eventId} row={row} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {summary.byCategory.length > 0 && (
+            <section aria-labelledby="category-heading" className="mt-10">
+              <h2 id="category-heading" className="text-xl font-semibold tracking-tight">
+                Spend by category
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Approved and paid claims only — a pending claim is not yet money the club owes.
+              </p>
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {summary.byCategory.map((row) => (
+                  <li key={row.category} className="rounded-xl border bg-card p-4">
+                    <p className="text-sm capitalize">{row.category}</p>
+                    <p className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+                      {money(row.committedCents)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {money(row.spentCents)} paid
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
+      )}
 
       {canManage && (
-        <Card className="mt-8 shadow-none">
+        <Card className="mt-10 shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
@@ -152,10 +183,7 @@ export function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form
-              className="grid gap-4 sm:grid-cols-3"
-              onSubmit={(event) => void createExpense(event)}
-            >
+            <form className="grid gap-4 sm:grid-cols-3" onSubmit={createExpense}>
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="description">Description</Label>
                 <Input
@@ -193,8 +221,8 @@ export function FinancePage() {
                   ))}
                 </select>
               </div>
-              <Button className="self-end" disabled={busy}>
-                {busy ? "Saving…" : "Log Expense"}
+              <Button className="self-end" disabled={finance.busy}>
+                {finance.busy ? "Saving…" : "Log Expense"}
               </Button>
             </form>
           </CardContent>
@@ -202,67 +230,158 @@ export function FinancePage() {
       )}
 
       <section aria-labelledby="expenses-heading" className="mt-10 grid gap-3">
-        <h2 id="expenses-heading" className="text-xl font-semibold tracking-tight">
-          Expenses
-        </h2>
-        {expenses?.length === 0 && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="expenses-heading" className="text-xl font-semibold tracking-tight">
+            Expenses
+          </h2>
+          {/* The ledger is paged. Saying how much of it is on screen is the
+              difference between "that is all of them" and "that is the first
+              twenty-five". */}
+          {finance.expenses.status === "ok" && finance.expenses.total > 0 && (
+            <p className="text-sm text-muted-foreground tabular-nums" role="status">
+              Showing {finance.expenses.items.length} of {finance.expenses.total}
+            </p>
+          )}
+        </div>
+
+        {finance.expenses.status === "loading" && (
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading Expenses…
+          </p>
+        )}
+        {finance.expenses.status === "error" && (
+          <p className="text-sm text-destructive" role="alert">
+            Couldn&apos;t load expenses: {finance.expenses.message}. Refresh the page to try again.
+          </p>
+        )}
+        {finance.expenses.status === "ok" && finance.expenses.items.length === 0 && (
           <Card className="border-dashed shadow-none">
             <CardContent className="py-12 text-center text-sm text-muted-foreground">
               No expenses have been logged yet.
             </CardContent>
           </Card>
         )}
-        {expenses?.map((expense) => (
-          <Card key={expense.id} className="gap-0 py-0 shadow-none">
-            <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">{expense.description}</h3>
-                  <StatusBadge status={expense.status} />
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground capitalize">
-                  {money(expense.amountCents)} · {expense.category}
-                </p>
-              </div>
-              {me.status === "ok" &&
-                canManage &&
-                expense.status === "pending" &&
-                expense.submitter !== me.user.id && (
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      disabled={busy}
-                      size="sm"
-                      onClick={() => void decide(expense, "approve")}
-                      aria-label={`Approve ${expense.description}`}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      disabled={busy}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void decide(expense, "reject")}
-                      aria-label={`Reject ${expense.description}`}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                )}
-              {canManage && expense.status === "approved" && (
-                <Button
-                  disabled={busy}
-                  size="sm"
-                  onClick={() => void decide(expense, "mark_paid")}
-                  aria-label={`Mark ${expense.description} paid`}
-                >
-                  Mark Paid
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+        {finance.expenses.status === "ok" &&
+          finance.expenses.items.map((expense) => (
+            <ExpenseRow
+              key={expense.id}
+              expense={expense}
+              canManage={canManage}
+              myId={me.status === "ok" ? me.user.id : undefined}
+              busy={finance.busy}
+              onDecide={decide}
+            />
+          ))}
+
+        {finance.expenses.status === "ok" && finance.expenses.loaded < finance.expenses.total && (
+          <div className="mt-2 flex justify-center">
+            <Button
+              variant="outline"
+              disabled={finance.loadingMore}
+              onClick={() => void finance.loadMore()}
+            >
+              {finance.loadingMore ? "Loading…" : "Load More"}
+            </Button>
+          </div>
+        )}
       </section>
     </main>
+  );
+}
+
+function AllocationRow({ row }: { row: BudgetSummary["allocations"][number] }) {
+  // `Used` is committed against allocation — the same ratio the server turns
+  // into an event's risk badge, shown here as the number behind it.
+  const used = row.allocationCents === 0 ? null : row.committedCents / row.allocationCents;
+
+  return (
+    <tr className="border-b last:border-0">
+      <th scope="row" className="px-4 py-3 text-left font-medium">
+        <Link to={`/events/${row.eventId}`} className="underline-offset-4 hover:underline">
+          {row.eventTitle}
+        </Link>
+      </th>
+      <td className="px-4 py-3 text-right tabular-nums">{money(row.allocationCents)}</td>
+      <td className="px-4 py-3 text-right tabular-nums">{money(row.committedCents)}</td>
+      <td className="px-4 py-3 text-right tabular-nums">{money(row.spentCents)}</td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        {used === null ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          // Over-allocation is the condition that makes an event critical, so it
+          // carries a word as well as the colour.
+          <span className={used > 1 ? "font-medium text-destructive" : undefined}>
+            {Math.round(used * 100)}%{used > 1 && <span className="sr-only"> — over budget</span>}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function ExpenseRow({
+  expense,
+  canManage,
+  myId,
+  busy,
+  onDecide,
+}: {
+  expense: Expense;
+  canManage: boolean;
+  myId: string | undefined;
+  busy: boolean;
+  onDecide: (expense: Expense, action: "approve" | "reject" | "mark_paid") => void;
+}) {
+  // Separation of duty: the database refuses a decider who is the submitter
+  // (`expense_decider_is_not_submitter_check`), so the buttons match that rule
+  // rather than offering an action the server will reject.
+  const mine = myId !== undefined && expense.submitter === myId;
+
+  return (
+    <Card className="gap-0 py-0 shadow-none">
+      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold">{expense.description}</h3>
+            <StatusBadge status={expense.status} />
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground capitalize">
+            {money(expense.amountCents)} · {expense.category}
+          </p>
+        </div>
+        {canManage && expense.status === "pending" && !mine && (
+          <div className="flex shrink-0 gap-2">
+            <Button
+              disabled={busy}
+              size="sm"
+              onClick={() => onDecide(expense, "approve")}
+              aria-label={`Approve ${expense.description}`}
+            >
+              Approve
+            </Button>
+            <Button
+              disabled={busy}
+              size="sm"
+              variant="outline"
+              onClick={() => onDecide(expense, "reject")}
+              aria-label={`Reject ${expense.description}`}
+            >
+              Reject
+            </Button>
+          </div>
+        )}
+        {canManage && expense.status === "approved" && (
+          <Button
+            disabled={busy}
+            size="sm"
+            onClick={() => onDecide(expense, "mark_paid")}
+            aria-label={`Mark ${expense.description} paid`}
+          >
+            Mark Paid
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
