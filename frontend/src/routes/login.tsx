@@ -16,6 +16,14 @@ export function LoginPage() {
   return (
     <main className="grid min-h-svh bg-background lg:grid-cols-[1.1fr_0.9fr]">
       <h1 className="sr-only">Club Task Platform</h1>
+      {/*
+       * 65% IS THE FLOOR FOR FADED TEXT ON THIS PANEL. `primary` inverts between
+       * themes — a near-black panel with near-white text in light mode, a
+       * near-white panel with near-black text in dark — so a `/NN` that reads
+       * comfortably in light mode is WEAKER in dark, not stronger. Measured
+       * against `--primary` in dark: /50 is 3.29:1 and /60 is 4.46:1, both under
+       * AA's 4.5:1, while /65 is 5.24:1. See docs/accessibility.md.
+       */}
       <section className="relative hidden overflow-hidden bg-primary p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
         <div className="flex items-center gap-3">
           <span
@@ -31,7 +39,7 @@ export function LoginPage() {
         </div>
 
         <div className="relative z-10 max-w-xl">
-          <p className="text-sm font-medium tracking-widest text-primary-foreground/60 uppercase">
+          <p className="text-sm font-medium tracking-widest text-primary-foreground/65 uppercase">
             One calm workspace
           </p>
           <h2 className="mt-5 max-w-lg text-5xl leading-[1.02] font-semibold tracking-[-0.05em] text-balance xl:text-6xl">
@@ -53,7 +61,7 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <p className="text-xs text-primary-foreground/50">Monash Association of Coding</p>
+        <p className="text-xs text-primary-foreground/65">Monash Association of Coding</p>
         <div
           aria-hidden="true"
           className="absolute -right-28 -bottom-28 size-80 rounded-full border border-primary-foreground/10"
