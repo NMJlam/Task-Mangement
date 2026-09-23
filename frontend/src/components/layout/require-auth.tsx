@@ -5,6 +5,34 @@ import { AppShell } from "@/components/layout/app-shell";
 import { RoleChangeConfirmation } from "@/components/members/role-change-confirmation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { NotificationsProvider, useNotificationsSource } from "@/hooks/use-notifications";
+
+/**
+ * Owns the one notification feed the signed-in app shares (see
+ * `useNotifications`). It is a component rather than a hook call in
+ * `RequireAuth` because the feed must not be read until membership is
+ * confirmed — a `/api/notifications` fetch above that check would 401 on every
+ * signed-out render.
+ */
+function SignedInShell({
+  member,
+  signOut,
+  children,
+}: {
+  member: AuthUser;
+  signOut: () => Promise<unknown>;
+  children: ReactNode;
+}) {
+  const notifications = useNotificationsSource();
+
+  return (
+    <NotificationsProvider value={notifications}>
+      <AppShell member={member} signOut={signOut}>
+        {children}
+      </AppShell>
+    </NotificationsProvider>
+  );
+}
 
 function SelfDemotion({ member }: { member: AuthUser }) {
   const [error, setError] = useState(false);
@@ -77,11 +105,11 @@ export function RequireAuth({
   }
 
   return (
-    <AppShell member={member} signOut={signOut}>
+    <SignedInShell member={member} signOut={signOut}>
       {member.role !== "officer" && can(member.role, "member:role-change") && (
         <SelfDemotion member={member} />
       )}
       {children}
-    </AppShell>
+    </SignedInShell>
   );
 }

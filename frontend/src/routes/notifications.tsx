@@ -8,10 +8,12 @@ import {
   UserRound,
 } from "lucide-react";
 import { useState, type ComponentType, type SVGProps } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNotifications } from "@/hooks/use-notifications";
+import { notificationLink } from "@/lib/notification-link";
 import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
@@ -85,19 +87,34 @@ export function NotificationsPage() {
         </Card>
       )}
       {notifications.state.status === "ok" && items.length > 0 && (
-        <section
-          aria-label="Notifications"
-          className="mt-4 overflow-hidden rounded-xl border bg-card"
-        >
-          {items.map((notification) => (
-            <NotificationRow
-              key={notification.id}
-              notification={notification}
-              busy={notifications.busy === notification.id}
-              onRead={() => void notifications.markRead(notification)}
-            />
-          ))}
-        </section>
+        <>
+          <section
+            aria-label="Notifications"
+            className="mt-4 overflow-hidden rounded-xl border bg-card"
+          >
+            {items.map((notification) => (
+              <NotificationRow
+                key={notification.id}
+                notification={notification}
+                busy={notifications.busy === notification.id}
+                onRead={() => void notifications.markRead(notification)}
+              />
+            ))}
+          </section>
+          {/* The feed is a capped page. Without this the oldest notification the
+              reader could see was simply the 50th, with nothing saying so. */}
+          {notifications.state.hasMore && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                disabled={notifications.loadingMore}
+                onClick={() => void notifications.loadMore()}
+              >
+                {notifications.loadingMore ? "Loading…" : "Load More"}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );
@@ -114,6 +131,7 @@ function NotificationRow({
 }) {
   const Icon = notificationIcon(notification.kind);
   const unread = !notification.readAt;
+  const to = notificationLink(notification);
 
   return (
     <article
@@ -134,7 +152,22 @@ function NotificationRow({
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-6">
           {unread && <span className="sr-only">Unread: </span>}
-          {notification.body}
+          {/* Linked only when the row names something reachable. A notification
+              whose entity has no page stays plain text rather than becoming a
+              link that goes nowhere useful — see `notificationLink`.
+              Reading it is also marking it read: arriving at the task is the
+              acknowledgement, so leaving it bold would be a second chore. */}
+          {to ? (
+            <Link
+              to={to}
+              onClick={unread ? onRead : undefined}
+              className="rounded-sm underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              {notification.body}
+            </Link>
+          ) : (
+            notification.body
+          )}
         </p>
         <time
           dateTime={notification.createdAt.toISOString()}
