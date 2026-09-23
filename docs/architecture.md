@@ -80,6 +80,8 @@ backend/src/
   auth/auth.ts         self-hosted Better Auth account/session configuration
   config/load-env.ts   resolves the repo-root .env deterministically
   config/club.ts       club-wide constants (CLUB_TIMEZONE)
+  config/ai.ts         AI_ENABLED / key / model / daily cap — the one place AI is turned off
+  lib/ai/client.ts     CompletionFn + geminiComplete — the only file importing @google/genai
   middleware/          ONE FOLDER PER CONCERN; index.ts is the barrel
     index.ts             re-exports the chain (log → authenticate → authorise → validate)
     log/log.ts           request logging
@@ -109,6 +111,10 @@ backend/src/
       service.test.ts      unit — the rules, no DB
       service.integration.test.ts   integration — the rules against real SQL
       events.integration.test.ts    integration — the endpoints
+    ai/                  the assistant — see "The AI assistant" below
+      ai.ts                the Router + handlers
+      service.ts           run record, daily cap, prompt assembly, output parsing
+      tools/               read + proposal tools, framework-free, one registry
     cron/cron.ts         cron endpoints (secret-guarded)
   db/
     client.ts          nodeDb() / httpDb() / getDb() factories
@@ -125,6 +131,7 @@ frontend/src/
   routes/              page components — declarative, no data-fetching logic
   components/          feature components
   components/ui/       shadcn/ui primitives (Radix-backed) — don't hand-roll these
+  components/ai/       the assistant: proposal card, create/diff rows, briefing card
   hooks/               the ViewModel layer: data-fetching + state (e.g. use-health.ts)
   lib/                 utilities (e.g. cn() in utils.ts)
   index.css            Tailwind v4 @theme tokens (the MAC palette swap lands here)
@@ -182,6 +189,34 @@ It stays framework-free: no `req`, no `res`, no Express. It takes a `Tx` or a
 `Queryable` and throws typed errors (`ValidationError`, `BudgetExceededError`)
 that the route maps to status codes. That's what lets the pure half be
 unit-tested with no database at all.
+
+## The AI assistant
+
+`routes/ai/` owns every AI endpoint and the cross-cutting rules — kill switch,
+daily cap, the `ai_run` audit row. The provider sits behind a single injected
+`CompletionFn`, so the service stays framework-free and unit-testable with no
+network, exactly as `routes/events/service.ts` stays testable with no database.
+
+One rule governs the rest, and it is written into `db/schema/ai-run.ts`:
+
+> **The AI acts as the requesting user.** Tools call the same service functions
+> the HTTP routes call, so the assistant inherits the caller's permissions and
+> cannot exceed them. There is no separate write path.
+
+Three consequences worth knowing before you read `routes/ai/`:
+
+- **The model never emits a UUID.** Read tools issue short per-run handles
+  (`T1`, `E2`); the server resolves them. A handle the run never issued is a
+  `422`, so a hallucinated identifier cannot reach a query.
+- **No tool writes.** Proposal tools stage a card the client renders; a human
+  confirms, and `POST /api/ai/proposals/apply` performs every checked operation
+  in **one `Tx`**, re-authorised per operation. Nothing is persisted before that
+  click, which is why there is no draft or proposal table.
+- **Some powers have no tool at all** — money mutations, deletes, event
+  cancellation, role changes. Structural, not conventional.
+
+Full design, including the tool inventory and the permission mirror:
+[`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md).
 
 ## Database
 
