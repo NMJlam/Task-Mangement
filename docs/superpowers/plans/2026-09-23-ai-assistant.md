@@ -327,7 +327,26 @@ Import `aiRuns` from `./ai-run.js` and add the column, mirroring `task.ts:80`:
 
 Add `table.aiRunId` to the existing `uuidShape(...)` check in that file's constraint list.
 
-> **Watch for an import cycle:** `ai-run.ts` imports `channels` and `appUsers`, not `events`, so `event.ts → ai-run.ts` is a new edge in one direction only. If `tsc` reports a cycle, the schema barrel ordering in `db/schema/index.ts` is the thing to adjust, not the FK.
+> **This DOES create an import cycle, and that is expected.** `ai-run.ts` imports
+> `channels`, and `channel.ts:4` imports `events` — so adding
+> `event.ts → ai-run.ts` closes the loop `event → ai-run → channel → event`. It is
+> the first cycle in `db/schema/`.
+>
+> It should be harmless, because every Drizzle FK is a **thunk**:
+> `references(() => aiRuns.id)` is a function, so the referenced table need not be
+> initialised while `event.ts` is evaluating. `task.ts:80` already declares this
+> exact `aiRunId` column the same way, which makes it the working precedent for
+> the column — just not yet for the cycle.
+>
+> Do not try to dodge it by declaring the column without `.references()` and
+> hand-writing the FK into the migration SQL: raw SQL leaves the drizzle-kit
+> snapshot blind, and the next `db:generate` would emit a `DROP` for it.
+>
+> The proof is empirical, not by inspection: `db:generate`, `db:migrate` and
+> `npm run test:integration` all succeeding is what says the cycle is benign. If
+> any of them fails with an initialisation error (typically `Cannot access
+'aiRuns' before initialization`, or a table resolving to `undefined`), stop and
+> report BLOCKED rather than working around it — the fix is a structural decision.
 
 - [ ] **Step 3: Generate the migration**
 
