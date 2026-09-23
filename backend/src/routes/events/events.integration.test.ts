@@ -67,13 +67,20 @@ describe("/api/events", () => {
     return row!;
   }
 
+  // An event is ours by title prefix OR by owner. Both, because a PATCH test
+  // renames its fixture and the new title leaves the prefix behind — matching
+  // on title alone strands that row in the local database, where the dev UI
+  // then shows it next to the seed data forever.
+  const ours = sql`("title" LIKE 'test-event-%' OR "owner" IN (SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-event-%'))`;
+
   // task.event_id cascades; expense.event_id is RESTRICT (the ledger must
-  // survive an event delete), so expenses go first.
+  // survive an event delete), so expenses go first. app_user goes after the
+  // events, so `ours` still resolves its owners when the event delete runs.
   async function cleanup() {
     await db.execute(sql`
-      DELETE FROM "expense" WHERE "event_id" IN (SELECT "id" FROM "event" WHERE "title" LIKE 'test-event-%')
+      DELETE FROM "expense" WHERE "event_id" IN (SELECT "id" FROM "event" WHERE ${ours})
     `);
-    await db.execute(sql`DELETE FROM "event" WHERE "title" LIKE 'test-event-%'`);
+    await db.execute(sql`DELETE FROM "event" WHERE ${ours}`);
     await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-event-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-event-%'`);
   }
@@ -239,10 +246,10 @@ describe("/api/events", () => {
 
       const response = await request(app)
         .patch(`/api/events/${event.id}`)
-        .send({ title: "Renamed by owner" });
+        .send({ title: "test-event-patch-renamed" });
 
       expect(response.status).toBe(200);
-      expect(response.body.event.title).toBe("Renamed by owner");
+      expect(response.body.event.title).toBe("test-event-patch-renamed");
     });
 
     it("returns 422 with a field message, not a 500, when startsAt moves past a stored endsAt", async () => {
