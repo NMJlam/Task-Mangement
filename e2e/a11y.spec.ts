@@ -13,9 +13,26 @@ const MEMBER_PASSWORD = process.env.E2E_MEMBER_PASSWORD;
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
+/**
+ * Both themes, because a `dark:` class is inert in a light-mode page and axe
+ * therefore cannot see it. Scanning light alone is what let the status tints
+ * ship at 2.1–2.8:1 in dark mode (docs/accessibility.md).
+ */
+const THEMES = ["light", "dark"] as const;
+
 async function axeViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
   return results.violations;
+}
+
+/**
+ * Sets the theme the way the app does, then reloads so main.tsx applies the
+ * class on boot — toggling the class directly would test a state the app cannot
+ * actually reach.
+ */
+async function useTheme(page: Page, theme: (typeof THEMES)[number]) {
+  await page.evaluate((value) => localStorage.setItem("theme", value), theme);
+  await page.reload();
 }
 
 /** Signs the context in and leaves the session cookie in its jar. */
@@ -31,12 +48,16 @@ async function signIn(page: Page) {
   expect(me.ok(), "signed in, but /api/me answered without membership").toBe(true);
 }
 
-test("login page has no axe violations", async ({ page }) => {
-  await page.goto("/health");
-  await page.getByRole("button", { name: /sign in with google/i }).waitFor();
+for (const theme of THEMES) {
+  test(`login page has no axe violations in ${theme} mode`, async ({ page }) => {
+    await page.goto("/health");
+    await page.getByRole("button", { name: /sign in with google/i }).waitFor();
+    await useTheme(page, theme);
+    await page.getByRole("button", { name: /sign in with google/i }).waitFor();
 
-  expect(await axeViolations(page)).toEqual([]);
-});
+    expect(await axeViolations(page)).toEqual([]);
+  });
+}
 
 test.describe("signed-in pages", () => {
   test.skip(
@@ -50,28 +71,34 @@ test.describe("signed-in pages", () => {
     ["tasks", "/tasks"],
     ["calendar", "/calendar"],
   ] as const) {
-    test(`${name} has no axe violations`, async ({ page }) => {
+    for (const theme of THEMES) {
+      test(`${name} has no axe violations in ${theme} mode`, async ({ page }) => {
+        await signIn(page);
+        await page.goto(path);
+        await useTheme(page, theme);
+        // The scans are of loaded pages: a route still on its skeleton has
+        // nothing to check, and axe would pass a spinner.
+        await expect(page.getByRole("main")).toBeVisible();
+
+        expect(await axeViolations(page)).toEqual([]);
+      });
+    }
+  }
+
+  for (const theme of THEMES) {
+    test(`a seeded event's page has no axe violations in ${theme} mode`, async ({ page }) => {
       await signIn(page);
-      await page.goto(path);
-      // The scans are of loaded pages: a route still on its skeleton has nothing
-      // to check, and axe would pass a spinner.
-      await expect(page.getByRole("main")).toBeVisible();
+      // Discovered, never hardcoded: the id belongs to the seeded database, not
+      // to the repository.
+      const response = await page.request.get("/api/events?limit=1");
+      const { items } = (await response.json()) as { items: { id: string }[] };
+      test.skip(items.length === 0, "No seeded events to open.");
+
+      await page.goto(`/events/${items[0]!.id}`);
+      await useTheme(page, theme);
+      await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
 
       expect(await axeViolations(page)).toEqual([]);
     });
   }
-
-  test("a seeded event's page has no axe violations", async ({ page }) => {
-    await signIn(page);
-    // Discovered, never hardcoded: the id belongs to the seeded database, not to
-    // the repository.
-    const response = await page.request.get("/api/events?limit=1");
-    const { items } = (await response.json()) as { items: { id: string }[] };
-    test.skip(items.length === 0, "No seeded events to open.");
-
-    await page.goto(`/events/${items[0]!.id}`);
-    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-
-    expect(await axeViolations(page)).toEqual([]);
-  });
 });

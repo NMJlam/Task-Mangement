@@ -76,24 +76,32 @@ chips on `secondary` use `secondary-foreground` (**9.64:1**) rather than
 chips render text on Tailwind palette tints. Those pairs are not among the oklch
 tokens above, so they are measured separately — same method:
 
-| Status                                         | Pair                                  | Light     | Dark       |
-| ---------------------------------------------- | ------------------------------------- | --------- | ---------- |
-| `planning`, `approved`, `in_progress`          | `accent-foreground` on `accent`       | 6.44:1 ✅ | token pair |
-| `wrapped`, `todo`                              | `secondary-foreground` on `secondary` | 9.64:1 ✅ | token pair |
-| `live`, `paid`, `done`, `on_track`             | `emerald-700` on `emerald-50`         | 5.27:1 ✅ | **2.71:1** |
-| `pending`, `at_risk`                           | `amber-800` on `amber-50`             | 6.84:1 ✅ | **2.11:1** |
-| `cancelled`, `rejected`, `blocked`, `critical` | `red-700` on `red-50`                 | 5.92:1 ✅ | **2.50:1** |
+| Status                                         | Pair (light → dark)                        | Light     | Dark       |
+| ---------------------------------------------- | ------------------------------------------ | --------- | ---------- |
+| `planning`, `approved`, `in_progress`          | `accent-foreground` on `accent`            | 6.44:1 ✅ | token pair |
+| `wrapped`, `todo`                              | `secondary-foreground` on `secondary`      | 9.64:1 ✅ | token pair |
+| `live`, `paid`, `done`, `on_track`             | `emerald-700/50` → `emerald-300` on `-950` | 5.27:1 ✅ | 9.94:1 ✅  |
+| `pending`, `at_risk`                           | `amber-800/50` → `amber-200` on `-950`     | 6.84:1 ✅ | 12.03:1 ✅ |
+| `cancelled`, `rejected`, `blocked`, `critical` | `red-700/50` → `red-300` on `-950`         | 5.92:1 ✅ | 8.51:1 ✅  |
 
-Light mode clears AA on all four. **Dark mode does not** for the three tinted
-rows: the `dark:` variant swaps the background to the `-950` shade but leaves the
-text at the `-700`/`-800` shade, which measures 2.1–2.7:1 against it. This is
-pre-existing — `StatusBadge` has shipped those classes since the palette was
-built — and the calendar's chips now inherit it, so the gap is shared rather than
-new. Fixing it means adding a `dark:` text colour (`emerald-300`, `amber-200`,
-`red-300`) to those `statusStyles` entries; it is recorded here rather than
-applied, because the UI pass that introduced the chips was scoped to preserve the
-existing text colours. Run the two dark-mode scans (`localStorage.theme = "dark"`
-before the axe pass) before shipping the MAC palette.
+Both modes now clear AA on all five rows.
+
+**This was a real failure, fixed rather than recorded.** The three tinted rows
+shipped with `dark:bg-*-950` and no `dark:text-*`, leaving the light `-700`/`-800`
+text on a near-black tint at **2.71:1**, **2.11:1** and **2.50:1** — all under
+AA's 4.5:1, across `StatusBadge` and the calendar chips that share its mapping.
+Adding the dark foregrounds also lifts every pair past AAA (7:1).
+
+Two things kept it hidden, both now closed:
+
+1. **The axe scans ran light-mode only**, where a `dark:` class is inert. `e2e/a11y.spec.ts` now scans each page twice, setting `localStorage.theme = "dark"`
+   before the second pass.
+2. **Nothing asserted the pairing.** `statusStyles` is now built from a named
+   `tints` map, and `prototype-primitives.test.tsx` asserts that all ten tinted
+   entries carry a `dark:text-*` — a unit-level guard, because a `dark:` class
+   that is never rendered is invisible to axe either way.
+
+Recompute these after the MAC palette swap; the method is unchanged.
 
 Chips are otherwise colour-neutral where it matters: the chip body takes the
 status tint and both its lines **inherit** that colour, so no unchecked pair is
