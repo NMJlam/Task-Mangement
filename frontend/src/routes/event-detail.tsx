@@ -95,6 +95,9 @@ export function EventDetailPage() {
   // `PATCH /:id/status` sits behind `authorise(1)`, and it is a different axis
   // from the owner-or-lead edit rule above.
   const canChangeStatus = me.status === "ok" && me.user.tier >= 1;
+  // `DELETE /api/tasks/:id` is `authorise(1)` too, and the Tasks tab hosts the
+  // same shared dialog as /tasks — so the same rule reaches it from here.
+  const canDeleteTask = me.status === "ok" && me.user.tier >= 1;
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams);
@@ -357,6 +360,7 @@ export function EventDetailPage() {
               // Same shared dialog controls as `/tasks`: description, priority
               // and assignment all edit in place here too.
               onUpdate={(task, patch) => void tasks.updateTask(task, patch)}
+              onDelete={canDeleteTask ? (task) => tasks.deleteTask(task) : undefined}
             />
           )}
         </TabsContent>
