@@ -16,6 +16,7 @@ import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { Button } from "@/components/ui/button";
+import { useNotifications } from "@/hooks/use-notifications";
 import { cn } from "@/lib/utils";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -33,6 +34,11 @@ const navigation: { to: string; label: string; icon: Icon }[] = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+/** Two digits and a cap, so a long-unread inbox cannot widen the sidebar. */
+function badgeLabel(count: number): string {
+  return count > 99 ? "99+" : String(count);
+}
+
 export function AppShell({
   member,
   signOut,
@@ -42,6 +48,11 @@ export function AppShell({
   signOut: () => Promise<unknown>;
   children: ReactNode;
 }) {
+  // The feed the Inbox page also reads — one instance, so marking a row read
+  // there drops this count in the same render (see `useNotifications`).
+  const notifications = useNotifications();
+  const unread = notifications.state.status === "ok" ? notifications.state.unreadCount : 0;
+
   return (
     <>
       <a
@@ -55,7 +66,7 @@ export function AppShell({
           <Brand />
           <nav aria-label="Main navigation" className="mt-7 grid gap-1">
             {navigation.map((item) => (
-              <NavigationLink key={item.to} {...item} />
+              <NavigationLink key={item.to} {...item} unread={unread} />
             ))}
           </nav>
           <div className="mt-auto border-t pt-4">
@@ -96,7 +107,7 @@ export function AppShell({
             className="sticky top-14 z-30 flex overflow-x-auto border-b bg-background/95 backdrop-blur lg:hidden"
           >
             {navigation.map((item) => (
-              <NavigationLink key={item.to} {...item} compact />
+              <NavigationLink key={item.to} {...item} unread={unread} compact />
             ))}
           </nav>
           <div
@@ -133,20 +144,30 @@ function NavigationLink({
   to,
   label,
   icon: NavigationIcon,
+  unread,
   compact = false,
 }: {
   to: string;
   label: string;
   icon: Icon;
+  unread: number;
   compact?: boolean;
 }) {
+  // Only the Inbox carries a count today, so the badge is keyed off the
+  // destination rather than added to every row of `navigation`.
+  const count = to === "/notifications" ? unread : 0;
+
   return (
     <NavLink
       to={to}
       end={to === "/"}
+      // The count is in the link's own name, not just the pill: a screen reader
+      // reaching "Inbox" should hear that three things are waiting without
+      // having to find a separate element to read.
+      aria-label={count > 0 ? `${label}, ${count} unread` : undefined}
       className={({ isActive }) =>
         cn(
-          "flex items-center rounded-md text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          "relative flex items-center rounded-md text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
           compact
             ? "min-w-20 flex-1 flex-col gap-1 rounded-none px-1 py-2 text-[0.6875rem]"
             : "gap-3 px-3 py-2",
@@ -156,6 +177,19 @@ function NavigationLink({
     >
       <NavigationIcon aria-hidden="true" className="size-4 shrink-0" />
       <span className="truncate">{label}</span>
+      {count > 0 && (
+        // `aria-hidden` because the link's own name already carries the number;
+        // announcing it twice is how "Inbox 3 3" happens.
+        <span
+          aria-hidden="true"
+          className={cn(
+            "rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-primary-foreground tabular-nums",
+            compact ? "absolute top-1 right-1/4" : "ml-auto",
+          )}
+        >
+          {badgeLabel(count)}
+        </span>
+      )}
     </NavLink>
   );
 }

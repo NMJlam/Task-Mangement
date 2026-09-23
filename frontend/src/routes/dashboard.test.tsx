@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi, type Mock } from "vitest";
 import { DashboardPage } from "./dashboard";
+import { NotificationsProvider, useNotificationsSource } from "@/hooks/use-notifications";
 
 const memberId = "018f3a4b-0000-7000-8000-000000000001";
 const eventId = "018f3a4b-0000-7000-8000-000000000002";
@@ -148,10 +149,24 @@ it("marks an overdue task in words as well as in colour", async () => {
   expect(within(stats).getByText("1 overdue")).toBeInTheDocument();
 });
 
+/**
+ * The notification feed is owned by the shell and consumed through context, so
+ * a page that reads it has to be mounted under a provider — the same wiring
+ * `RequireAuth` does in the app.
+ */
+function Harness() {
+  const notifications = useNotificationsSource();
+  return (
+    <NotificationsProvider value={notifications}>
+      <DashboardPage />
+    </NotificationsProvider>
+  );
+}
+
 function renderPage() {
   render(
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <DashboardPage />
+      <Harness />
     </MemoryRouter>,
   );
 }
@@ -187,7 +202,9 @@ function stubFetch(
     if (url.startsWith("/api/events")) {
       return resolve(stubs.events ?? { items: [], nextCursor: null });
     }
-    if (url === "/api/notifications") {
+    // Prefix, not equality: the feed now sends an explicit `?limit=`, which is
+    // what tells it whether a full page came back.
+    if (url.startsWith("/api/notifications")) {
       return resolve(stubs.notifications ?? { notifications: [], unreadCount: 0 });
     }
     if (url === "/api/members") return resolve(stubs.members ?? { members: [] });
