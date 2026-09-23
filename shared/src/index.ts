@@ -21,3 +21,4 @@ export * from "./schemas/notification/notification.js";
 export * from "./schemas/health/health.js";
 export * from "./schemas/example-form/example-form.js";
 export * from "./schemas/audit-fixture/audit-fixture.js";
+export * from "./schemas/ai/ai.js";
