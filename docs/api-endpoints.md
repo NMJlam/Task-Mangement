@@ -793,6 +793,86 @@ budget context. A second or out-of-order decision is
 `409 INVALID_EXPENSE_STATE`; approving/rejecting your own claim is
 `422 OWN_EXPENSE`.
 
+## AI
+
+Every endpoint here returns `503 AI_DISABLED` unless `AI_ENABLED=1`, which is
+**off by default**. Design and the full tool inventory:
+[`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md).
+
+| Endpoint                           | Who      | Input                          | Success                         |
+| ---------------------------------- | -------- | ------------------------------ | ------------------------------- |
+| `POST /api/ai/messages`            | tier 0   | `{ "text": "…", "seed": { } }` | `200 { message, proposals }`    |
+| `GET /api/ai/briefing`             | tier 0   | —                              | `200 { briefing }`              |
+| `POST /api/ai/proposals/apply`     | tier 0 † | `{ runId, operations, stats }` | `201 { events: [], tasks: [] }` |
+| `POST /api/ai/threads/:id/summary` | tier 0   | —                              | `200 { summary }`               |
+
+† Tier 0 gets you in the door. **Each operation inside `operations` is gated
+separately**, against the same check its equivalent route uses:
+
+| Operation                | Mirrors                        | Gate             |
+| ------------------------ | ------------------------------ | ---------------- |
+| Create event             | `POST /api/events`             | tier 1           |
+| Create one task          | `POST /api/tasks`              | tier 0           |
+| Create two or more tasks | `POST /api/tasks/bulk`         | tier 1           |
+| Update task              | `PATCH /api/tasks/:id`         | tier 0           |
+| Update task status       | `PATCH /api/tasks/:id/status`  | tier 0           |
+| Update event             | `PATCH /api/events/:id`        | owner, or tier 1 |
+| Update event status      | `PATCH /api/events/:id/status` | tier 1           |
+
+`POST /api/ai/messages` appends to the caller's `ai` channel — created on first
+use, named `"Assistant"` — and returns the assistant's reply together with any
+proposals it staged. **This call writes no tasks and no events.** Proposals are
+client state until applied.
+
+`seed` is optional starting context from whichever surface opened the chat —
+`{ "eventId": "<uuid>" }` from an event's "Plan with AI" button, for instance.
+It only pre-loads what the assistant reads first; it grants no access the caller
+does not already have, and a seed naming something they cannot see is ignored.
+
+Apply body:
+
+```json
+{
+  "runId": "<uuid>",
+  "operations": [
+    { "op": "create", "entity": "event", "ref": "$event1", "data": { "name": "Hackathon 2026" } },
+    { "op": "create", "entity": "task", "data": { "title": "Book venue", "eventRef": "$event1" } },
+    { "op": "update", "entity": "task", "handle": "T7", "data": { "assigneeIds": ["<uuid>"] } }
+  ],
+  "stats": { "proposed": 9, "kept": 7, "edited": 2 }
+}
+```
+
+Things worth knowing before you test:
+
+- **The model never emits a UUID.** Read tools issue short per-run handles
+  (`T1`, `E2`) and the server resolves them. A handle this run never issued is
+  `422 AI_OUTPUT_INVALID`, not a `404`.
+- **Apply is all-or-nothing.** Every checked operation runs in one transaction,
+  in dependency order — a staged event is created before the tasks that name it
+  by `ref`, and the real id is substituted in. One bad reference writes nothing.
+- **The payload is the _edited_ card**, so by apply time it is an ordinary form
+  submission that happens to carry provenance. It is re-validated against the
+  same shared schemas the manual routes use. Rows created or changed carry
+  `ai_run_id`.
+- **Proposals can only create and update.** There is no tool for deleting,
+  cancelling an event, changing a role, creating an invite, or touching
+  `expense` / `budget` / `event.allocation_cents` — so none of those can appear
+  in `operations`.
+- **`stats` is evaluation data**, written to `ai_run` and never acted on. The
+  client computes it because it is the only party that knows what was unchecked
+  or edited.
+- **`POST /api/ai/threads/:id/summary` is ephemeral** — no summary row, no
+  summary table, re-runnable. It reuses the threads route's own visibility
+  check, so it can only summarise what you can already read.
+- **`GET /api/ai/briefing`** returns today's briefing for the caller, generating
+  and storing it as a message in their `ai` channel if none exists yet. A page
+  refresh is not a model call.
+- **Quota** is `AI_DAILY_RUN_CAP` `ai_run` rows per user per rolling 24h;
+  exceeding it, or a provider 429, is `429 AI_QUOTA_EXCEEDED`.
+- **Unparseable model output** is `422 AI_OUTPUT_INVALID` after one retry —
+  never a partial write.
+
 ## Notifications
 
 Always scoped to the caller — there is no `userId` filter or admin view.

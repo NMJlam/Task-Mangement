@@ -206,6 +206,59 @@ It is safe to rerun: missing deterministic records are restored without
 overwriting edited demo rows. Cancelled events remain absent because cancellation
 is the application's hidden soft-delete state.
 
+### Enable the AI assistant (Gemini)
+
+The assistant (R15) is opt-in per deployment: `AI_ENABLED` is empty by default
+and every AI endpoint returns `503 AI_DISABLED` until you set it. Design:
+[`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md).
+
+**Get a key from Google AI Studio, not Vertex AI.** This is the fork that
+decides whether it costs anything:
+
+|          | Google AI Studio             | Vertex AI                  |
+| -------- | ---------------------------- | -------------------------- |
+| Console  | `aistudio.google.com`        | `console.cloud.google.com` |
+| Auth     | A plain API key              | GCP service account + ADC  |
+| Billing  | **Not required — free tier** | Billing account required   |
+| Use this | **Yes**                      | No                         |
+
+1. Sign in at **aistudio.google.com**. Prefer a personal or throwaway Google
+   account over your Monash one, since free-tier prompts may be retained.
+2. **Get API key** → **Create API key**. It asks for a Google Cloud project;
+   let it create one or pick an existing one. That silently enables the
+   **Generative Language API** (`generativelanguage.googleapis.com`), which is
+   the only GCP resource involved.
+3. Copy the key — it is shown once — and put it in your root `.env`:
+
+   ```bash
+   AI_ENABLED=1
+   GEMINI_API_KEY=<the key>
+   GEMINI_MODEL=gemini-2.5-flash
+   AI_DAILY_RUN_CAP=50
+   ```
+
+   `.env` is gitignored. If a key does reach a commit, revoke it in AI Studio —
+   rotating is free and instant.
+
+4. **Check the model id and the limits** on the AI Studio key page. Free-tier
+   model names change; whatever the current free Flash-class model is goes in
+   `GEMINI_MODEL` and no code changes. Compare the daily request limit against
+   `AI_DAILY_RUN_CAP` — with a committee of twenty, fifty runs each would
+   exhaust most free daily quotas, so drop the cap to 10–15 before a demo.
+
+5. **Restrict the key** (optional, two minutes):
+   console.cloud.google.com → **APIs & Services** → **Credentials** → your key →
+   **Restrict key** → **API restrictions** → **Generative Language API** only.
+   Leave the HTTP-referrer restriction alone — the key is used server-side, and
+   a referrer rule would break it.
+
+6. **Vercel:** add the same four variables under **Settings → Environment
+   Variables** for Preview and Production. `config/load-env.ts` already falls
+   back to platform env when there is no root `.env`.
+
+The `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair is Better Auth sign-in (R1)
+and is unrelated — keep the Gemini key separate.
+
 ### Browse the database — Drizzle Studio
 
 ```bash
