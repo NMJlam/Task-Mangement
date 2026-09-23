@@ -301,12 +301,17 @@ async function memberNames(db: Queryable): Promise<Map<string, string>> {
 }
 
 /**
- * Committee load, which is what Smart-assign runs on. The open-task count per
- * member is the same figure the dashboard's Committee Load widget shows, so the
- * assistant and the dashboard cannot disagree about who is busy: every holder of
- * a not-done task counts, multi-assignee included, exactly as
- * `frontend/src/routes/dashboard.tsx`'s own reducer does it client-side. A pure
- * function so this NEW server-side rule is unit-testable without a database.
+ * Committee load, which is what Smart-assign runs on: every holder of a
+ * not-done task counts, multi-assignee included, the same rule the
+ * dashboard's Committee Load widget applies client-side
+ * (`frontend/src/routes/dashboard.tsx`). Unlike that widget, the query
+ * feeding this excludes tasks whose event the CALLER cannot see
+ * (`taskEventVisible`, below) — the widget's own lack of a visibility filter
+ * is pre-existing repo debt, not something to reproduce here. Smart-assign
+ * SAYS this number to the member ("Ben has 9 open tasks"), so an inflated
+ * count is both a small leak about a hidden event's existence and actively
+ * wrong advice about who is free. A pure function so this NEW server-side
+ * rule is unit-testable without a database.
  */
 export function countOpenTasksByAssignee(
   rows: readonly { userId: string; status: TaskStatus }[],
@@ -337,7 +342,8 @@ export const listMembers: Tool = {
       ctx.db
         .select({ userId: taskAssignees.userId, status: tasks.status })
         .from(taskAssignees)
-        .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId)),
+        .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+        .where(taskEventVisible(ctx.tier as Tier)),
     ]);
 
     const openCounts = countOpenTasksByAssignee(assignments);
