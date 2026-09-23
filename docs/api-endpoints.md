@@ -837,7 +837,7 @@ Apply body:
   "operations": [
     { "op": "create", "entity": "event", "ref": "$event1", "data": { "name": "Hackathon 2026" } },
     { "op": "create", "entity": "task", "data": { "title": "Book venue", "eventRef": "$event1" } },
-    { "op": "update", "entity": "task", "handle": "T7", "data": { "assigneeIds": ["<uuid>"] } }
+    { "op": "update", "entity": "task", "id": "<uuid>", "data": { "assigneeIds": ["<uuid>"] } }
   ],
   "stats": { "proposed": 9, "kept": 7, "edited": 2 }
 }
