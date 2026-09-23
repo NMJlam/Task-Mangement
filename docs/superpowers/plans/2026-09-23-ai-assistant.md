@@ -376,7 +376,14 @@ git commit -m "feat(ai): record proposal outcomes and event provenance"
 **Interfaces:**
 
 - Consumes: `taskPrioritySchema` from `../task/task.js`; `createEventSchema`, `changeEventStatusSchema` from `../event/event.js`.
-- Produces: `AI_MAX_PROPOSALS`; `aiHandleSchema`, `aiRefSchema`; `aiProposedTaskSchema`, `aiProposedEventSchema`, `aiTaskDiffSchema`, `aiEventDiffSchema`; `aiProposalSchema` (the model's staged output); `aiApplyRequestSchema`, `aiApplyResponseSchema`; `aiMessageRequestSchema`, `aiMessageResponseSchema`; `aiBriefingSchema`, `aiBriefingResponseSchema`; `aiThreadSummarySchema`; and the inferred types of each.
+- Produces: `AI_MAX_PROPOSALS`; `aiHandleSchema`, `aiRefSchema`; `aiProposedTaskSchema`, `aiProposedEventSchema`, `aiTaskDiffSchema`, `aiEventDiffSchema`; `aiProposalSchema` (what the model emits — handles, backend-only); `aiResolvedProposalSchema` (what the client renders — ids plus each diff's `before`); `aiApplyRequestSchema`, `aiApplyResponseSchema`; `aiMessageRequestSchema`, `aiMessageResponseSchema`; `aiBriefingSchema`, `aiBriefingResponseSchema`; `aiThreadSummarySchema`, `aiThreadSummaryResponseSchema`; and the inferred types of each.
+
+**Three proposal shapes, each with one job.** `aiProposalSchema` is the model's
+output and uses handles; `aiResolvedProposalSchema` is what the chat endpoint
+returns, with handles resolved to ids and each diff carrying its `before`;
+`aiApplyRequestSchema` is what the client posts back. Handles never leave the
+backend — that is what keeps "the model never emits a UUID" true without making
+the card resolve anything.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -390,6 +397,7 @@ import {
   aiHandleSchema,
   aiProposalSchema,
   aiRefSchema,
+  aiResolvedProposalSchema,
   aiThreadSummarySchema,
 } from "./ai.js";
 
@@ -446,6 +454,32 @@ describe("aiProposalSchema", () => {
   it("rejects an event status of cancelled — cancellation has one door", () => {
     const parsed = aiProposalSchema.safeParse({
       updateEvent: { handle: "E1", status: "cancelled" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe("aiResolvedProposalSchema", () => {
+  const id = "0192f1a0-0000-7000-8000-000000000000";
+
+  it("carries an id and each diff's before value, so a card can render before → after", () => {
+    const parsed = aiResolvedProposalSchema.safeParse({
+      updateTasks: [
+        {
+          id,
+          title: "Print name badges",
+          diffs: [{ field: "assignees", before: "Ben Ng", after: "Aisha K" }],
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a handle where an id belongs — handles never leave the backend", () => {
+    const parsed = aiResolvedProposalSchema.safeParse({
+      updateTasks: [
+        { id: "T7", title: "x", diffs: [{ field: "priority", before: "low", after: "high" }] },
+      ],
     });
     expect(parsed.success).toBe(false);
   });
@@ -600,6 +634,48 @@ export const aiProposalSchema = z
   );
 export type AiProposal = z.infer<typeof aiProposalSchema>;
 
+// ── What the client renders ──────────────────────────────────────────────────
+
+/**
+ * Handles are resolved to ids at the response boundary, so they never leave the
+ * backend: the model still emits no UUID, and the card works in ids like every
+ * other form in the app. A diff row also needs the CURRENT value to render
+ * `before → after`, and only the server can supply that.
+ */
+const resolvedFieldDiffSchema = z.object({
+  field: z.string().min(1),
+  /** Rendered as immutable text. Null means the field was unset. */
+  before: z.string().nullable(),
+  after: z.string().nullable(),
+});
+export type ResolvedFieldDiff = z.infer<typeof resolvedFieldDiffSchema>;
+
+const resolvedUpdateSchema = z.object({
+  id: z.uuid(),
+  /** The row's current title, so the card can label the diff. */
+  title: z.string().min(1),
+  diffs: z.array(resolvedFieldDiffSchema).min(1),
+});
+
+/** `dueOffsetDays` has become an absolute `dueAt`, computed server-side in CLUB_TIMEZONE (D14). */
+const resolvedCreateTaskSchema = z.object({
+  title: titleSchema,
+  description: descriptionSchema,
+  priority: taskPrioritySchema,
+  dueAt: z.coerce.date().nullable(),
+  assignees: z.array(z.object({ id: z.uuid(), name: z.string() })),
+  eventRef: aiRefSchema.optional(),
+  eventId: z.uuid().optional(),
+});
+
+export const aiResolvedProposalSchema = z.object({
+  createEvent: aiProposedEventSchema.optional(),
+  createTasks: z.array(resolvedCreateTaskSchema).max(AI_MAX_PROPOSALS).optional(),
+  updateTasks: z.array(resolvedUpdateSchema).max(AI_MAX_PROPOSALS).optional(),
+  updateEvent: resolvedUpdateSchema.optional(),
+});
+export type AiResolvedProposal = z.infer<typeof aiResolvedProposalSchema>;
+
 // ── POST /api/ai/messages ────────────────────────────────────────────────────
 
 export const aiMessageRequestSchema = z.object({
@@ -612,7 +688,8 @@ export type AiMessageRequest = z.infer<typeof aiMessageRequestSchema>;
 export const aiMessageResponseSchema = z.object({
   runId: z.uuid(),
   reply: z.string(),
-  proposal: aiProposalSchema.nullable(),
+  /** Resolved, not raw: the client never sees a handle. */
+  proposal: aiResolvedProposalSchema.nullable(),
 });
 export type AiMessageResponse = z.infer<typeof aiMessageResponseSchema>;
 
@@ -739,7 +816,7 @@ export * from "./schemas/ai/ai.js";
 - [ ] **Step 5: Run the tests and confirm they pass**
 
 Run: `npx vitest run shared/src/schemas/ai/ai.test.ts`
-Expected: PASS, 10 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 6: Verify and commit**
 
@@ -976,6 +1053,8 @@ git commit -m "feat(ai): add run recording, daily cap and strict JSON parsing"
 - Create: `backend/src/routes/ai/tools/propose.ts`
 - Create: `backend/src/routes/ai/tools/registry.ts`
 - Create: `backend/src/routes/ai/tools/registry.test.ts`
+- Create: `backend/src/routes/threads/service.ts` (extract `assertCanReadChannel`)
+- Modify: `backend/src/routes/threads/threads.ts`
 
 **Interfaces:**
 
@@ -1085,6 +1164,30 @@ export class HandleMap {
 
 Run: `npx vitest run backend/src/routes/ai/handles.test.ts`
 Expected: PASS, 5 tests.
+
+- [ ] **Step 4b: Extract the channel-visibility check**
+
+`readThread` (next step) must gate on the same rule the threads route uses, so
+extract it before writing the tool that needs it.
+
+Move the channel-visibility logic currently inline in
+`backend/src/routes/threads/threads.ts` into a new
+`backend/src/routes/threads/service.ts` as:
+
+```typescript
+export async function assertCanReadChannel(
+  db: Queryable,
+  channelId: string,
+  user: { id: string; tier: number },
+): Promise<void>;
+```
+
+Import it back into `threads.ts` so there is **one** implementation. Behaviour
+must not change — a member must not be able to read through the assistant what
+they cannot read through the threads route.
+
+Run: `npm run test:integration -- --run src/routes/threads`
+Expected: PASS, unchanged. That is the check that the extraction was faithful.
 
 - [ ] **Step 5: Write the read tools**
 
@@ -1398,11 +1501,19 @@ The handler, in order:
    completes the prompt, parses the model's reply, and either runs the tool it
    asked for (appending a `RunStep`) or finishes with a reply plus an optional
    proposal parsed by `aiProposalSchema`.
-6. `recordRun(tx, { userId, prompt: body.text, steps })`, with the handle map
-   stored in the run's steps so apply can resolve it.
-7. Persist the member's message and the assistant's reply into the `ai` channel,
+6. **Resolve the staged proposal before responding.** Map `ctx.staged`
+   (`AiProposal`, handles) to an `AiResolvedProposal`: `handles.resolve()` every
+   handle to an id, look up each referenced row so a diff can carry its `before`
+   value and an update can carry the row's current `title`, turn
+   `assigneeHandles` into `{ id, name }` pairs, and convert `dueOffsetDays` to an
+   absolute `dueAt` from the event's `startsAt` in `CLUB_TIMEZONE` (D14).
+   **Handles stop here** — they never reach the client, which is what lets the
+   apply endpoint take plain ids.
+7. `recordRun(tx, { userId, prompt: body.text, steps })`.
+8. Persist the member's message and the assistant's reply into the `ai` channel,
    the reply stamped with `ai_run_id`.
-8. Respond `200 { runId, reply, proposal }`.
+9. Respond `200 { runId, reply, proposal }`, the proposal parsed by
+   `aiResolvedProposalSchema` before it goes out.
 
 Add the constant with its reasoning:
 
@@ -1620,25 +1731,20 @@ git commit -m "feat(ai): apply confirmed proposals in one transaction"
 
 **Files:**
 
-- Create: `backend/src/routes/threads/service.ts` (or extend it if Task 5 already created it)
-- Modify: `backend/src/routes/threads/threads.ts`
 - Modify: `backend/src/routes/ai/service.ts`, `backend/src/routes/ai/service.test.ts`
 - Modify: `backend/src/routes/ai/ai.ts`, `backend/src/routes/ai/ai.integration.test.ts`
 
 **Interfaces:**
 
-- Consumes: Task 4; `aiThreadSummarySchema`, `aiThreadSummaryResponseSchema` from `@ctp/shared`.
-- Produces: `assertCanReadChannel(db: Queryable, channelId: string, user: { id: string; tier: number }): Promise<void>` in `threads/service.ts`; `type PromptMessage = { id: string; author: string; body: string; createdAt: Date }`; `budgetMessages(messages: PromptMessage[], maxChars: number): PromptMessage[]`; `buildSummaryPrompt(messages: PromptMessage[]): string`; `POST /api/ai/threads/:id/summary`.
+- Consumes: Task 4; `assertCanReadChannel(db: Queryable, channelId: string, user: { id: string; tier: number }): Promise<void>` from `routes/threads/service.js` (Task 5, Step 4b); `aiThreadSummarySchema`, `aiThreadSummaryResponseSchema` from `@ctp/shared`.
+- Produces: `type PromptMessage = { id: string; author: string; body: string; createdAt: Date }`; `budgetMessages(messages: PromptMessage[], maxChars: number): PromptMessage[]`; `buildSummaryPrompt(messages: PromptMessage[]): string`; `POST /api/ai/threads/:id/summary`.
 
-- [ ] **Step 1: Extract the visibility check**
+- [ ] **Step 1: Confirm the visibility helper is in place**
 
-Move the channel-visibility logic currently inline in
-`backend/src/routes/threads/threads.ts` into `routes/threads/service.ts` as
-`assertCanReadChannel`, and import it back into `threads.ts`. **Behaviour must
-not change** — `threads.integration.test.ts` passing unchanged is the check
-that the extraction was faithful. Do not copy the logic; there must be one
-implementation, because the assistant must not be able to read a channel the
-member cannot.
+`assertCanReadChannel` was extracted into `backend/src/routes/threads/service.ts`
+in Task 5, Step 4b, because `readThread` needed it there. Confirm it exists and
+that `threads.ts` imports it rather than holding a second copy, then import it
+here. There must be exactly one implementation.
 
 - [ ] **Step 2: Write the failing test**
 

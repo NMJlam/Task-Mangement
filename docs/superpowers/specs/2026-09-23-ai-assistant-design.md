@@ -158,14 +158,23 @@ the president, through `DELETE /api/events/:id`.
 
 ### 4.3 Handles and refs
 
-A read tool numbers the rows it returns — `T1`, `T2`, `E1`, `M1` — and the
-handle→UUID map accumulates in `ai_run.steps`. The model emits handles; the
-server resolves them at apply time. A handle the run never issued is
-`422 AI_OUTPUT_INVALID`.
+A read tool numbers the rows it returns — `T1`, `T2`, `E1`, `M1` — and keeps the
+handle→id map for the life of the request. The model emits handles; a handle the
+run never issued is `422 AI_OUTPUT_INVALID`.
 
-A **ref** (`$event1`) is the other half: it names a row staged in the same card
-that does not exist yet, so a task can be bound to an event being created
-alongside it. The server substitutes refs as it creates their targets (§5.4).
+**Handles never leave the backend.** The chat endpoint resolves them before it
+responds, so the card holds real ids and carries each diff's `before` value
+ready to render. That is what lets the apply endpoint (§6) take an ordinary
+payload of ids: the model emits no identifier, and the client resolves nothing.
+
+Three proposal shapes follow from that, each with one job — what the model emits
+(handles), what the client renders (ids plus each diff's `before`), and what the
+client posts back (ids).
+
+A **ref** (`$event1`) is the one symbolic thing that does reach the client: it
+names a row staged in the same card that does not exist yet, so a task can be
+bound to an event being created alongside it. The server substitutes refs as it
+creates their targets (§5.4).
 
 ### 4.4 Permission model
 
@@ -335,7 +344,7 @@ POST /api/ai/proposals/apply     tier 0 — each operation gated individually
   "operations": [
     { "op": "create", "entity": "event", "ref": "$event1", "data": {} },
     { "op": "create", "entity": "task", "data": { "eventRef": "$event1" } },
-    { "op": "update", "entity": "task", "handle": "T7", "data": { "assigneeIds": [] } }
+    { "op": "update", "entity": "task", "id": "<uuid>", "data": { "assigneeIds": [] } }
   ],
   "stats": { "proposed": 9, "kept": 7, "edited": 2 }
 }
