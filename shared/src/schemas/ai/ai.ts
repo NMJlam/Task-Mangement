@@ -95,7 +95,11 @@ export const aiProposalSchema = z
   })
   .refine(
     (proposal) =>
-      (proposal.createTasks?.length ?? 0) + (proposal.updateTasks?.length ?? 0) <= AI_MAX_PROPOSALS,
+      (proposal.createEvent ? 1 : 0) +
+        (proposal.createTasks?.length ?? 0) +
+        (proposal.updateTasks?.length ?? 0) +
+        (proposal.updateEvent ? 1 : 0) <=
+      AI_MAX_PROPOSALS,
     { message: `A single turn may stage at most ${AI_MAX_PROPOSALS} proposals` },
   );
 export type AiProposal = z.infer<typeof aiProposalSchema>;
