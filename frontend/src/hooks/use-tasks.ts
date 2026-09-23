@@ -231,5 +231,44 @@ export function useTasks({
     }
   }, []);
 
-  return { state, busy, mutationError, createTask, changeStatus, changeEvent, updateTask };
+  /**
+   * Not optimistic, unlike `changeStatus`: nothing has moved on screen yet, so
+   * there is no gesture to keep in step — and a card that vanished and then
+   * reappeared would be a worse answer than a moment's wait. The server's
+   * `authorise(1)` is the real gate; callers hide the control to match.
+   */
+  const deleteTask = useCallback(async (task: Task) => {
+    setBusy(task.id);
+    setMutationError(undefined);
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      // 204: no body to read, so the local list IS the record of the delete.
+      if (!response.ok) throw new Error("Failed to delete task");
+      setState((current) =>
+        current.status === "ok"
+          ? { ...current, items: current.items.filter((item) => item.id !== task.id) }
+          : current,
+      );
+      return true;
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to delete task");
+      return false;
+    } finally {
+      setBusy(undefined);
+    }
+  }, []);
+
+  return {
+    state,
+    busy,
+    mutationError,
+    createTask,
+    changeStatus,
+    changeEvent,
+    updateTask,
+    deleteTask,
+  };
 }

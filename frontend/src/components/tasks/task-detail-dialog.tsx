@@ -5,7 +5,8 @@ import {
   type Task,
   type UpdateTask,
 } from "@ctp/shared";
-import { useState } from "react";
+import { Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/common/status-badge";
 import { AssigneeField } from "@/components/tasks/assignee-field";
@@ -19,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "full" });
 const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -30,7 +32,9 @@ const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyl
  *
  * Every field is optional to edit, so a caller that only reads the task (a
  * board with no mutation wired up) still gets a coherent dialog: the same
- * controls render as text instead.
+ * controls render as text instead. `onDelete` follows that rule too: it is the
+ * whole of the delete control's visibility, so a caller who may not delete
+ * passes nothing and the dialog has no button to press.
  */
 export function TaskDetailDialog({
   task,
@@ -40,6 +44,7 @@ export function TaskDetailDialog({
   onEventChange,
   onClose,
   onUpdate,
+  onDelete,
   error,
 }: {
   task: Task | undefined;
@@ -49,6 +54,8 @@ export function TaskDetailDialog({
   onEventChange?: (task: Task, eventId: string | null) => void;
   onClose: () => void;
   onUpdate?: (patch: UpdateTask) => void;
+  /** Resolves false when the delete failed, which keeps the dialog open. */
+  onDelete?: () => Promise<boolean>;
   error?: string;
 }) {
   return (
@@ -61,6 +68,7 @@ export function TaskDetailDialog({
           events={events}
           onEventChange={onEventChange}
           onUpdate={onUpdate}
+          onDelete={onDelete}
           busy={busy}
           error={error}
         />
@@ -75,6 +83,7 @@ function TaskDetailBody({
   events,
   onEventChange,
   onUpdate,
+  onDelete,
   busy,
   error,
 }: {
@@ -83,6 +92,7 @@ function TaskDetailBody({
   events?: EventSummary[];
   onEventChange?: (task: Task, eventId: string | null) => void;
   onUpdate?: (patch: UpdateTask) => void;
+  onDelete?: () => Promise<boolean>;
   busy: boolean;
   error?: string;
 }) {
@@ -100,12 +110,16 @@ function TaskDetailBody({
 
   return (
     <DialogContent ref={setPortalTarget} size="wide" aria-describedby={undefined}>
-      <DialogHeader className="shrink-0">
+      {/* `pr-8` on the header clears the dialog's close X; a second icon beside
+          it needs the title to stop sooner still. */}
+      <DialogHeader className={cn("shrink-0", onDelete && "pr-16")}>
         <DialogTitle>{task.title}</DialogTitle>
         <DialogDescription>
           {task.dueAt ? `Due ${fullDate.format(task.dueAt)}` : "No due date set"}
         </DialogDescription>
       </DialogHeader>
+
+      {onDelete && <DeleteTask onDelete={onDelete} busy={busy} />}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <StatusBadge status={task.status} />
@@ -249,6 +263,94 @@ function TaskDetailBody({
           never remounts mid-edit. */}
       <Description key={task.description ?? ""} task={task} onUpdate={onUpdate} busy={busy} />
     </DialogContent>
+  );
+}
+
+/**
+ * The delete control: an icon beside the dialog's close X, and the question it
+ * asks before anything is sent.
+ *
+ * `DELETE /api/tasks/:id` is a HARD delete — unlike an event, a task has no
+ * cancelled state to read it back from — so the icon only arms the question,
+ * and the question is what reaches the server. The two live in one component
+ * because they share that state; the trigger is positioned against
+ * `DialogContent` (it is `relative`), so it sits top-right whatever its place
+ * in the DOM, while the confirmation lands in flow directly under the header —
+ * beside the control that raised it, not a scroll away at the foot of the card.
+ *
+ * A refused delete leaves the question standing: closing on failure would read
+ * as success, with the card still on the board and nothing said about why.
+ */
+function DeleteTask({ onDelete, busy }: { onDelete: () => Promise<boolean>; busy: boolean }) {
+  const [confirming, setConfirming] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const questionId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+
+  // Each half of this toggle unmounts the element that was focused, so focus
+  // would land on the document body and the change would go unannounced. Asking
+  // moves it to the SAFE answer — a stray Enter keeps the task — and backing out
+  // hands it back to the icon. (`autoFocus` says this in a word, but
+  // `jsx-a11y/no-autofocus` bans it, rightly, for controls that grab focus on
+  // load rather than ones replacing what you just activated.)
+  useEffect(() => {
+    if (confirming) keepRef.current?.focus();
+  }, [confirming]);
+
+  function keep() {
+    setConfirming(false);
+    setFailed(false);
+    triggerRef.current?.focus();
+  }
+
+  return (
+    <>
+      {/* Paired with the close X on the same optical line, one icon-gap clear of
+          it: near enough to read as a card action, far enough not to be hit on
+          the way to Close. It arms a question, so a misclick costs nothing. */}
+      <Button
+        ref={triggerRef}
+        variant="ghost"
+        size="icon-sm"
+        title="Delete task"
+        aria-expanded={confirming}
+        disabled={busy}
+        onClick={() => setConfirming(true)}
+        // Centred on the close X's own line (both centres sit 24px down) and one
+        // icon-gap to its left.
+        className="absolute top-2 right-10 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 aria-hidden="true" className="size-4" />
+        <span className="sr-only">Delete Task</span>
+      </Button>
+
+      {confirming && (
+        <section className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+          <p id={questionId} className="text-sm">
+            {failed ? (
+              <span className="text-destructive">Couldn&apos;t delete this task. Try again.</span>
+            ) : (
+              "Delete this task? It is removed for everyone, and this cannot be undone."
+            )}
+          </p>
+          <span className="flex items-center gap-2">
+            <Button ref={keepRef} variant="outline" size="sm" disabled={busy} onClick={keep}>
+              Keep Task
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              aria-describedby={questionId}
+              disabled={busy}
+              onClick={() => void onDelete().then((deleted) => setFailed(!deleted))}
+            >
+              {busy ? "Deleting…" : "Confirm Delete"}
+            </Button>
+          </span>
+        </section>
+      )}
+    </>
   );
 }
 

@@ -256,6 +256,39 @@ describe("EventDetailPage", () => {
     await waitFor(() => expect(within(dialog).getByLabelText(/^priority$/i)).toHaveValue("low"));
   });
 
+  // Same shared dialog as /tasks, so the same tier rule has to reach it here —
+  // a task deletable on one board and not the other would be arbitrary.
+  it("deletes an event task from the dialog once a tier-1 member confirms", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubEvent({ role: "director", tier: 1 });
+    renderDetail("?tab=tasks");
+
+    await user.click(await screen.findByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+    await user.click(screen.getByRole("button", { name: "Confirm Delete" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${eventTask.id}`,
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByText("Confirm lighting")).not.toBeInTheDocument();
+  });
+
+  it("offers no delete control on the Tasks tab below tier 1", async () => {
+    const user = userEvent.setup();
+    stubEvent({ role: "officer", tier: 0 });
+    renderDetail("?tab=tasks");
+
+    await user.click(await screen.findByRole("button", { name: "Open Confirm lighting" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByLabelText(/^priority$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Task" })).not.toBeInTheDocument();
+  });
+
   it("takes the open tab from the URL", async () => {
     stubEvent();
     renderDetail("?tab=tasks");

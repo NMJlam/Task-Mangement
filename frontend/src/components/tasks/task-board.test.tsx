@@ -1,5 +1,5 @@
 import type { Task } from "@ctp/shared";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -332,5 +332,144 @@ describe("TaskBoard", () => {
     // open task — the board, not the dialog, owns which task is being edited.
     await user.selectOptions(within(dialog).getByLabelText(/^priority$/i), "urgent");
     expect(onUpdate).toHaveBeenCalledWith(task, { priority: "urgent" });
+  });
+
+  // Deleting is tier-gated on the server (`authorise(1)` on DELETE /api/tasks/:id),
+  // and the board mirrors that by receiving `onDelete` only from a caller who
+  // may use it — an officer's dialog has no button to press.
+  it("offers no delete control when the caller cannot delete tasks", async () => {
+    const user = userEvent.setup();
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await screen.findByRole("dialog");
+
+    expect(screen.queryByRole("button", { name: "Delete Task" })).not.toBeInTheDocument();
+  });
+
+  // The row is gone for good once this lands — there is no soft delete to
+  // restore from, so the first click only asks.
+  it("asks before deleting, and deletes nothing when the reader backs out", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn(async () => true);
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Keep Task" }));
+
+    expect(screen.queryByText(/cannot be undone/i)).not.toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  // The Delete Task button unmounts when the question replaces it, so without
+  // this focus lands on the document body: a keyboard reader would be left with
+  // no idea a question had been asked, and nothing announced.
+  it("moves focus to the safe answer when the confirmation appears", async () => {
+    const user = userEvent.setup();
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onDelete={vi.fn(async () => true)}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+
+    expect(screen.getByRole("button", { name: "Keep Task" })).toHaveFocus();
+    // And the reader hears what they would be confirming, not a bare verb.
+    expect(screen.getByRole("button", { name: "Confirm Delete" })).toHaveAccessibleDescription(
+      /cannot be undone/i,
+    );
+  });
+
+  // Backing out unmounts the question the same way asking it unmounted the
+  // button, so focus has to be handed back rather than dropped on the body.
+  it("returns focus to the delete control when the reader backs out", async () => {
+    const user = userEvent.setup();
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onDelete={vi.fn(async () => true)}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+    await user.click(screen.getByRole("button", { name: "Keep Task" }));
+
+    expect(screen.getByRole("button", { name: "Delete Task" })).toHaveFocus();
+  });
+
+  it("deletes the task and closes the dialog once the reader confirms", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn(async () => true);
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+    await user.click(screen.getByRole("button", { name: "Confirm Delete" }));
+
+    expect(onDelete).toHaveBeenCalledWith(task);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  // A dialog that closed on a failed delete would read as success and leave the
+  // card on the board with no explanation.
+  it("keeps the dialog open and says so when the delete does not land", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn(async () => false);
+    renderBoard(
+      <TaskBoard
+        tasks={[task]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onStatusChange={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm lighting" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+    await user.click(screen.getByRole("button", { name: "Confirm Delete" }));
+
+    expect(await screen.findByText(/couldn't delete this task/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm Delete" })).toBeInTheDocument();
   });
 });

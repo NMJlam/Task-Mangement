@@ -759,6 +759,65 @@ describe("TasksPage", () => {
 
     expect(screen.getByText("No members found.")).toBeInTheDocument();
   });
+
+  // DELETE /api/tasks/:id is gated at `authorise(1)`, so the page offers the
+  // control to tier 1 and up and to nobody else. The pair of tests below is the
+  // gate: same page, same task, only `/api/me` differs.
+  it("offers no delete control to a member below tier 1", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Promise.resolve(response({ user: me() }));
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm venue access" }));
+    const dialog = await screen.findByRole("dialog");
+
+    // The dialog is fully rendered — its editable controls are here — so the
+    // missing button is the tier rule, not a half-drawn modal.
+    expect(within(dialog).getByLabelText(/^priority$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Task" })).not.toBeInTheDocument();
+  });
+
+  it("deletes a task from the dialog and drops it from the board", async () => {
+    const user = userEvent.setup();
+    const task = buildTask();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/tasks/${task.id}` && init?.method === "DELETE")
+        return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+      if (url === "/api/me")
+        return Promise.resolve(response({ user: { ...me(), role: "director", tier: 1 } }));
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Open Confirm venue access" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Task" }));
+    await user.click(screen.getByRole("button", { name: "Confirm Delete" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === `/api/tasks/${task.id}` && init?.method === "DELETE",
+      ),
+    ).toBe(true);
+    // The row is gone on the server, so it must be gone from the board too.
+    expect(screen.queryByText("Confirm venue access")).not.toBeInTheDocument();
+  });
 });
 
 /** The shape every success stub in this file shares. */

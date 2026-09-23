@@ -53,6 +53,7 @@ export function TaskBoard({
   onStatusChange,
   onEventChange,
   onUpdate,
+  onDelete,
 }: {
   tasks: Task[];
   members?: RosterMember[];
@@ -63,6 +64,11 @@ export function TaskBoard({
   onStatusChange: (task: Task, status: TaskStatus) => void;
   onEventChange?: (task: Task, eventId: string | null) => void;
   onUpdate?: (task: Task, patch: UpdateTask) => void;
+  /**
+   * Omitted by callers who may not delete — the dialog's button exists only
+   * when this does. Resolves false when the write was refused.
+   */
+  onDelete?: (task: Task) => Promise<boolean>;
 }) {
   const [openId, setOpenId] = useState<string>();
   const openTask = tasks.find((task) => task.id === openId);
@@ -153,6 +159,18 @@ export function TaskBoard({
           onUpdate &&
           ((patch) => {
             if (openTask) onUpdate(openTask, patch);
+          })
+        }
+        onDelete={
+          onDelete &&
+          (async () => {
+            if (!openTask) return false;
+            const deleted = await onDelete(openTask);
+            // The board owns which task is open, so it is the board that closes
+            // the dialog — the deleted row is about to leave `tasks`, and a
+            // dialog left open over it would show a task that no longer exists.
+            if (deleted) setOpenId(undefined);
+            return deleted;
           })
         }
         busy={openTask !== undefined && busyId === openTask.id}

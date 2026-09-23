@@ -84,6 +84,10 @@ export function TasksPage() {
     overdue: filters.overdue,
     enabled: !needsIdentity || identityReady,
   });
+  // DELETE /api/tasks/:id is `authorise(1)`, one of the two blast-radius task
+  // endpoints. The control is shown to exactly the tiers the server accepts —
+  // the same shape as `canCreate` on the events page.
+  const canDelete = me.status === "ok" && me.user.tier >= 1;
   const [adding, setAdding] = useState(false);
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : undefined;
@@ -244,6 +248,7 @@ export function TasksPage() {
             onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
             onEventChange={(task, eventId) => void tasks.changeEvent(task, eventId)}
             onUpdate={(task, patch) => void tasks.updateTask(task, patch)}
+            onDelete={canDelete ? (task) => tasks.deleteTask(task) : undefined}
           />
         </section>
       )}
