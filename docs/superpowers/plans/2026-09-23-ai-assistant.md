@@ -1560,11 +1560,14 @@ Add the constant with its reasoning:
 
 ```typescript
 /**
- * A hard stop on the read-tool loop. Six is enough for "find the event, read
- * last year's plan, check who is free, propose" and short enough that a model
- * that starts looping cannot spend the club's daily quota in one request.
+ * A hard stop on the tool loop. A full plan is already six steps — read the past
+ * corpus, read the roster, read the event, propose the event, propose the tasks,
+ * then reply — so six left no headroom for a single wasted or retried call.
+ * Eight absorbs one mis-step while still stopping a looping model from spending
+ * the club's shared free-tier quota in one request. Every step is its own
+ * `complete()` call, which is also why the propose tools take batches.
  */
-const MAX_TOOL_STEPS = 6;
+const MAX_TOOL_STEPS = 8;
 ```
 
 Map typed errors to status codes at the bottom of the router, mirroring
@@ -1595,6 +1598,24 @@ Stub the provider by mocking `../../lib/ai/client.js`. Cover:
   caller inside 24 hours.
 - The member's message and the assistant's reply both land in the caller's `ai`
   channel, and the reply carries `ai_run_id`.
+
+**And the visibility cases, which are the point of the whole design.** These need a
+database, which is why they live here rather than in Task 5's unit tests — a read
+tool that leaks is the one defect that would make the assistant worse than useless.
+Seed a tier-2-only event (`minTier: 2`) with tasks and a thread, then drive the
+assistant **as a tier-0 member** and assert that event is absent from every path:
+
+- `listEvents` does not return it
+- `getEventProgress` refuses it (or returns nothing) when addressed by handle
+- `pastEventPlans` excludes it from the corpus
+- `listTasks` and `listOverdueTasks` return none of its tasks
+- `readThread` refuses its event channel
+- `listMembers`'s `openTaskCount` does not count its tasks
+- a cancelled event is absent from the same paths (`visibleEvents` excludes both)
+
+Then assert the complement: a tier-2 member driving the same tools DOES see it. A
+test that only proves absence passes just as well against a tool that returns nothing
+at all.
 
 - [ ] **Step 7: Run the suites**
 
