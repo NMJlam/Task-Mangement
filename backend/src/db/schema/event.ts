@@ -9,8 +9,10 @@ import {
   smallint,
   text,
   timestamp,
+  type AnyPgColumn,
   uuid,
 } from "drizzle-orm/pg-core";
+import { aiRuns } from "./ai-run.js";
 import { appUsers } from "./app-user.js";
 import { notBlank, sqlEnumValues } from "./sql-enum.js";
 import { uuidShape } from "./sql-uuid.js";
@@ -56,6 +58,18 @@ export const events = pgTable(
 
     owner: uuid("owner").references(() => appUsers.id, { onDelete: "set null" }),
 
+    // Mirrors task.ai_run_id: an assistant-created event carries the same
+    // provenance a task does, so /ai's history can show both.
+    //
+    // The `: AnyPgColumn` return annotation is load-bearing, not decoration:
+    // this closes the cycle event -> ai-run -> channel -> event (ai-run.ts
+    // imports channels, channel.ts imports events), and without an explicit
+    // return type on the thunk, TypeScript can't resolve the mutually
+    // recursive inference across the three pgTable() consts and silently
+    // widens all three to `any`. The annotation severs that at the type
+    // level only; the runtime thunk and the real FK are unchanged.
+    aiRunId: uuid("ai_run_id").references((): AnyPgColumn => aiRuns.id, { onDelete: "set null" }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -77,6 +91,6 @@ export const events = pgTable(
       "event_attendance_estimate_non_negative_check",
       sql`${table.attendanceEstimate} IS NULL OR ${table.attendanceEstimate} >= 0`,
     ),
-    check("event_uuid_shape_check", uuidShape(table.id, table.owner)),
+    check("event_uuid_shape_check", uuidShape(table.id, table.owner, table.aiRunId)),
   ],
 );
