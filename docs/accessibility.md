@@ -103,6 +103,39 @@ Two things kept it hidden, both now closed:
 
 Recompute these after the MAC palette swap; the method is unchanged.
 
+### Faded text on an inverting panel (login)
+
+The dark-mode scan found this on its first run, which is the case for adding it.
+
+`--primary` **inverts between themes** — a near-black panel with near-white text
+in light mode (`#1c1c1a` / `#fafaf9`), a near-white panel with near-black text in
+dark (`#ececef` / `#16161a`). So a `text-primary-foreground/NN` that reads
+comfortably in light mode is **weaker** in dark, not stronger, and the usual
+intuition that dark mode is the forgiving one is exactly backwards here.
+
+Measured on the login panel, blended against `--primary` in each theme:
+
+| Opacity | Light    | Dark     | Used by                      |
+| ------- | -------- | -------- | ---------------------------- |
+| `/50`   | 5.00 ✅  | **3.29** | club name (footer)           |
+| `/60`   | 6.61 ✅  | **4.46** | "One calm workspace" eyebrow |
+| `/65`   | 7.54 ✅  | 5.24 ✅  | "Club Operations"            |
+| `/70`   | 8.54 ✅  | 6.18 ✅  | body copy                    |
+| `/80`   | 10.79 ✅ | 8.65 ✅  | feature list                 |
+
+Both failing rows were raised to `/65`, which is now the **floor for faded text
+on this panel**. Note `/60` at 4.46:1 — under AA by 0.04, close enough that axe
+reported only the `/50` node; it was found by measuring the whole scale rather
+than by fixing what the scanner pointed at.
+
+`text-muted-foreground/40` on the calendar's **disabled** day buttons is left
+alone: disabled controls are exempt from 1.4.3, and axe skips them.
+
+⚠️ **The signed-in pages have not been scanned in dark mode yet.** Those scans
+skip without `E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD`, which CI does not set,
+so only the login page has been through both themes. Expect the first
+credentialed run to find more, the same way this one did.
+
 Chips are otherwise colour-neutral where it matters: the chip body takes the
 status tint and both its lines **inherit** that colour, so no unchecked pair is
 introduced, and hover is a ring rather than a background swap for the same
