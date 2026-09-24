@@ -99,6 +99,34 @@ export function TaskBoard({
   const announced = useRef("");
 
   /**
+   * `@dnd-kit/react`'s OptimisticSortingPlugin physically relocates a dragged
+   * card's real DOM node into the destination column's own container during
+   * the drag itself (before this component ever re-renders) — see
+   * `node_modules/@dnd-kit/dom/sortable.js`. Each status here is a separate
+   * `<div>` (`BoardColumn`), so a cross-column move leaves React's fiber tree
+   * believing the node is still a child of its old column's `<div>` while the
+   * real DOM has it under the new one. React can only reconcile a keyed move
+   * within one parent; asking it to reconcile a node across two parents after
+   * a plugin already relocated it throws `NotFoundError: Failed to execute
+   * 'removeChild' — the node to be removed is not a child of this node` on
+   * commit (github.com/timendum/freshportal/issues/63 hits the identical
+   * failure in an unrelated codebase with the same multi-parent-column
+   * layout). A same-column reorder never crosses a DOM parent boundary, so it
+   * is unaffected and does not bump this.
+   *
+   * Bumping this on every cross-column move and folding it into each
+   * `BoardColumn`'s key forces React to throw away its stale picture of both
+   * the source and destination columns and mount fresh DOM for them on the
+   * very next render — the render that already carries the moved card in its
+   * new column, from `onMove`'s optimistic update. Both `setState` calls
+   * happen synchronously inside this one event handler, so React 19's
+   * automatic batching commits them together: there is no intermediate frame
+   * where the stale column tree is asked to reconcile against the relocated
+   * node.
+   */
+  const [boardVersion, setBoardVersion] = useState(0);
+
+  /**
    * The board as rendered, in one place. Both the columns below and the drop
    * handler read it, so the order on screen and the order a drop reasons about
    * cannot disagree.
@@ -144,6 +172,11 @@ export function TaskBoard({
       next.length === current.length &&
       next.every((id, index) => current[index] === id);
     if (unmoved) return;
+
+    // See the boardVersion comment above: a cross-column move needs both
+    // columns remounted, or React tries to reconcile a node the plugin has
+    // already moved to a different parent and crashes on commit.
+    if (task.status !== landing.status) setBoardVersion((version) => version + 1);
 
     onMove(task, landing.status, after);
   }
@@ -213,7 +246,7 @@ export function TaskBoard({
         <section aria-label="Task board" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {layout.map((column) => (
             <BoardColumn
-              key={column.status}
+              key={`${column.status}-${boardVersion}`}
               column={column}
               tasks={column.tasks}
               events={events}
