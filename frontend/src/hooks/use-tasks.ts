@@ -8,6 +8,7 @@ import {
   type UpdateTask,
 } from "@ctp/shared";
 import { useCallback, useEffect, useState } from "react";
+import { reorder } from "@/lib/task-order";
 
 type TasksState =
   { status: "loading" } | { status: "ok"; items: Task[] } | { status: "error"; message: string };
@@ -153,55 +154,68 @@ export function useTasks({
   }, []);
 
   /**
-   * Optimistic, because the drop has already moved the card: the board commits
-   * the new column immediately and the write either confirms it with the
-   * server's row or puts the original task back and surfaces the error.
+   * Moves a card: the column, and the slot inside it.
+   *
+   * Optimistic, because the drop has already moved the card on screen — the
+   * library re-slots it during the drag and reverts its own DOM work if the drag
+   * is cancelled, so the commit belongs here. The board's new order is computed
+   * with the same `insertAfter` the endpoint uses, so what is on screen and what
+   * is stored agree.
+   *
+   * The failure path restores the whole snapshot, not the one card: a reorder
+   * renumbers its neighbours, and putting only the moved task back would leave
+   * the column half-renumbered.
    */
-  const changeStatus = useCallback(async (task: Task, status: TaskStatus) => {
-    if (task.status === status) return true;
-    setBusy(task.id);
-    setMutationError(undefined);
-    setState((current) =>
-      current.status === "ok"
-        ? {
-            ...current,
-            items: current.items.map((item) => (item.id === task.id ? { ...item, status } : item)),
-          }
-        : current,
-    );
-    try {
-      const response = await fetch(`/api/tasks/${task.id}/status`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!response.ok) throw new Error("Failed to update task");
-      const updated = taskResponseSchema.parse(await response.json()).task;
+  const moveTask = useCallback(
+    async (task: Task, status: TaskStatus, after: string | null) => {
+      const previous = state.status === "ok" ? state.items : [];
+      setBusy(task.id);
+      setMutationError(undefined);
       setState((current) =>
         current.status === "ok"
-          ? {
-              ...current,
-              items: current.items.map((item) => (item.id === updated.id ? updated : item)),
-            }
+          ? { ...current, items: reorder(current.items, { id: task.id, status, after }) }
           : current,
       );
-      return true;
-    } catch (cause) {
-      setState((current) =>
-        current.status === "ok"
-          ? {
-              ...current,
-              items: current.items.map((item) => (item.id === task.id ? task : item)),
-            }
-          : current,
-      );
-      setMutationError(cause instanceof Error ? cause.message : "Failed to update task");
-      return false;
-    } finally {
-      setBusy(undefined);
-    }
-  }, []);
+      try {
+        const response = await fetch(`/api/tasks/${task.id}/status`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status, after }),
+        });
+        if (!response.ok) throw new Error("Failed to update task");
+        const updated = taskResponseSchema.parse(await response.json()).task;
+        setState((current) =>
+          current.status === "ok"
+            ? {
+                ...current,
+                items: current.items.map((item) =>
+                  item.id === updated.id
+                    ? // The stored slot counts the whole column, while a filtered
+                      // board shows a subset of it — taking the server's number
+                      // here could collide with a neighbour's and shuffle the
+                      // cards under the pointer. The local column stays
+                      // self-consistent and the next read brings the stored
+                      // numbering.
+                      { ...updated, boardOrder: item.boardOrder }
+                    : item,
+                ),
+              }
+            : current,
+        );
+        return true;
+      } catch (cause) {
+        setState((current) =>
+          current.status === "ok" ? { ...current, items: previous } : current,
+        );
+        setMutationError(cause instanceof Error ? cause.message : "Failed to update task");
+        return false;
+      } finally {
+        setBusy(undefined);
+      }
+    },
+    [state],
+  );
 
   const changeEvent = useCallback(async (task: Task, eventId: string | null) => {
     if (task.eventId === eventId) return;
@@ -231,5 +245,5 @@ export function useTasks({
     }
   }, []);
 
-  return { state, busy, mutationError, createTask, changeStatus, changeEvent, updateTask };
+  return { state, busy, mutationError, createTask, moveTask, changeEvent, updateTask };
 }

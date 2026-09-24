@@ -8,10 +8,31 @@ import { TasksPage } from "./tasks";
  * Stands in for the drag provider: jsdom has no layout, so dnd-kit's own
  * collision detection can never report a drop here. The board still owns the
  * decision — this only hands it the operation a real drop would produce.
+ * `SortableFake` is what the mocked `isSortable` accepts, so the board's own
+ * guard runs rather than being bypassed.
  */
-const dnd = vi.hoisted(() => ({
-  onDragEnd: undefined as ((event: unknown) => void) | undefined,
-}));
+const dnd = vi.hoisted(() => {
+  class SortableFake {
+    id: string;
+    index: number;
+    group: string;
+    data?: Record<string, unknown>;
+
+    constructor(fields: {
+      id: string;
+      index: number;
+      group: string;
+      data?: Record<string, unknown>;
+    }) {
+      this.id = fields.id;
+      this.index = fields.index;
+      this.group = fields.group;
+      this.data = fields.data;
+    }
+  }
+
+  return { onDragEnd: undefined as ((event: unknown) => void) | undefined, SortableFake };
+});
 
 vi.mock("@dnd-kit/react", () => ({
   DragDropProvider: ({
@@ -26,6 +47,11 @@ vi.mock("@dnd-kit/react", () => ({
   },
   useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
   useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
+
+vi.mock("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  isSortable: (element: unknown) => element instanceof dnd.SortableFake,
 }));
 
 vi.mock("@/hooks/use-events", () => ({
@@ -79,16 +105,41 @@ function columnOf(title: string, label: string) {
   return within(column).queryByText(title) !== null;
 }
 
-function dropCard(status: string) {
-  act(() => {
-    dnd.onDragEnd?.({
-      canceled: false,
-      operation: {
-        source: { id: taskId, data: { title: "Confirm venue access", status: "todo" } },
-        target: { id: status },
-      },
-    });
+/** The card as the drag has left it: `index` is its landed slot in `group`. */
+function dragged(index: number, group = "todo") {
+  return new dnd.SortableFake({
+    id: taskId,
+    index,
+    group,
+    data: { title: "Confirm venue access", status: "todo" },
   });
+}
+
+/** Another card in a column, as the drop target. */
+function landedOn(id: string, index: number, group = "todo") {
+  return new dnd.SortableFake({ id, index, group });
+}
+
+/** The column body under the cards: one droppable, with no slot to report. */
+function columnBody(status: string) {
+  return { id: status };
+}
+
+function dropCard(target: unknown, source: unknown = dragged(0)) {
+  act(() => {
+    dnd.onDragEnd?.({ canceled: false, operation: { source, target } });
+  });
+}
+
+/** The card titles of one column, in the order the DOM shows them. */
+function cardsIn(label: string) {
+  const column = screen.getByRole("heading", { name: label }).closest("section");
+  if (!column) throw new Error(`No column for ${label}`);
+  const heading = within(column).getByRole("heading", { name: label });
+  return within(column)
+    .getAllByRole("heading", { level: 3 })
+    .filter((node) => node !== heading)
+    .map((node) => node.textContent);
 }
 
 /** The dialog links to `/events/:id`, so the page needs a router in scope. */
@@ -520,7 +571,7 @@ describe("TasksPage", () => {
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
     expect(columnOf("Confirm venue access", "To Do")).toBe(true);
 
-    dropCard("in_progress");
+    dropCard(columnBody("in_progress"), dragged(0, "in_progress"));
 
     // No await between the drop and this assertion: the column changed before
     // the request could have answered.
@@ -532,20 +583,68 @@ describe("TasksPage", () => {
         `/api/tasks/${task.id}/status`,
         expect.objectContaining({
           method: "PATCH",
-          body: JSON.stringify({ status: "in_progress" }),
+          // The destination was empty, so the card lands at the top of it.
+          body: JSON.stringify({ status: "in_progress", after: null }),
         }),
       ),
     );
     expect(columnOf("Confirm venue access", "In Progress")).toBe(true);
   });
 
-  it("puts the card back in its own column when the status write fails", async () => {
-    const task = buildTask();
+  // The reported case: the first card dragged below the last stays below it, on
+  // screen straight away and in the request that follows.
+  it("reorders within the column optimistically and sends the anchor", async () => {
+    const first = buildTask();
+    const second = buildTask({
+      id: "018f3a4b-0000-7000-8000-000000000002",
+      title: "Book the rig",
+      boardOrder: 1,
+    });
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === `/api/tasks/${task.id}/status` && init?.method === "PATCH")
+      if (url === `/api/tasks/${first.id}/status` && init?.method === "PATCH")
+        return Promise.resolve(response({ task: { ...first, boardOrder: 1 } }));
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [first, second] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
+    expect(cardsIn("To Do")).toEqual(["Confirm venue access", "Book the rig"]);
+
+    // Dropped on the last card: the library has already re-slotted it to 1.
+    dropCard(landedOn(second.id, 1), dragged(1));
+
+    expect(cardsIn("To Do")).toEqual(["Book the rig", "Confirm venue access"]);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${first.id}/status`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "todo", after: second.id }),
+        }),
+      ),
+    );
+    // The response carries the stored slot, but the local column keeps its own
+    // numbering — the card does not jump when the answer lands.
+    expect(cardsIn("To Do")).toEqual(["Book the rig", "Confirm venue access"]);
+  });
+
+  it("puts the whole column back when the move fails", async () => {
+    const first = buildTask();
+    const second = buildTask({
+      id: "018f3a4b-0000-7000-8000-000000000002",
+      title: "Book the rig",
+      boardOrder: 1,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/tasks/${first.id}/status` && init?.method === "PATCH")
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [first, second] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -554,11 +653,13 @@ describe("TasksPage", () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Confirm venue access")).toBeInTheDocument());
 
-    dropCard("in_progress");
+    dropCard(landedOn(second.id, 1), dragged(1));
+    expect(cardsIn("To Do")).toEqual(["Book the rig", "Confirm venue access"]);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to update task. Try again.");
-    expect(columnOf("Confirm venue access", "To Do")).toBe(true);
-    expect(columnOf("Confirm venue access", "In Progress")).toBe(false);
+    // A reorder renumbers the cards around it, so the revert is the column it
+    // was, not the one card.
+    expect(cardsIn("To Do")).toEqual(["Confirm venue access", "Book the rig"]);
     // The handle is live again, so the user can retry the drag.
     expect(screen.getByRole("button", { name: "Move Confirm venue access" })).toBeEnabled();
   });
@@ -796,7 +897,27 @@ function roster() {
   ];
 }
 
-function buildTask() {
+/** A task as `/api/tasks` reports it: JSON shapes, which the hook parses. */
+interface TaskFixture {
+  id: string;
+  eventId: string | null;
+  teamId: string | null;
+  assigneeIds: string[];
+  creator: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueAt: string | null;
+  boardOrder: number;
+  minTier: number;
+  completedAt: string | null;
+  aiRunId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function buildTask(overrides: Partial<TaskFixture> = {}): TaskFixture {
   return {
     id: taskId,
     eventId: null,
@@ -814,5 +935,6 @@ function buildTask() {
     aiRunId: null,
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
+    ...overrides,
   };
 }

@@ -7,13 +7,34 @@ import { describe, expect, it, vi } from "vitest";
 import { TaskBoard } from "./task-board";
 
 /**
- * Only the provider is stood in for: it captures the board's `onDragEnd` so a
- * test can hand it the operation a real drop would produce. jsdom has no layout,
- * so dnd-kit's own collision detection could never report a drop here.
+ * Only the provider and the drag primitives are stood in for: the provider
+ * captures the board's `onDragEnd` so a test can hand it the operation a real
+ * drop would produce. jsdom has no layout, so dnd-kit's own collision detection
+ * could never report a drop here. `SortableFake` is what `isSortable` accepts,
+ * so the board's own guard runs rather than being bypassed by the mock.
  */
-const dnd = vi.hoisted(() => ({
-  onDragEnd: undefined as ((event: unknown) => void) | undefined,
-}));
+const dnd = vi.hoisted(() => {
+  class SortableFake {
+    id: string;
+    index: number;
+    group: string;
+    data?: Record<string, unknown>;
+
+    constructor(fields: {
+      id: string;
+      index: number;
+      group: string;
+      data?: Record<string, unknown>;
+    }) {
+      this.id = fields.id;
+      this.index = fields.index;
+      this.group = fields.group;
+      this.data = fields.data;
+    }
+  }
+
+  return { onDragEnd: undefined as ((event: unknown) => void) | undefined, SortableFake };
+});
 
 vi.mock("@dnd-kit/react", () => ({
   DragDropProvider: ({
@@ -28,6 +49,11 @@ vi.mock("@dnd-kit/react", () => ({
   },
   useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
   useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
+
+vi.mock("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  isSortable: (element: unknown) => element instanceof dnd.SortableFake,
 }));
 
 const task: Task = {
@@ -62,15 +88,53 @@ const members = [
   },
 ];
 
-function drop(overrides: { targetId?: string; canceled?: boolean } = {}) {
+/** A second card in the same column, for the reordering cases. */
+const below: Task = {
+  ...task,
+  id: "018f3a4b-0000-7000-8000-000000000003",
+  title: "Book the rig",
+  boardOrder: 1,
+};
+
+/** Two cards in another column, so a cross-column drop has a slot to name. */
+const other: Task = {
+  ...task,
+  id: "018f3a4b-0000-7000-8000-000000000004",
+  title: "Print programmes",
+  status: "in_progress",
+  boardOrder: 0,
+};
+const otherBelow: Task = {
+  ...task,
+  id: "018f3a4b-0000-7000-8000-000000000005",
+  title: "Hire chairs",
+  status: "in_progress",
+  boardOrder: 1,
+};
+
+/** A card as the drag has already left it: its column and slot are the landed ones. */
+function dragged(card: Task, index: number, group: Task["status"] = card.status) {
+  return new dnd.SortableFake({
+    id: card.id,
+    index,
+    group,
+    data: { title: card.title, status: card.status },
+  });
+}
+
+/** A card sitting in a column, as the drop target. */
+function landedOn(card: Task, index: number, group: Task["status"] = card.status) {
+  return new dnd.SortableFake({ id: card.id, index, group });
+}
+
+/** The column body under the cards: one droppable, with no slot to report. */
+function columnBody(status: Task["status"]) {
+  return { id: status };
+}
+
+function drop(operation: { source: unknown; target: unknown }, canceled = false) {
   act(() => {
-    dnd.onDragEnd?.({
-      canceled: overrides.canceled ?? false,
-      operation: {
-        source: { id: task.id, data: { title: task.title, status: task.status } },
-        target: overrides.targetId === undefined ? null : { id: overrides.targetId },
-      },
-    });
+    dnd.onDragEnd?.({ canceled, operation });
   });
 }
 
@@ -87,39 +151,113 @@ function renderBoard(ui: ReactElement) {
 }
 
 describe("TaskBoard", () => {
-  it("changes status when a card is dropped on another column", () => {
-    const onStatusChange = vi.fn();
+  it("moves a card into another column when it is dropped on the column body", () => {
+    const onMove = vi.fn();
     renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={onStatusChange}
+        onMove={onMove}
       />,
     );
 
-    drop({ targetId: "in_progress" });
+    // The card is the only one in its column, so the optimistic sort has
+    // nothing to reindex: it is still at 0 when it lands.
+    drop({ source: dragged(task, 0, "in_progress"), target: columnBody("in_progress") });
 
-    expect(onStatusChange).toHaveBeenCalledWith(task, "in_progress");
+    expect(onMove).toHaveBeenCalledWith(task, "in_progress", null);
   });
 
-  it("writes nothing for a cancelled drag, a same-column drop, or an unknown target", () => {
-    const onStatusChange = vi.fn();
+  it("names the card above the slot it landed in", () => {
+    const onMove = vi.fn();
+    renderBoard(
+      <TaskBoard
+        tasks={[task, below, other, otherBelow]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onMove={onMove}
+      />,
+    );
+
+    // Dropped on the second card of the other column: the library has already
+    // re-slotted it to 1 there, so what it now follows is that column's first.
+    drop({
+      source: dragged(task, 1, "in_progress"),
+      target: landedOn(otherBelow, 1, "in_progress"),
+    });
+
+    expect(onMove).toHaveBeenCalledWith(task, "in_progress", other.id);
+  });
+
+  it("moves the first card below the last within its own column", () => {
+    const onMove = vi.fn();
+    renderBoard(
+      <TaskBoard
+        tasks={[task, below]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onMove={onMove}
+      />,
+    );
+
+    drop({ source: dragged(task, 1), target: landedOn(below, 1) });
+
+    expect(onMove).toHaveBeenCalledWith(task, "todo", below.id);
+  });
+
+  it("asks for the end of the column when a card is dropped into empty space", () => {
+    const onMove = vi.fn();
+    renderBoard(
+      <TaskBoard
+        tasks={[task, below]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onMove={onMove}
+      />,
+    );
+
+    // A column body has no slot to report, so the library has not reindexed the
+    // source — it is only the board that knows this means the end.
+    drop({ source: dragged(below, 1, "in_progress"), target: columnBody("in_progress") });
+
+    expect(onMove).toHaveBeenCalledWith(below, "in_progress", null);
+  });
+
+  it("writes nothing when the drop leaves the column as it was", () => {
+    const onMove = vi.fn();
+    renderBoard(
+      <TaskBoard
+        tasks={[task, below]}
+        members={members}
+        emptyMessage="No tasks are linked to this event yet."
+        onMove={onMove}
+      />,
+    );
+
+    // Dropped back on its own slot: nothing below it to name, and the column
+    // reads the same either way.
+    drop({ source: dragged(task, 0), target: landedOn(task, 0) });
+
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for a cancelled drag, a drop outside a column, or an unknown target", () => {
+    const onMove = vi.fn();
     renderBoard(
       <TaskBoard
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={onStatusChange}
+        onMove={onMove}
       />,
     );
 
-    drop({ targetId: "in_progress", canceled: true });
-    drop({ targetId: "todo" });
-    drop({ targetId: "not-a-status" });
-    drop();
+    drop({ source: dragged(task, 0, "in_progress"), target: columnBody("in_progress") }, true);
+    drop({ source: dragged(task, 0), target: null });
+    drop({ source: dragged(task, 0), target: { id: "not-a-status" } });
 
-    expect(onStatusChange).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
   });
 
   it("gives the drag handle and the open action distinct accessible names", () => {
@@ -128,7 +266,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -143,7 +281,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -156,7 +294,7 @@ describe("TaskBoard", () => {
       <TaskBoard
         tasks={[]}
         emptyMessage="No tasks yet. Add the first task above."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -170,7 +308,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -192,7 +330,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -211,7 +349,7 @@ describe("TaskBoard", () => {
         tasks={[{ ...task, assigneeIds: [] }]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -232,7 +370,7 @@ describe("TaskBoard", () => {
         ]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -252,7 +390,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onUpdate={onUpdate}
       />,
     );
@@ -292,7 +430,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
       />,
     );
 
@@ -314,7 +452,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onUpdate={onUpdate}
       />,
     );

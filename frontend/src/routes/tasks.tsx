@@ -241,7 +241,7 @@ export function TasksPage() {
                 ? `No tasks match these filters: ${describeFilters(filters, query, eventItems)}. Use Clear Filters to widen the board.`
                 : "No tasks yet. Use Add Tasks to create the first one."
             }
-            onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
+            onMove={(task, status, after) => void tasks.moveTask(task, status, after)}
             onEventChange={(task, eventId) => void tasks.changeEvent(task, eventId)}
             onUpdate={(task, patch) => void tasks.updateTask(task, patch)}
           />

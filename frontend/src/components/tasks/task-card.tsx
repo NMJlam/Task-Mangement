@@ -1,5 +1,5 @@
 import type { Task } from "@ctp/shared";
-import { useDraggable } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
 import { GripVertical, UserRound } from "lucide-react";
 import { PriorityDot } from "@/components/common/priority-dot";
 import { Button } from "@/components/ui/button";
@@ -18,26 +18,38 @@ const shortDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
  * two meanings at once, and a drag that starts from the handle leaves the body
  * free for the click, Enter and Space that open the dialog.
  *
+ * The handle moves the card within its column as well as between columns. That
+ * is why it is a *sortable* and not a plain draggable: `index` is the card's
+ * place in the rendered column and `group` is its column, which is what lets
+ * the library re-slot cards during the drag. The status is still the column —
+ * `group` and `status` are the same value.
+ *
  * The status selector is gone: the column a card sits in IS its status, and the
  * drag is what changes it.
  */
 export function TaskCard({
   task,
+  index,
   disabled,
   assigneeCount,
   eventTitle,
   onOpen,
 }: {
   task: Task;
+  /** The card's place in its column, as rendered. */
+  index: number;
   disabled: boolean;
   /** Shown only where assignments are editable (the `/tasks` board). */
   assigneeCount?: number;
   eventTitle?: string;
   onOpen: (task: Task) => void;
 }) {
-  const { ref, handleRef, isDragging } = useDraggable({
+  const { ref, handleRef, isDragging } = useSortable({
     id: task.id,
+    index,
+    group: task.status,
     type: "task",
+    accept: "task",
     disabled,
     data: { title: task.title, status: task.status },
   });
