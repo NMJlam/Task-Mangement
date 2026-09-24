@@ -287,11 +287,16 @@ entirely — which is what keeps standing and event-wide tasks legal.
 
 `board_order` is an explicit integer because a Kanban board is draggable and
 sorting by date is not. Renumber the affected column in one transaction per
-move. Contiguous per `(event_id, status)`, with a NULL `event_id` forming a
-single standing board. If renumbering is outgrown, fractional ranking keys are
-the upgrade.
+move. A column is every card of one `status` — **across events** — because that
+is the column a reader sees: `/tasks` shows one column made of every event's
+cards, and scoping the renumber to the moved card's own event leaves a card
+dropped between two other events' cards nowhere near where it was dropped on
+the next read. Contiguous per `status`, with the standing board's cards sharing
+the same sequence. If renumbering is outgrown, fractional ranking keys are the
+upgrade.
 
-Indexes: `task_board_idx (event_id, status, board_order)`;
+Indexes: `task_board_idx (event_id, status, board_order)` for an event's board;
+`task_status_board_idx (status, board_order)` for the renumber's own read;
 `task_overdue_idx (due_at) WHERE status <> 'done' AND due_at IS NOT NULL`.
 
 No assignee index here — the assignee set is not a column. "My open tasks" goes

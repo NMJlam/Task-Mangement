@@ -50,10 +50,11 @@ export const tasks = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }),
 
     // Explicit integer because a Kanban board is draggable and sorting by date
-    // is not. Renumber the affected column in one transaction per move.
-    // Contiguous per (event_id, status); a NULL event_id forms the single
-    // standing board. If renumbering is outgrown, fractional ranking keys are
-    // the upgrade.
+    // is not. Renumber the affected column in one transaction per move, and the
+    // board is the column: contiguous per `status`, across events and the
+    // standing board alike, so one drag lands where it was dropped on any board
+    // that shows that column (`/tasks` mixes every event's cards).
+    // If renumbering is outgrown, fractional ranking keys are the upgrade.
     boardOrder: integer("board_order").notNull().default(0),
 
     minTier: smallint("min_tier").notNull().default(0),
@@ -86,6 +87,11 @@ export const tasks = pgTable(
     // Hot read: the board for one event, in column order. Also serves the
     // standing board, since NULLs are indexed and event_id leads the key.
     index("task_board_idx").on(table.eventId, table.status, table.boardOrder),
+
+    // The renumber's own read — every card of one status, in stored order — and
+    // the client-side order the `/tasks` board sorts each column by. The index
+    // above cannot serve it: its leading column is the event.
+    index("task_status_board_idx").on(table.status, table.boardOrder),
 
     // Overdue is never a stored flag — a stored flag is wrong every midnight.
     // It is status <> 'done' AND due_at < now(), and this serves it.

@@ -232,16 +232,16 @@ A task object:
 }
 ```
 
-| Endpoint                      | Who    | Input                                                   | Success                                |
-| ----------------------------- | ------ | ------------------------------------------------------- | -------------------------------------- |
-| `GET /api/tasks`              | tier 0 | `?eventId&teamId&status&priority&assignee&limit&offset` | `200 { tasks: [] }`, newest first      |
-| `GET /api/tasks/overdue`      | tier 0 | `?eventId&teamId&assignee&limit&offset`                 | `200 { tasks: [] }`, soonest due first |
-| `GET /api/tasks/:id`          | tier 0 | —                                                       | `200 { task }`                         |
-| `POST /api/tasks`             | tier 0 | body below                                              | `201 { task }`                         |
-| `POST /api/tasks/bulk`        | tier 1 | `{ "tasks": [ … ] }`, 1–100                             | `201 { tasks: [] }`                    |
-| `PATCH /api/tasks/:id`        | tier 0 | any subset of the create body                           | `200 { task }`                         |
-| `PATCH /api/tasks/:id/status` | tier 0 | `{ "status": "done" }`                                  | `200 { task }`                         |
-| `DELETE /api/tasks/:id`       | tier 1 | —                                                       | `204`                                  |
+| Endpoint                      | Who    | Input                                                                    | Success                                |
+| ----------------------------- | ------ | ------------------------------------------------------------------------ | -------------------------------------- |
+| `GET /api/tasks`              | tier 0 | `?eventId&teamId&status&priority&assignee&limit&offset`                  | `200 { tasks: [] }`, newest first      |
+| `GET /api/tasks/overdue`      | tier 0 | `?eventId&teamId&assignee&limit&offset`                                  | `200 { tasks: [] }`, soonest due first |
+| `GET /api/tasks/:id`          | tier 0 | —                                                                        | `200 { task }`                         |
+| `POST /api/tasks`             | tier 0 | body below                                                               | `201 { task }`                         |
+| `POST /api/tasks/bulk`        | tier 1 | `{ "tasks": [ … ] }`, 1–100                                              | `201 { tasks: [] }`                    |
+| `PATCH /api/tasks/:id`        | tier 0 | any subset of the create body                                            | `200 { task }`                         |
+| `PATCH /api/tasks/:id/status` | tier 0 | `{ "status": "done" }` or `{ "status": "todo", "after": "<task uuid>" }` | `200 { task }`                         |
+| `DELETE /api/tasks/:id`       | tier 1 | —                                                                        | `204`                                  |
 
 `limit` is 1–100 (default 50), `offset` defaults to 0. Both `422` if out of
 range. `assignee` stays singular and filters by membership: it returns every
@@ -285,7 +285,17 @@ Things worth knowing before you test:
   patch laid over the stored task, so changing only `teamId` is fine;
   `"eventId": null` unlinks.
 - **`completedAt` is derived from `status`.** Moving to `done` stamps it; moving
-  out clears it. You never send it.
+  out clears it; a reorder inside `done` keeps the stamp it already had. You
+  never send it.
+- **`after` places the card within its new column.** It is the id of the card
+  the moved one now follows; `null` means the top of the column, and an id that
+  is not in the destination column (a stale client) appends rather than jumping
+  to the top. Omitting `after` keeps the stored slot — the pure status change,
+  unchanged. A column is every task of that status, whichever event it belongs
+  to, and it is renumbered `0..n-1` in one transaction with the status write;
+  the source column is left with a gap, which is invisible because every reader
+  orders by the value. A reorder is not a status change, so it does not re-stamp
+  `completedAt`.
 - **`PATCH` needs at least one field**; `{}` is a `422`.
 - **Bulk is all-or-nothing** — one bad reference writes nothing. Each task in
   `tasks` takes its own `assigneeIds`, and every link is written in the same

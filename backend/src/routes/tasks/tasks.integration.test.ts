@@ -1,5 +1,5 @@
 import type { Role } from "@ctp/shared";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
@@ -628,6 +628,245 @@ describe("/api/tasks", () => {
 
       expect(reopened.status).toBe(200);
       expect(reopened.body.task.completedAt).toBeNull();
+    });
+
+    /**
+     * One column as the board reads it: stored slot ascending, and every card of
+     * that status — events and the standing board together, which is what the
+     * endpoint renumbers and what `/tasks` shows in one column.
+     */
+    async function column(status: "todo" | "in_progress" | "done") {
+      return db
+        .select({ id: tasks.id, boardOrder: tasks.boardOrder })
+        .from(tasks)
+        .where(eq(tasks.status, status))
+        .orderBy(asc(tasks.boardOrder));
+    }
+
+    /** The ids of `mine`, in the order the column stores them. */
+    function orderOf(rows: readonly { id: string }[], mine: readonly string[]) {
+      const wanted = new Set(mine);
+      return rows.map((row) => row.id).filter((id) => wanted.has(id));
+    }
+
+    /** A renumber leaves the whole column contiguous from 0. */
+    function slots(rows: readonly { boardOrder: number }[]) {
+      return rows.map((row) => row.boardOrder);
+    }
+
+    /** A team with a workstream declared on `eventId`, which the composite FK needs. */
+    async function linkedTeam(eventId: string) {
+      const { id: teamId } = await team();
+      await db.insert(workstreams).values({ id: newId(), eventId, teamId });
+      return teamId;
+    }
+
+    it("renumbers the column when the last card is dropped above the first", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const first = await seedTask(teamId, { eventId, boardOrder: 0, title: "First" });
+      const second = await seedTask(teamId, { eventId, boardOrder: 1, title: "Second" });
+      const third = await seedTask(teamId, { eventId, boardOrder: 2, title: "Third" });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${third.id}/status`)
+        .send({ status: "todo", after: null });
+
+      expect(response.status).toBe(200);
+      // The top of the whole column, not just of this event's cards.
+      expect(response.body.task).toMatchObject({ id: third.id, boardOrder: 0 });
+      const rows = await column("todo");
+      expect(orderOf(rows, [first.id, second.id, third.id])).toEqual([
+        third.id,
+        first.id,
+        second.id,
+      ]);
+      expect(slots(rows)).toEqual(rows.map((_, index) => index));
+    });
+
+    it("lands a card directly after a named neighbour in its own column", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const first = await seedTask(teamId, { eventId, boardOrder: 0, title: "First" });
+      const second = await seedTask(teamId, { eventId, boardOrder: 1, title: "Second" });
+      const third = await seedTask(teamId, { eventId, boardOrder: 2, title: "Third" });
+      signedInAs(actor);
+
+      // The reported case: the second card dropped below the third becomes the
+      // third, and the third becomes the second.
+      const response = await request(app)
+        .patch(`/api/tasks/${second.id}/status`)
+        .send({ status: "todo", after: third.id });
+
+      expect(response.status).toBe(200);
+      expect(orderOf(await column("todo"), [first.id, second.id, third.id])).toEqual([
+        first.id,
+        third.id,
+        second.id,
+      ]);
+    });
+
+    it("renumbers the destination column only, leaving the source's gap alone", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const first = await seedTask(teamId, { eventId, boardOrder: 0, title: "First" });
+      const second = await seedTask(teamId, { eventId, boardOrder: 1, title: "Second" });
+      const leaving = await seedTask(teamId, { eventId, boardOrder: 2, title: "Leaving" });
+      const anchor = await seedTask(teamId, {
+        eventId,
+        status: "in_progress",
+        boardOrder: 0,
+        title: "Anchor",
+      });
+      const below = await seedTask(teamId, {
+        eventId,
+        status: "in_progress",
+        boardOrder: 1,
+        title: "Below",
+      });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${leaving.id}/status`)
+        .send({ status: "in_progress", after: anchor.id });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task).toMatchObject({ id: leaving.id, status: "in_progress" });
+      expect(orderOf(await column("in_progress"), [anchor.id, leaving.id, below.id])).toEqual([
+        anchor.id,
+        leaving.id,
+        below.id,
+      ]);
+      // A gap where the card left reads identically, because every reader orders
+      // by value — so the source column is not rewritten.
+      expect(
+        (await column("todo")).filter((row) => row.id === first.id || row.id === second.id),
+      ).toEqual([
+        { id: first.id, boardOrder: 0 },
+        { id: second.id, boardOrder: 1 },
+      ]);
+    });
+
+    it("appends when the anchor is not in the destination column", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const first = await seedTask(teamId, { eventId, boardOrder: 0, title: "First" });
+      const second = await seedTask(teamId, { eventId, boardOrder: 1, title: "Second" });
+      const elsewhere = await seedTask(teamId, {
+        eventId,
+        status: "in_progress",
+        boardOrder: 0,
+        title: "Elsewhere",
+      });
+      signedInAs(actor);
+
+      // A stale client naming a card in another column must not be able to move
+      // this one to the top.
+      const response = await request(app)
+        .patch(`/api/tasks/${first.id}/status`)
+        .send({ status: "todo", after: elsewhere.id });
+
+      expect(response.status).toBe(200);
+      expect(orderOf(await column("todo"), [first.id, second.id])).toEqual([second.id, first.id]);
+    });
+
+    // The backwards-compatible path: a caller that omits `after` gets exactly
+    // the status change this endpoint has always made, slot untouched.
+    it("leaves every slot alone when no anchor is given", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const staying = await seedTask(teamId, { eventId, boardOrder: 0, title: "Staying" });
+      const leaving = await seedTask(teamId, { eventId, boardOrder: 7, title: "Leaving" });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${leaving.id}/status`)
+        .send({ status: "in_progress" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.task).toMatchObject({ id: leaving.id, boardOrder: 7 });
+      expect((await column("todo")).find((row) => row.id === staying.id)).toEqual({
+        id: staying.id,
+        boardOrder: 0,
+      });
+      expect((await column("in_progress")).find((row) => row.id === leaving.id)).toEqual({
+        id: leaving.id,
+        boardOrder: 7,
+      });
+    });
+
+    // The board is the column, and `/tasks` shows one column across every event,
+    // so a card dropped between two other events' cards must stay there.
+    it("honours an anchor that belongs to another event's board", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const other = await event({ title: "test-task-other-event" });
+      const otherTeamId = (await team("test-task-other-team")).id;
+      await db.insert(workstreams).values({ id: newId(), eventId: other.id, teamId: otherTeamId });
+      const mine = await seedTask(teamId, { eventId, boardOrder: 0, title: "Mine" });
+      const theirs = await seedTask(otherTeamId, {
+        eventId: other.id,
+        boardOrder: 1,
+        title: "Theirs",
+      });
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${mine.id}/status`)
+        .send({ status: "todo", after: theirs.id });
+
+      expect(response.status).toBe(200);
+      const rows = await column("todo");
+      expect(orderOf(rows, [mine.id, theirs.id])).toEqual([theirs.id, mine.id]);
+      expect(response.body.task.boardOrder).toBe(
+        rows.find((row) => row.id === mine.id)?.boardOrder ?? -1,
+      );
+    });
+
+    // A reorder re-writes the same status, so the timestamp must survive it —
+    // re-dating finished work is not what a drop asks for.
+    it("keeps completed_at when a card is reordered inside done", async () => {
+      const actor = await member("officer", "officer");
+      const { id: eventId } = await event();
+      const teamId = await linkedTeam(eventId);
+      const finished = new Date("2026-05-01T00:00:00.000Z");
+      const first = await seedTask(teamId, {
+        eventId,
+        status: "done",
+        boardOrder: 0,
+        completedAt: finished,
+      });
+      const second = await seedTask(teamId, {
+        eventId,
+        status: "done",
+        boardOrder: 1,
+        completedAt: finished,
+      });
+      const open = await seedTask(teamId, { eventId, boardOrder: 0, title: "Open" });
+      signedInAs(actor);
+
+      const reordered = await request(app)
+        .patch(`/api/tasks/${second.id}/status`)
+        .send({ status: "done", after: null });
+
+      expect(reordered.status).toBe(200);
+      expect(reordered.body.task.completedAt).toBe(finished.toISOString());
+      expect(orderOf(await column("done"), [first.id, second.id])).toEqual([second.id, first.id]);
+
+      // The ordinary way in still stamps, or the CHECK would reject the row.
+      const completed = await request(app)
+        .patch(`/api/tasks/${open.id}/status`)
+        .send({ status: "done" });
+
+      expect(completed.status).toBe(200);
+      expect(completed.body.task.completedAt).not.toBeNull();
     });
   });
 

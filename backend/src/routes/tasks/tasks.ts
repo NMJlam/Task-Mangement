@@ -24,7 +24,13 @@ import { newId } from "../../db/id.js";
 import { appUsers, events, taskAssignees, tasks, teams } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { visibleEvents, type Queryable, type Tx } from "../events/service.js";
-import { assembleTasks, ensureWorkstreams, mergeLink, workstreamKeys } from "./service.js";
+import {
+  assembleTasks,
+  ensureWorkstreams,
+  mergeLink,
+  reorderColumn,
+  workstreamKeys,
+} from "./service.js";
 
 export const tasksRouter = Router();
 
@@ -105,6 +111,19 @@ function isId(value: string | null | undefined): value is string {
  */
 function completionOf(status: TaskStatus): { completedAt: Date | null } {
   return { completedAt: status === "done" ? new Date() : null };
+}
+
+/**
+ * The `completed_at` half of a move on the board. Unlike `completionOf`, which
+ * always stamps, this keeps an existing stamp: a reorder inside Done re-writes
+ * the same status, and re-dating finished work is not what the user asked for.
+ * Moving into done still stamps it and moving out still clears it, which is the
+ * table's `(status = 'done') = (completed_at IS NOT NULL)` rule.
+ */
+function completionForMove(status: TaskStatus): { completedAt: SQL } {
+  return {
+    completedAt: sql`CASE WHEN ${status} = 'done' THEN COALESCE(${tasks.completedAt}, now()) ELSE NULL END`,
+  };
 }
 
 /**
@@ -427,6 +446,16 @@ tasksRouter.patch(
 
 // ── PATCH /api/tasks/:id/status ──────────────────────────────────────────────
 
+/**
+ * Moves a card: the status is the column it belongs to, and the optional `after`
+ * anchor is the slot within that column. Omitting `after` is the pure status
+ * change this endpoint has always been and leaves the stored slot alone.
+ *
+ * A reorder is not a completion, so the destination column is renumbered inside
+ * the same transaction as the status write, and `completed_at` is kept rather
+ * than re-stamped for a card that was already done. The column is every task of
+ * that status, whichever event it belongs to — see `reorderColumn`.
+ */
 tasksRouter.patch(
   "/tasks/:id/status",
   authenticate,
@@ -435,27 +464,36 @@ tasksRouter.patch(
   validate(changeTaskStatusSchema),
   async (req, res, next) => {
     try {
-      const { status } = res.locals.validated as ChangeTaskStatus;
-      const [task] = await getDb()
-        .update(tasks)
-        .set({
-          status,
-          ...completionOf(status),
-          // Reopening clears the escalation marker; the other three moves do not.
-          ...overdueCycleReset({ status }),
-          updatedAt: new Date(),
-        })
-        .where(eq(tasks.id, req.params.id!))
-        .returning();
+      const { status, after } = res.locals.validated as ChangeTaskStatus;
+      const task = await getDb().transaction(async (tx) => {
+        const [row] = await tx
+          .update(tasks)
+          .set({
+            status,
+            ...completionForMove(status),
+            // Reopening clears the escalation marker; the other three moves do not.
+            ...overdueCycleReset({ status }),
+            updatedAt: new Date(),
+          })
+          .where(eq(tasks.id, req.params.id!))
+          .returning();
+
+        if (!row) return undefined;
+        if (after === undefined) return (await assembleTasks(tx, [row]))[0];
+
+        await reorderColumn(tx, { id: row.id, status: row.status }, after);
+        // Read back, because the UPDATE above returned the slot the card held
+        // before the renumber, not the one it has just landed in.
+        const [moved] = await tx.select().from(tasks).where(eq(tasks.id, row.id)).limit(1);
+        return (await assembleTasks(tx, [moved ?? row]))[0];
+      });
 
       if (!task) {
         notFound(res);
         return;
       }
       // Status touches the task row alone, so the set is read back, not written.
-      res
-        .status(200)
-        .json({ task: (await assembleTasks(getDb(), [task]))[0]! } satisfies TaskResponse);
+      res.status(200).json({ task } satisfies TaskResponse);
     } catch (error) {
       next(error);
     }

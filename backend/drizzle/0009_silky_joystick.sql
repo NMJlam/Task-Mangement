@@ -1,0 +1,1 @@
+CREATE INDEX "task_status_board_idx" ON "task" USING btree ("status","board_order");
