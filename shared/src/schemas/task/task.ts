@@ -85,8 +85,9 @@ export const taskParamsSchema = z.object({ id: storedTaskIdSchema });
 
 /**
  * `creator` is not accepted from the client — the route stamps it from the
- * session, so a caller cannot attribute work to someone else. `boardOrder` and
- * `minTier` keep their column defaults until the board endpoints land (R8).
+ * session, so a caller cannot attribute work to someone else. `boardOrder` is
+ * the card's slot within its column, written by the status endpoint, and
+ * `minTier` keeps its column default.
  *
  * `eventId` links the task to an event. Paired with a `teamId`, the route
  * declares that team's workstream on the event if it has none yet — see
@@ -137,7 +138,15 @@ export type UpdateTask = z.infer<typeof updateTaskSchema>;
 
 // ── PATCH /api/tasks/:id/status ──────────────────────────────────────────────
 
-export const changeTaskStatusSchema = z.object({ status: taskStatusSchema });
+/**
+ * `after` is where in the destination column the card lands: immediately after
+ * that task, or at the top for `null`. Omitting it keeps the stored slot — the
+ * pure status change this endpoint has always been.
+ */
+export const changeTaskStatusSchema = z.object({
+  status: taskStatusSchema,
+  after: storedTaskIdSchema.nullable().optional(),
+});
 
 export type ChangeTaskStatus = z.infer<typeof changeTaskStatusSchema>;
 
