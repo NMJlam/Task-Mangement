@@ -353,7 +353,7 @@ export function EventDetailPage() {
               busyId={tasks.busy}
               error={tasks.mutationError}
               emptyMessage="No tasks are linked to this event yet. Use Add Task to create the first one."
-              onStatusChange={(task, status) => void tasks.changeStatus(task, status)}
+              onMove={(task, status, after) => void tasks.moveTask(task, status, after)}
               // Same shared dialog controls as `/tasks`: description, priority
               // and assignment all edit in place here too.
               onUpdate={(task, patch) => void tasks.updateTask(task, patch)}

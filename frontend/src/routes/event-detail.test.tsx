@@ -8,10 +8,31 @@ import { EventDetailPage } from "./event-detail";
  * Stands in for the drag provider: jsdom has no layout, so dnd-kit's own
  * collision detection can never report a drop here. The board still owns the
  * decision — this only hands it the operation a real drop would produce.
+ * `SortableFake` is what the mocked `isSortable` accepts, so the board's own
+ * guard runs rather than being bypassed.
  */
-const dnd = vi.hoisted(() => ({
-  onDragEnd: undefined as ((event: unknown) => void) | undefined,
-}));
+const dnd = vi.hoisted(() => {
+  class SortableFake {
+    id: string;
+    index: number;
+    group: string;
+    data?: Record<string, unknown>;
+
+    constructor(fields: {
+      id: string;
+      index: number;
+      group: string;
+      data?: Record<string, unknown>;
+    }) {
+      this.id = fields.id;
+      this.index = fields.index;
+      this.group = fields.group;
+      this.data = fields.data;
+    }
+  }
+
+  return { onDragEnd: undefined as ((event: unknown) => void) | undefined, SortableFake };
+});
 
 vi.mock("@dnd-kit/react", () => ({
   DragDropProvider: ({
@@ -26,6 +47,11 @@ vi.mock("@dnd-kit/react", () => ({
   },
   useDraggable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
   useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
+}));
+
+vi.mock("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({ ref: () => {}, handleRef: () => {}, isDragging: false }),
+  isSortable: (element: unknown) => element instanceof dnd.SortableFake,
 }));
 
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000001";
@@ -189,17 +215,24 @@ describe("EventDetailPage", () => {
     expect(await screen.findByText("Book the rig")).toBeInTheDocument();
   });
 
-  it("changes an event task's status through the status endpoint", async () => {
+  it("moves an event task to another column through the status endpoint", async () => {
     const fetchMock = stubEvent();
     renderDetail("?tab=tasks");
 
     await screen.findByText("Confirm lighting");
 
+    // The same board as `/tasks`, on the event's own tasks: a drop on the
+    // Blocked column body takes its status and the end of that column.
     act(() => {
       dnd.onDragEnd?.({
         canceled: false,
         operation: {
-          source: { id: eventTask.id, data: { title: "Confirm lighting", status: "todo" } },
+          source: new dnd.SortableFake({
+            id: eventTask.id,
+            index: 0,
+            group: "blocked",
+            data: { title: "Confirm lighting", status: "todo" },
+          }),
           target: { id: "blocked" },
         },
       });
@@ -208,7 +241,10 @@ describe("EventDetailPage", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         `/api/tasks/${eventTask.id}/status`,
-        expect.objectContaining({ method: "PATCH" }),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "blocked", after: null }),
+        }),
       ),
     );
   });
