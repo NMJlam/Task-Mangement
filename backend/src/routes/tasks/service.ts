@@ -1,7 +1,8 @@
-import { inArray } from "drizzle-orm";
+import { insertAfter, type TaskStatus } from "@ctp/shared";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "../../db/id.js";
-import { taskAssignees, workstreams } from "../../db/schema/index.js";
-import type { Queryable } from "../events/service.js";
+import { taskAssignees, tasks, workstreams } from "../../db/schema/index.js";
+import type { Queryable, Tx } from "../events/service.js";
 
 /**
  * The one rule tasks own: a task that names both an event and a team sits in
@@ -104,4 +105,54 @@ export async function ensureWorkstreams(
     .insert(workstreams)
     .values(keys.map((key) => ({ id: newId(), ...key })))
     .onConflictDoNothing({ target: [workstreams.eventId, workstreams.teamId] });
+}
+
+/**
+ * Renumbers the column `moved` now sits in, so `moved` lands immediately after
+ * `afterId` (`null` = the top). The moved row's status must already be written:
+ * the column is read at its new status, and the moved card's stored slot is
+ * what `insertAfter` overrides.
+ *
+ * The column is every task of that status — events and the standing board
+ * together, because that is the column a user sees. `/tasks` mixes every
+ * event's cards in one column, so scoping the renumber to the moved card's own
+ * event would leave a card that was dropped between two other events' cards
+ * nowhere near where it was dropped on the next read. Order is the read order
+ * the board and the list endpoint share: stored slot, then newest first, then
+ * id, so two cards that have never been ranked come back in the order the list
+ * endpoint shows them.
+ *
+ * Takes a transaction because the renumber and the status write it follows are
+ * one user action: a half-renumbered column is a duplicated or missing slot.
+ */
+export async function reorderColumn(
+  tx: Tx,
+  moved: { id: string; status: TaskStatus },
+  afterId: string | null,
+): Promise<void> {
+  const column = await tx
+    .select({ id: tasks.id, boardOrder: tasks.boardOrder })
+    .from(tasks)
+    .where(eq(tasks.status, moved.status))
+    .orderBy(asc(tasks.boardOrder), desc(tasks.createdAt), asc(tasks.id));
+
+  const ids = insertAfter(
+    column.map((row) => row.id),
+    moved.id,
+    afterId,
+  );
+
+  const stored = new Map(column.map((row) => [row.id, row.boardOrder]));
+
+  // ponytail: one UPDATE per card in the column, inside the caller's
+  // transaction, which is fine to about a hundred cards — past that, the
+  // unnest-shaped single statement is the upgrade. Two moves in one column at
+  // the same instant are last-write-wins, which is why no row lock is taken at
+  // club scale; the next read renumbers.
+  for (const [boardOrder, id] of ids.entries()) {
+    if (stored.get(id) === boardOrder) continue;
+    // `updated_at` is deliberately left alone: only the moved row is a
+    // user-visible edit, and the cards that merely shifted are not.
+    await tx.update(tasks).set({ boardOrder }).where(eq(tasks.id, id));
+  }
 }

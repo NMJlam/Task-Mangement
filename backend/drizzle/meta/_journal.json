@@ -64,6 +64,13 @@
       "when": 1789783343116,
       "tag": "0008_shallow_speedball",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790210585422,
+      "tag": "0009_silky_joystick",
+      "breakpoints": true
     }
   ]
 }
