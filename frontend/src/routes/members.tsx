@@ -1,8 +1,8 @@
 import { can, roleSchema, tierForRole, type Role, type RosterMember } from "@ctp/shared";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
-import { RoleChangeConfirmation } from "@/components/members/role-change-confirmation";
+import { RoleChangeDialog, roleLabel } from "@/components/members/role-change-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
@@ -13,6 +13,9 @@ export function MembersPage() {
   const me = useMe();
   const members = useMembers();
   const [pending, setPending] = useState<{ member: RosterMember; role: Role }>();
+  // This dialog opens from a `<select>`, not a `DialogTrigger`, so Radix cannot
+  // restore focus: the select that raised it is remembered and refocused here.
+  const opener = useRef<HTMLSelectElement | null>(null);
   const canManage = me.status === "ok" && can(me.user.role, "member:role-change");
   const items = members.state.status === "ok" ? members.state.items : [];
 
@@ -33,21 +36,21 @@ export function MembersPage() {
       />
 
       {pending && (
-        <section aria-label="Confirm role change" className="mt-8">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Change {pending.member.name || pending.member.email} from{" "}
-            {roleLabel(pending.member.role)}
-            {" to "}
-            {roleLabel(pending.role)}?
-          </p>
-          <RoleChangeConfirmation
-            from={pending.member.role}
-            to={pending.role}
-            onConfirm={confirmRoleChange}
-            onCancel={() => setPending(undefined)}
-            busy={members.busy === pending.member.id}
-          />
-        </section>
+        <RoleChangeDialog
+          subject={pending.member.name || pending.member.email}
+          from={pending.member.role}
+          to={pending.role}
+          onConfirm={confirmRoleChange}
+          onClose={() => setPending(undefined)}
+          busy={members.busy === pending.member.id}
+          error={
+            members.mutationError && `${members.mutationError}. Review the role and try again.`
+          }
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            opener.current?.focus();
+          }}
+        />
       )}
 
       {members.mutationError && (
@@ -84,7 +87,10 @@ export function MembersPage() {
               editable={canManage}
               maxTier={me.status === "ok" ? me.user.tier : 0}
               busy={members.busy === member.id}
-              onRoleChange={(role) => setPending({ member, role })}
+              onRoleChange={(role, select) => {
+                opener.current = select;
+                setPending({ member, role });
+              }}
             />
           ))}
         </section>
@@ -104,7 +110,7 @@ function MemberCard({
   editable: boolean;
   maxTier: 0 | 1 | 2;
   busy: boolean;
-  onRoleChange: (role: Role) => void;
+  onRoleChange: (role: Role, select: HTMLSelectElement) => void;
 }) {
   const name = member.name || member.email;
 
@@ -130,7 +136,9 @@ function MemberCard({
                   id={`role-${member.id}`}
                   value={member.role}
                   disabled={busy}
-                  onChange={(event) => onRoleChange(roleSchema.parse(event.target.value))}
+                  onChange={(event) =>
+                    onRoleChange(roleSchema.parse(event.target.value), event.currentTarget)
+                  }
                   className="h-8 max-w-40 cursor-pointer rounded-md border bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {roleSchema.options
@@ -160,8 +168,4 @@ function MemberCard({
       </CardContent>
     </Card>
   );
-}
-
-function roleLabel(role: Role) {
-  return role.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

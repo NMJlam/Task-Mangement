@@ -2,7 +2,7 @@ import { can, type AuthUser, type Capability, type Tier } from "@ctp/shared";
 import { useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
-import { RoleChangeConfirmation } from "@/components/members/role-change-confirmation";
+import { RoleChangeDialog } from "@/components/members/role-change-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationsProvider, useNotificationsSource } from "@/hooks/use-notifications";
@@ -34,10 +34,22 @@ function SignedInShell({
   );
 }
 
+/**
+ * A tier-2 office that is not `officer` holds `member:role-change`, and this
+ * notice exists to hand that capability back — so it is the one role change the
+ * user did not ask for, raised as an overlay the moment the shell renders.
+ *
+ * Dismissing it is the same as ignoring the banner it replaced: it returns on
+ * the next navigation, because the notice belongs to the membership, not to a
+ * page.
+ */
 function SelfDemotion({ member }: { member: AuthUser }) {
+  const [open, setOpen] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
   async function demote() {
+    setBusy(true);
     try {
       const response = await fetch(`/api/members/${member.id}/role`, {
         method: "PATCH",
@@ -49,18 +61,23 @@ function SelfDemotion({ member }: { member: AuthUser }) {
       window.location.reload();
     } catch {
       setError(true);
+    } finally {
+      setBusy(false);
     }
   }
 
+  if (!open) return null;
+
   return (
-    <section className="mx-auto max-w-xl p-4">
-      <RoleChangeConfirmation from={member.role} to="officer" onConfirm={demote} />
-      {error && (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          Role change failed.
-        </p>
-      )}
-    </section>
+    <RoleChangeDialog
+      subject={member.email}
+      from={member.role}
+      to="officer"
+      onConfirm={demote}
+      onClose={() => setOpen(false)}
+      busy={busy}
+      error={error ? "Role change failed. Try again." : undefined}
+    />
   );
 }
 
