@@ -1,9 +1,11 @@
 // @ctp/shared — the single source of truth for domain types.
-// Only zod schemas and their inferred types live here. No React, no Express,
-// no db imports (enforced by the ESLint rule in §1.2 / §6).
+// Zod schemas, their inferred types, and the handful of pure rules both sides
+// must agree on (`auth/capabilities.ts`, `tasks/order.ts`) live here. No React,
+// no Express, no db imports (enforced by the ESLint rule in §1.2 / §6).
 
 export * from "./errors.js";
 export * from "./auth/capabilities.js";
+export * from "./tasks/order.js";
 export * from "./schemas/auth-user/auth-user.js";
 export * from "./schemas/invite/invite.js";
 export * from "./schemas/member/member.js";
