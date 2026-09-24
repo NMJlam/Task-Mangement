@@ -27,9 +27,13 @@ Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
   towards a target (Shift takes 5× steps), Space drops, Escape cancels. Both
   surfaces also replace the library's id-only announcements with sentences naming
   the row and the target; the calendar's are verified by driving it in a browser.
-  Anything reachable _only_ by dragging has a non-drag path too: a task's status
-  is a drag on the board but a picker in its dialog, and an event's dates are a
-  drag on the grid, a form in its preview, and the same form on the event page.
+  The board's sentences name the column **and the position** in it, and the
+  keyboard sensor is the non-pointer path for both parts of a task move: a card's
+  column is its status and its slot is its position in that column, and a drag
+  (pointer or keyboard) is what changes either. There is no status picker in the
+  card's dialog, so a drag is the only way to move a card — the keyboard sensor,
+  not a form, is the fallback. An event's dates are a drag on the grid, a form in
+  its preview, and the same form on the event page.
   **Prefer the form** (Edit dates) when rescheduling by keyboard: the calendar's
   keyboard drag is reliable while the grid is on screen but loses its drop target
   deep into the month view, where a day cell can be taller than the viewport
