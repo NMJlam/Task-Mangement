@@ -165,7 +165,10 @@ npm run db:seed             # idempotent — safe to re-run
 The default seed deliberately populates only `settings`, `auth.user` and
 `app_user`: CI runs `db:migrate && db:seed` before the integration tier, so
 whatever it writes **is** the shared test fixture, and widening it breaks tests
-that assume those six role holders are the only ones. To fill the other
+that assume those five role holders are the only members. It creates
+`<role>@example.com` for every role **except `president`** — the office belongs
+to a real account, and `FOUNDER_EMAIL`'s invite (below) is what creates it, so a
+local database never has a fixture president beside you. To fill the other
 thirteen tables with a coherent demo club — five teams, three events across the
 status lifecycle, workstreams, a Kanban board, channels of every kind, threaded
 and file messages, one AI run, one expense per status, notifications and audit
@@ -175,9 +178,12 @@ rows — opt in:
 SEED_DEMO=1 npm run db:seed          # PowerShell: $env:SEED_DEMO=1; npm run db:seed
 ```
 
-Locally it reuses the six role fixtures and is idempotent (ids are derived from
+Locally it reuses the five role fixtures and is idempotent (ids are derived from
 slugs, every fixture insert is `ON CONFLICT DO NOTHING`), so the integration
-suite still passes with it loaded. See `backend/src/db/seed-demo.ts`.
+suite still passes with it loaded. Nothing in the demo is owned by a president —
+the fixture rows that name that office (Exec's lead, the AI run, the executive
+DM, the tasks they filed) point at the vice president instead. See
+`backend/src/db/seed-demo.ts`.
 
 For the shared production demo, add these variables to the Vercel Production
 environment:
@@ -189,18 +195,25 @@ DEMO_DIRECTOR_EMAILS=reviewer.one@example.com,reviewer.two@example.com
 ```
 
 Replace the example reviewer addresses with the permitted Google sign-in
-emails. The founder receives a seven-day `president` invite and each remaining
-unique address receives a seven-day `director` invite. Existing memberships are
-left alone; expired invites are renewed on the next seed run. The fixture uses
-fixed fictional `.invalid` accounts for display, assignments and team
-membership, so only invited real addresses can sign in.
+emails. The founder receives a seven-day `president` invite — claiming it is how
+the office comes into existence, since the base seed creates no president
+account — and each remaining unique address receives a seven-day `director`
+invite. Existing memberships are left alone; expired invites are renewed on the
+next seed run. The fixture uses fixed fictional `.invalid` accounts for display,
+assignments and team membership, so only invited real addresses can sign in.
 
-After migrations, run the seed once from a trusted shell with the Vercel
-Production variables loaded:
+After migrations, run the seed once from a trusted shell — but note that the
+Vercel Production variables are **not** loaded into that shell, and the seed
+reads only the shell plus the repo-root `.env`. Every variable the seed's
+behaviour depends on (`DATABASE_URL(_POOLED)`, `SEED_DEMO`, `FOUNDER_EMAIL`,
+`DEMO_DIRECTOR_EMAILS`) must be exported alongside it:
 
 ```bash
-NODE_ENV=production npm run db:seed
+NODE_ENV=production SEED_DEMO=1 FOUNDER_EMAIL='…' DEMO_DIRECTOR_EMAILS='…,…' npm run db:seed
 ```
+
+See `docs/production-migrations.md` for the exact production command; an
+unset `DEMO_DIRECTOR_EMAILS` yields a silent no-op (no director invites).
 
 It is safe to rerun: missing deterministic records are restored without
 overwriting edited demo rows. Cancelled events remain absent because cancellation

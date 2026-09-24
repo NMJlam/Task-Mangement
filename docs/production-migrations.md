@@ -46,8 +46,19 @@ Seed with demo data (idempotent; `NODE_ENV=production` skips the local seed and
 requires `FOUNDER_EMAIL`):
 
 ```sh
-export DATABASE_URL="$(neonctl connection-string production --project-id steep-sun-09078807 --org-id org-small-heart-08695357)"; export DATABASE_URL_POOLED="$DATABASE_URL"; BETTER_AUTH_SECRET=migrate-only-placeholder SEED_DEMO=1 FOUNDER_EMAIL='nathan.lam.rt@gmail.com' NODE_ENV=production npm run db:seed
+export DATABASE_URL="$(neonctl connection-string production --project-id steep-sun-09078807 --org-id org-small-heart-08695357)"; export DATABASE_URL_POOLED="$DATABASE_URL"; export DEMO_DIRECTOR_EMAILS="$(T=$(mktemp); vercel env pull "$T" --environment=production --yes >/dev/null 2>&1; sed -n 's/^DEMO_DIRECTOR_EMAILS=//p' "$T" | tr -d '\"'; rm -f "$T")"; BETTER_AUTH_SECRET=migrate-only-placeholder SEED_DEMO=1 FOUNDER_EMAIL='nathan.lam.rt@gmail.com' NODE_ENV=production npm run db:seed
 ```
+
+**The seed reads the shell, not Vercel.** `db:seed` is a local `tsx` script
+(`backend/src/db/seed.ts`); the dashboard's Production variables are only bound
+into the deployed function. Whatever the seed's behaviour depends on must be
+exported in the command above or live in the repo-root `.env` (which is loaded
+but never overrides an exported variable). This bit us once: a run with
+`SEED_DEMO=1` but no `DEMO_DIRECTOR_EMAILS` silently created the demo personas
+and **no director invites at all** — `demoInvitees` only adds directors when the
+variable is present, and a missing one is not an error. If a real address is
+listed in Vercel but still gets `403 NO_MEMBERSHIP`, check `select * from invite
+where email = '…'` before doubting the gate.
 
 Run from the repo root. Success looks like `✅ migrations applied`; the seed
 prints nothing on success. Because that message is printed by both the local and

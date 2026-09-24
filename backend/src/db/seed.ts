@@ -18,11 +18,22 @@ async function seedSettings(demoEnabled: boolean): Promise<void> {
     .onConflictDoNothing();
 }
 
+/**
+ * The roles the local seed creates accounts for.
+ *
+ * `president` is deliberately absent: the club has one president, and it is a
+ * real account — the one `FOUNDER_EMAIL`'s invite creates on first sign-in (see
+ * `seedProduction`). A seeded `president@example.com` would be a second holder
+ * of the office, and the demo fixtures that name a president would attach to a
+ * fixture nobody can sign in as rather than to the person running the club.
+ */
+const LOCAL_ROLES = roleSchema.options.filter((role) => role !== "president");
+
 async function seedLocal(): Promise<void> {
   const db = nodeDb();
   const now = new Date();
 
-  for (const role of roleSchema.options) {
+  for (const role of LOCAL_ROLES) {
     const authUserId = `seed-${role}`;
     await db.execute(sql`
       INSERT INTO auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")

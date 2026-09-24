@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { roleSchema, type Role } from "@ctp/shared";
+import {
+  roleSchema,
+  type ExpenseCategory,
+  type ExpenseStatus,
+  type NotificationKind,
+  type Role,
+} from "@ctp/shared";
 import { fakerEN_AU as faker } from "@faker-js/faker";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -36,6 +42,11 @@ import {
  * Locally it reuses the six role fixtures the base seed creates, so those tests
  * still hold with demo data loaded. Production gets deterministic fictional
  * display members with .invalid emails; they cannot sign in.
+ *
+ * Notifications are the exception: they are per-recipient, so the feed is also
+ * written for whoever FOUNDER_EMAIL and DEMO_DIRECTOR_EMAILS name and who has
+ * signed in already. Those variables come from seedProduction, so dev and prod
+ * address the same inboxes.
  *
  * Idempotent like the rest: every id is derived from a slug (see `demoId`) and
  * every insert is ON CONFLICT DO NOTHING, so a second run changes nothing.
@@ -90,10 +101,10 @@ const DEMO_MEMBERS = [
   { role: "officer", name: "Maya Singh" },
 ] as const satisfies readonly { role: Role; name: string }[];
 
-// Exec is management (tier 2) plus directors, led by the president. It is a
-// team, not a rank — see docs/roles-and-permissions.md "Groups".
+// Exec is management (tier 2) plus directors, led by the vice president. It is
+// a team, not a rank — see docs/roles-and-permissions.md "Groups".
 const TEAMS = [
-  { slug: "exec", name: "Exec", lead: "president" },
+  { slug: "exec", name: "Exec", lead: "vice_president" },
   { slug: "media", name: "Media", lead: "director" },
   { slug: "marketing", name: "Marketing", lead: "vice_president" },
   { slug: "sponsorship", name: "Sponsorship", lead: "treasurer" },
@@ -171,6 +182,12 @@ export async function seedDemo(production = false): Promise<void> {
     ? DEMO_MEMBERS.map(({ role }) => ({ id: demoId(`member:${role}`), role }))
     : await db.select({ id: appUsers.id, role: appUsers.role }).from(appUsers);
   const byRole = new Map<Role, string>(roster.map((row) => [row.role, row.id]));
+  /**
+   * A fixture member, by the role they hold. No fixture names `president`: the
+   * office belongs to the real account `FOUNDER_EMAIL` creates an invite for, so
+   * the demo's presidential rows — Exec's lead, the AI run, the executive DM, the
+   * tasks it filed — are the vice president's (see `seed.ts`).
+   */
   const member = (role: Role): string => {
     const id = byRole.get(role);
     if (!id) {
@@ -237,7 +254,6 @@ export async function seedDemo(production = false): Promise<void> {
   await db
     .insert(teamMembers)
     .values([
-      { teamId: team("exec"), userId: member("president") },
       { teamId: team("exec"), userId: member("vice_president") },
       { teamId: team("exec"), userId: member("treasurer") },
       { teamId: team("exec"), userId: member("secretary") },
@@ -292,7 +308,7 @@ export async function seedDemo(production = false): Promise<void> {
         allocationCents: 180_000,
         attendanceEstimate: 120,
         minTier: 1,
-        owner: member("president"),
+        owner: member("vice_president"),
       },
     ])
     .onConflictDoNothing();
@@ -420,6 +436,9 @@ export async function seedDemo(production = false): Promise<void> {
       { id: channel("committee"), kind: "group", name: "committee-private" },
       { id: channel("assistant"), kind: "ai", name: "assistant" },
       // The one channel allowed an absent name (channel_named_unless_dm_check).
+      // The slug keeps its original spelling because the id is derived from it, so
+      // renaming it would strand the rows an earlier seed already wrote. Its two
+      // members are the vice president and a director.
       { id: channel("dm-pres-dir"), kind: "dm" },
     ])
     .onConflictDoNothing();
@@ -427,13 +446,12 @@ export async function seedDemo(production = false): Promise<void> {
   await db
     .insert(chanMembers)
     .values([
-      { channelId: channel("committee"), userId: member("president"), lastReadAt: at(-1) },
       { channelId: channel("committee"), userId: member("vice_president"), lastReadAt: at(-2) },
       { channelId: channel("committee"), userId: member("treasurer"), lastReadAt: at(-3) },
       { channelId: channel("committee"), userId: member("secretary"), lastReadAt: at(-1) },
-      { channelId: channel("dm-pres-dir"), userId: member("president"), lastReadAt: at(-1) },
+      { channelId: channel("dm-pres-dir"), userId: member("vice_president"), lastReadAt: at(-1) },
       { channelId: channel("dm-pres-dir"), userId: member("director"), lastReadAt: at(-4) },
-      { channelId: channel("assistant"), userId: member("president"), lastReadAt: at(-1) },
+      { channelId: channel("assistant"), userId: member("vice_president"), lastReadAt: at(-1) },
       { channelId: channel("assistant"), userId: member("director"), lastReadAt: at(-2) },
     ])
     .onConflictDoNothing();
@@ -445,7 +463,7 @@ export async function seedDemo(production = false): Promise<void> {
       {
         id: demoId("airun:breakdown"),
         channelId: channel("assistant"),
-        userId: member("president"),
+        userId: member("vice_president"),
         prompt: "Break the hackathon down into tasks for the media team.",
         steps: [
           { tool: "listWorkstreams", input: { eventId: event("hackathon") }, durationMs: 41 },
@@ -469,7 +487,7 @@ export async function seedDemo(production = false): Promise<void> {
           "Two cameras on the main stage. Deliver the raw card by Sunday so Media can cut the reel.",
         status: "todo",
         priority: "high",
-        creator: member("president"),
+        creator: member("vice_president"),
         dueAt: at(3),
         boardOrder: 0,
         // The one line of AI provenance: this task came out of the run above.
@@ -493,7 +511,7 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Post the speaker lineup",
         status: "done",
         priority: "high",
-        creator: member("president"),
+        creator: member("vice_president"),
         dueAt: at(-1),
         // Required by task_completed_at_matches_status_check when status = done.
         completedAt: at(-1, 3),
@@ -507,7 +525,7 @@ export async function seedDemo(production = false): Promise<void> {
         description: "Waiting on the venue's preferred supplier to confirm the quote.",
         status: "blocked",
         priority: "urgent",
-        creator: member("president"),
+        creator: member("vice_president"),
         dueAt: at(1),
         boardOrder: 0,
       },
@@ -529,7 +547,7 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Draft the sponsorship deck",
         status: "todo",
         priority: "high",
-        creator: member("president"),
+        creator: member("vice_president"),
         dueAt: at(30),
         minTier: 1,
         boardOrder: 0,
@@ -552,7 +570,7 @@ export async function seedDemo(production = false): Promise<void> {
         title: "Update the constitution",
         status: "todo",
         priority: "low",
-        creator: member("president"),
+        creator: member("vice_president"),
         boardOrder: 0,
       },
       // Deliberately overdue, so task_overdue_idx has something to serve.
@@ -562,7 +580,7 @@ export async function seedDemo(production = false): Promise<void> {
         description: "Quote expired last month — the treasurer has the renewal link.",
         status: "todo",
         priority: "urgent",
-        creator: member("president"),
+        creator: member("vice_president"),
         dueAt: at(-5),
         boardOrder: 1,
       },
@@ -618,7 +636,7 @@ export async function seedDemo(production = false): Promise<void> {
       {
         id: message("hack-venue"),
         channelId: channel("hackathon"),
-        author: member("president"),
+        author: member("vice_president"),
         body: "Venue is locked in for Saturday. Doors at 9, keynote at 10.",
         createdAt: at(-2),
       },
@@ -665,7 +683,7 @@ export async function seedDemo(production = false): Promise<void> {
       {
         id: message("dm-hello"),
         channelId: channel("dm-pres-dir"),
-        author: member("president"),
+        author: member("vice_president"),
         body: "Can you take point on the reel this year?",
         createdAt: at(-4),
       },
@@ -727,13 +745,99 @@ export async function seedDemo(production = false): Promise<void> {
         category: "venue",
         status: "rejected",
         submitter: member("secretary"),
-        decider: member("president"),
+        decider: member("treasurer"),
         decidedAt: at(-2),
         // Required exactly when status = rejected, and forbidden otherwise.
         rejectionReason: "Over the gala allocation. Resubmit under $1,200.",
         createdAt: at(-4),
       },
     ])
+    .onConflictDoNothing();
+
+  // The curator's four rows are one per status. These take the ledger to 30,
+  // one page of 25 plus a remainder, because the finance page pages at 25
+  // (frontend/src/hooks/use-finance.ts) and a four-row ledger can never show
+  // Load More, a per-event allocation worth reading, or a category breakdown
+  // that is more than the four rows themselves.
+  //
+  // Literals rather than faker: the production demo is a fixed fixture
+  // (seed-demo.integration.test.ts) and a random ledger would move the budget
+  // summary every run.
+  //
+  // Committed spend (approved + paid) lands oweek at 98% of its allocation,
+  // hackathon at 74% and gala at 36%, so the summary shows a nearly-spent row
+  // next to healthy ones and the club risk reads at_risk rather than critical.
+  //
+  // [description, category, amountCents, status, event slug | null, team slug]
+  const ledger: readonly (readonly [
+    string,
+    ExpenseCategory,
+    number,
+    ExpenseStatus,
+    string | null,
+    (typeof TEAMS)[number]["slug"],
+  ])[] = [
+    ["Welcome night pizza order", "catering", 24_000, "paid", "oweek", "events"],
+    ["Name badges and lanyards", "printing", 9_500, "approved", "oweek", "events"],
+    ["Door prize vouchers", "other", 6_000, "approved", "oweek", "marketing"],
+    ["Overnight snack run", "catering", 18_000, "paid", "hackathon", "events"],
+    ["Judging platform subscription", "equipment", 22_000, "approved", "hackathon", "marketing"],
+    ["Power boards and extension leads", "equipment", 14_500, "approved", "hackathon", "media"],
+    [
+      "Breakfast rolls for the Sunday judges",
+      "catering",
+      26_000,
+      "approved",
+      "hackathon",
+      "events",
+    ],
+    ["Weekend parking permits", "transport", 12_000, "approved", "hackathon", "exec"],
+    ["Team t-shirts", "marketing", 34_000, "approved", "hackathon", "marketing"],
+    ["Domain and hosting for submissions", "equipment", 9_000, "approved", "hackathon", "media"],
+    ["Projector hire for the demo room", "equipment", 17_500, "paid", "hackathon", "media"],
+    ["Venue deposit", "venue", 40_000, "approved", "gala", "events"],
+    ["Table centrepieces", "other", 12_000, "approved", "gala", "marketing"],
+    ["Award trophies and engraving", "printing", 13_000, "paid", "gala", "exec"],
+    ["Public liability insurance top-up", "other", 8_000, "approved", null, "exec"],
+    ["Committee polo shirts", "marketing", 6_500, "approved", null, "exec"],
+    ["Sponsor banner reprint", "printing", 11_000, "pending", "gala", "sponsorship"],
+    ["Photographer deposit", "other", 30_000, "pending", "gala", "media"],
+    ["Guest speaker gift", "other", 7_500, "pending", "hackathon", "marketing"],
+    ["Extra marquee lighting", "equipment", 15_000, "pending", "oweek", "events"],
+    ["AV cable replacement", "equipment", 4_200, "pending", "hackathon", "media"],
+    ["Snack platters for the exec meeting", "catering", 9_800, "pending", null, "exec"],
+    ["Banner stands", "marketing", 13_000, "rejected", null, "marketing"],
+    ["Coach hire deposit", "transport", 28_000, "pending", "gala", "events"],
+    ["Reimbursement — printer toner", "printing", 3_500, "rejected", null, "exec"],
+    ["Trophy cabinet", "other", 21_000, "pending", null, "exec"],
+  ];
+
+  // Ids are derived from the row's position, so append to this table rather than
+  // reordering it. The four curated rows above keep their own semantic ids.
+  await db
+    .insert(expenses)
+    .values(
+      ledger.map(([description, category, amountCents, status, eventSlug, teamSlug], index) => ({
+        id: demoId(`expense:ledger-${index}`),
+        eventId: eventSlug === null ? null : event(eventSlug),
+        teamId: team(teamSlug),
+        amountCents,
+        description,
+        category,
+        status,
+        submitter: member(index % 3 === 0 ? "secretary" : "director"),
+        // Separation of duty: the decider is never the submitter, and a pending
+        // row has not been decided at all (expense_decided_at_matches_status).
+        // Both decisions are the treasurer's — the office that holds
+        // `expense:approve` in every seed, since no fixture names a president.
+        decider: status === "pending" ? null : member("treasurer"),
+        decidedAt: status === "pending" ? null : at(-((index % 3) + 1)),
+        paidAt: status === "paid" ? at(-(index % 3)) : null,
+        rejectionReason: status === "rejected" ? "Not in this event's approved budget." : null,
+        receiptKey: status === "pending" ? null : `demo/receipts/ledger-${index}.pdf`,
+        createdAt: at(-(index + 4)),
+      })),
+    )
     .onConflictDoNothing();
 
   // entity_type and entity_id travel together or not at all
@@ -745,7 +849,7 @@ export async function seedDemo(production = false): Promise<void> {
         id: demoId("notif:assigned"),
         userId: member("director"),
         kind: "task_assigned",
-        body: "President assigned you “Film the opening keynote”.",
+        body: "Your vice president assigned you “Film the opening keynote”.",
         entityType: "task",
         entityId: task("film-keynote"),
         createdAt: at(-2),
@@ -791,7 +895,7 @@ export async function seedDemo(production = false): Promise<void> {
       // Both entity columns NULL — the other legal half of the constraint.
       {
         id: demoId("notif:invite"),
-        userId: member("president"),
+        userId: member("vice_president"),
         kind: "invite_accepted",
         body: "A new officer accepted their invite.",
         createdAt: at(-6),
@@ -799,12 +903,123 @@ export async function seedDemo(production = false): Promise<void> {
     ])
     .onConflictDoNothing();
 
+  // The demo inbox belongs to the people who can actually sign in. The display
+  // personas have no credentials by design (plan-dev-harness.md), so every
+  // notification above belongs to an account nobody can open a session as.
+  // FOUNDER_EMAIL and DEMO_DIRECTOR_EMAILS are the same variables
+  // seedProduction invites from, so dev and prod address the same addresses.
+  //
+  // A membership row only appears once someone signs in and claims their invite,
+  // so this resolves whichever of the configured people exist NOW and gives each
+  // of them the feed. Rerun the seed after a sign-in to fill in the rest — the
+  // ids are derived from slug + recipient, so a rerun adds nothing twice.
+  const audience = process.env.FOUNDER_EMAIL
+    ? demoInvitees(process.env.FOUNDER_EMAIL, process.env.DEMO_DIRECTOR_EMAILS)
+    : [];
+  const recipients = audience.length
+    ? (
+        await db.execute<{ id: string; email: string }>(sql`
+          SELECT member."id", account."email"
+          FROM "app_user" member
+          JOIN auth."user" account ON account."id" = member."auth_user_id"
+          WHERE lower(account."email") IN (
+            ${sql.join(
+              audience.map(({ email }) => sql`${email}`),
+              sql`, `,
+            )}
+          )
+        `)
+      ).rows
+    : [];
+
+  if (recipients.length > 0) {
+    // Only `event` has a per-row route, so only those two render as links; the
+    // rest stay plain text by design (see the notification feed). Four unread and
+    // one read, so the sidebar badge carries a number and the page shows both
+    // states.
+    const inbox: readonly {
+      slug: string;
+      kind: NotificationKind;
+      body: string;
+      entityType: string | null;
+      entityId: string | null;
+      read: boolean;
+    }[] = [
+      {
+        slug: "event-created",
+        kind: "event_created",
+        body: "New event: Semester 2 Hackathon.",
+        entityType: "event",
+        entityId: event("hackathon"),
+        read: false,
+      },
+      {
+        slug: "event-moved",
+        kind: "event_date_changed",
+        body: "End of Year Gala has a new date — check the calendar.",
+        entityType: "event",
+        entityId: event("gala"),
+        read: false,
+      },
+      {
+        slug: "task-assigned",
+        kind: "task_assigned",
+        body: "You are assigned “Film the opening keynote”.",
+        entityType: "task",
+        entityId: task("film-keynote"),
+        read: false,
+      },
+      {
+        slug: "expense-decided",
+        kind: "expense_decided",
+        body: "The camera and lens rental claim was approved.",
+        entityType: "expense",
+        entityId: demoId("expense:camera"),
+        read: false,
+      },
+      {
+        slug: "mention",
+        kind: "mention",
+        body: "You were mentioned in #media.",
+        entityType: "message",
+        entityId: message("shot-list"),
+        read: false,
+      },
+      {
+        slug: "invite-accepted",
+        kind: "invite_accepted",
+        body: "A new officer accepted their invite.",
+        entityType: null,
+        entityId: null,
+        read: true,
+      },
+    ];
+
+    await db
+      .insert(notifications)
+      .values(
+        recipients.flatMap(({ id, email }) =>
+          inbox.map(({ slug, kind, body, entityType, entityId, read }) => ({
+            id: demoId(`notif:${slug}:${email}`),
+            userId: id,
+            kind,
+            body,
+            entityType,
+            entityId,
+            readAt: read ? at(-2) : null,
+            createdAt: at(-3),
+          })),
+        ),
+      )
+      .onConflictDoNothing();
+  }
+
   await db
     .insert(auditLog)
     .values([
       {
         id: demoId("audit:event-created"),
-        actorId: member("president"),
+        actorId: member("vice_president"),
         action: "event.created",
         entityType: "event",
         entityId: event("hackathon"),
