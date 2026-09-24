@@ -15,7 +15,7 @@
     <mxCell id="n_me" value="useMe → GET /api/me" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
       <mxGeometry x="310" y="95" width="230" height="50" as="geometry"/>
     </mxCell>
-    <mxCell id="n_panel" value="Role-change panel&lt;br&gt;roleDiff(from,to) → Gains / Removed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+    <mxCell id="n_panel" value="Role-change modal&lt;br&gt;roleDiff(from,to) → Gains / Removed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
       <mxGeometry x="310" y="160" width="230" height="50" as="geometry"/>
     </mxCell>
 
