@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { FinancePage } from "./finance";
+import { downloadTextFile } from "@/lib/csv";
+
+vi.mock("@/lib/csv", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/csv")>();
+  return { ...actual, downloadTextFile: vi.fn() };
+});
 
 vi.mock("@/hooks/use-me", () => ({
   useMe: () => ({
@@ -113,6 +119,22 @@ describe("FinancePage", () => {
 
     await waitFor(() => expect(screen.getByText("Showing 1 of 1")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Load More" })).not.toBeInTheDocument();
+  });
+
+  it("downloads the budget summary as CSV from the Spent card", async () => {
+    stubFetch({});
+
+    renderPage();
+
+    const download = await screen.findByRole("button", { name: /download spent budget data/i });
+    fireEvent.click(download);
+
+    expect(downloadTextFile).toHaveBeenCalledOnce();
+    const [filename, csv, mimeType] = vi.mocked(downloadTextFile).mock.calls[0]!;
+    expect(filename).toMatch(/^budget-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(mimeType).toBe("text/csv;charset=utf-8;");
+    expect(csv).toContain("Budget,Allocated,Committed,Spent,Available,Risk");
+    expect(csv).toContain("Semester Hackathon");
   });
 
   it("surfaces the server's own message when a read fails", async () => {
