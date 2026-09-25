@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance } from "@/hooks/use-finance";
 import { useMe } from "@/hooks/use-me";
+import { budgetSummaryToCsv, downloadTextFile } from "@/lib/csv";
 
 const categories: ExpenseCategory[] = [
   "catering",
@@ -56,6 +57,12 @@ export function FinancePage() {
     const reason = action === "reject" ? window.prompt("Why is this expense rejected?") : undefined;
     if (action === "reject" && !reason?.trim()) return;
     void finance.decide(expense, action, reason ?? undefined);
+  }
+
+  function exportBudgetCsv() {
+    if (!summary) return;
+    const date = new Date().toISOString().slice(0, 10);
+    downloadTextFile(`budget-${date}.csv`, budgetSummaryToCsv(summary), "text/csv;charset=utf-8;");
   }
 
   return (
@@ -103,7 +110,12 @@ export function FinancePage() {
             {/* budget − allocated: what is left to hand to the next event. */}
             <MoneyCard icon={PiggyBank} label="Available" cents={summary.availableCents} />
             <MoneyCard icon={ReceiptText} label="Committed" cents={summary.committedCents} />
-            <MoneyCard icon={ArrowDownToLine} label="Spent" cents={summary.spentCents} />
+            <MoneyCard
+              icon={ArrowDownToLine}
+              label="Spent"
+              cents={summary.spentCents}
+              onDownload={exportBudgetCsv}
+            />
           </section>
 
           {summary.allocations.length > 0 && (
@@ -389,10 +401,14 @@ function MoneyCard({
   icon: Icon,
   label,
   cents,
+  onDownload,
 }: {
   icon: typeof Landmark;
   label: string;
   cents: number;
+  /** When given, the icon becomes a real button that exports this card's
+   * figures as CSV, instead of the plain decorative glyph the other cards keep. */
+  onDownload?: () => void;
 }) {
   return (
     <Card className="shadow-none">
@@ -401,9 +417,21 @@ function MoneyCard({
           <p className="text-sm text-muted-foreground">{label}</p>
           <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{money(cents)}</p>
         </div>
-        <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
-          <Icon aria-hidden="true" className="size-4" />
-        </span>
+        {onDownload ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={onDownload}
+            aria-label={`Download ${label.toLowerCase()} budget data as CSV`}
+          >
+            <Icon aria-hidden="true" className="size-4" />
+          </Button>
+        ) : (
+          <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
+            <Icon aria-hidden="true" className="size-4" />
+          </span>
+        )}
       </CardContent>
     </Card>
   );
