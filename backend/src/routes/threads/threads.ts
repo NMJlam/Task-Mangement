@@ -36,6 +36,7 @@ import {
   findThread,
   hasMember,
   listThreads,
+  mentionNotifications,
   replyProblem,
   taskThreadFilter,
   type Viewer,
@@ -261,17 +262,26 @@ threadsRouter.post(
       }
 
       // `author` is stamped from the session, never the body.
-      const [message] = await db
-        .insert(messages)
-        .values({
-          id: newId(),
-          channelId: thread.id,
-          author: req.user!.id,
-          body: input.body,
-          parentId: input.parentId ?? null,
-        })
-        .returning();
-      res.status(201).json({ message: message! } satisfies MessageResponse);
+      const message = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(messages)
+          .values({
+            id: newId(),
+            channelId: thread.id,
+            author: req.user!.id,
+            body: input.body,
+            parentId: input.parentId ?? null,
+          })
+          .returning();
+
+        const mentionRows = await mentionNotifications(tx, thread, input.body, req.user!.id, {
+          id: row!.id,
+        });
+        if (mentionRows.length > 0) await tx.insert(notifications).values(mentionRows);
+
+        return row!;
+      });
+      res.status(201).json({ message } satisfies MessageResponse);
     } catch (error) {
       next(error);
     }
@@ -403,6 +413,12 @@ async function postToTask(
         })),
       );
     }
+
+    const mentionRows = await mentionNotifications(tx, thread, values.body ?? "", viewer.id, {
+      id: row!.id,
+    });
+    if (mentionRows.length > 0) await tx.insert(notifications).values(mentionRows);
+
     return row!;
   });
 

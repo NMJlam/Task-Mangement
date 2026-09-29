@@ -1,5 +1,6 @@
 import type { Role } from "@ctp/shared";
-import { eq, sql } from "drizzle-orm";
+import { mentionToken } from "@ctp/shared";
+import { and, eq, sql } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
@@ -337,6 +338,120 @@ describe("/api/threads (integration)", () => {
       expect(reply.body.message.parentId).toBe(root.body.message.id);
       expect([nested.status, crossThread.status]).toEqual([422, 422]);
       expect(nested.body.error.fields.parentId).toBeDefined();
+    });
+  });
+
+  describe("@mentions", () => {
+    async function mentionsFor(userId: string, messageId: string) {
+      return db
+        .select()
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.userId, userId),
+            eq(notifications.kind, "mention"),
+            eq(notifications.entityId, messageId),
+          ),
+        );
+    }
+
+    it("notifies a mentioned member who can see the thread", async () => {
+      const officer = await member("officer", "officer");
+      const other = await member("other", "officer");
+      const { thread } = await teamThread("mention-team");
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: `hey ${mentionToken(other.id)}, can you look at this` });
+
+      expect(response.status).toBe(201);
+      const rows = await mentionsFor(other.id, response.body.message.id);
+      expect(rows).toHaveLength(1);
+    });
+
+    it("does not notify a self-mention", async () => {
+      const officer = await member("officer", "officer");
+      const { thread } = await teamThread("mention-self");
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: `note to self ${mentionToken(officer.id)}` });
+
+      expect(response.status).toBe(201);
+      expect(await mentionsFor(officer.id, response.body.message.id)).toHaveLength(0);
+    });
+
+    it("dedupes a person mentioned twice into one notification", async () => {
+      const officer = await member("officer", "officer");
+      const other = await member("other", "officer");
+      const { thread } = await teamThread("mention-dupe");
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: `${mentionToken(other.id)} ping, ${mentionToken(other.id)} pong` });
+
+      expect(response.status).toBe(201);
+      expect(await mentionsFor(other.id, response.body.message.id)).toHaveLength(1);
+    });
+
+    it("drops a mention of someone above the thread's tier, silently", async () => {
+      const officer = await member("officer", "officer");
+      const director = await member("director", "director");
+      const { thread } = await teamThread("mention-exec", 1);
+      signIn(director);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: `${mentionToken(officer.id)} fyi` });
+
+      expect(response.status).toBe(201);
+      expect(await mentionsFor(officer.id, response.body.message.id)).toHaveLength(0);
+    });
+
+    it("in a group, notifies a member and drops a non-member", async () => {
+      const officer = await member("officer", "officer");
+      const inGroup = await member("in-group", "officer");
+      const outsider = await member("outsider", "officer");
+      const thread = await group("mention-group", [officer.id, inGroup.id]);
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: `${mentionToken(inGroup.id)} and ${mentionToken(outsider.id)}` });
+
+      expect(response.status).toBe(201);
+      expect(await mentionsFor(inGroup.id, response.body.message.id)).toHaveLength(1);
+      expect(await mentionsFor(outsider.id, response.body.message.id)).toHaveLength(0);
+    });
+
+    it("ignores a malformed token without failing the post", async () => {
+      const officer = await member("officer", "officer");
+      const { thread } = await teamThread("mention-garbage");
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: "cc @[not-a-uuid] and @nobody" });
+
+      expect(response.status).toBe(201);
+    });
+
+    it("notifies a mention inside a task comment, using the task's own thread", async () => {
+      const officer = await member("officer", "officer");
+      const other = await member("other", "officer");
+      const { team } = await teamThread("mention-task");
+      const work = await task({ teamId: team.id });
+      signIn(officer);
+
+      const response = await request(app)
+        .post(`/api/tasks/${work.id}/comments`)
+        .send({ body: `${mentionToken(other.id)} take a look` });
+
+      expect(response.status).toBe(201);
+      expect(await mentionsFor(other.id, response.body.message.id)).toHaveLength(1);
     });
   });
 
