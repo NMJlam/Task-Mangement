@@ -1,8 +1,10 @@
 import type { Message, RosterMember, Thread } from "@ctp/shared";
+import { splitMentions } from "@ctp/shared";
 import { Hash, MessageCircle, Paperclip, Send } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { MentionTextarea } from "@/components/messages/mention-textarea";
 import { Button } from "@/components/ui/button";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
@@ -19,6 +21,7 @@ export function MessagesPage() {
   const threads = useThreads();
   const members = useMembers();
   const [selectedId, setSelectedId] = useState<string>();
+  const [draft, setDraft] = useState("");
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const active = threadItems.find((thread) => thread.id === selectedId) ?? threadItems[0];
   const messages = useThreadMessages(active?.id);
@@ -29,14 +32,18 @@ export function MessagesPage() {
     if (active) void markThreadRead(active);
   }, [active, markThreadRead]);
 
+  // A draft belongs to the thread it was typed in — switching threads should
+  // never carry half a message into the wrong conversation.
+  useEffect(() => {
+    setDraft("");
+  }, [active?.id]);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const body = String(data.get("message") ?? "").trim();
+    const body = draft.trim();
     if (!body) return;
     void messages.send(body).then((sent) => {
-      if (sent) form.reset();
+      if (sent) setDraft("");
     });
   }
 
@@ -135,7 +142,7 @@ export function MessagesPage() {
                 Message{" "}
                 {threadName(active, memberItems, me.status === "ok" ? me.user.id : undefined)}
               </label>
-              <textarea
+              <MentionTextarea
                 id="message"
                 name="message"
                 rows={3}
@@ -143,6 +150,10 @@ export function MessagesPage() {
                 placeholder="Write a message…"
                 className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 required
+                value={draft}
+                onChange={setDraft}
+                candidates={memberItems}
+                selfId={me.status === "ok" ? me.user.id : undefined}
               />
               <div className="mt-2 flex justify-end">
                 <Button disabled={messages.sending}>
@@ -176,7 +187,20 @@ function MessageRow({ message, members }: { message: Message; members: RosterMem
           </time>
         </div>
         {message.body && (
-          <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">{message.body}</p>
+          <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">
+            {splitMentions(message.body).map((part, index) =>
+              typeof part === "string" ? (
+                <span key={index}>{part}</span>
+              ) : (
+                <span
+                  key={index}
+                  className="rounded bg-primary/10 px-1 py-0.5 font-medium text-primary"
+                >
+                  @{mentionName(part.userId, members)}
+                </span>
+              ),
+            )}
+          </p>
         )}
         {message.fileName && (
           <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs">
@@ -187,6 +211,11 @@ function MessageRow({ message, members }: { message: Message; members: RosterMem
       </div>
     </article>
   );
+}
+
+function mentionName(userId: string, members: RosterMember[]): string {
+  const member = members.find((candidate) => candidate.id === userId);
+  return member?.name || member?.email || "a former member";
 }
 
 function threadName(thread: Thread, members: RosterMember[], myId: string | undefined) {
