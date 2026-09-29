@@ -679,6 +679,16 @@ Starts a conversation. You're always a member, so leave yourself out.
 **Replies are one level deep.** `parentId` must be a message in this thread
 that isn't itself a reply, or it's a `422` on field `parentId`.
 
+**@mentions.** A message body may carry `@[user-id]` tokens — the composer's
+job, not this route's; the API takes whatever text the client sends and looks
+for the pattern itself. Anyone tokened in who can also see this thread gets a
+`mention` notification; anyone tokened in who cannot (wrong tier, not a member
+of a `group`/`dm`/`ai` channel, or not a real user at all) is silently
+dropped — no error, no partial-failure response, since a mention notifying
+someone into a thread they cannot open would itself be the access leak.
+Mentioning yourself never notifies. The same rule applies to
+`POST /api/tasks/:id/comments` below, against that task's own thread.
+
 ### `POST /api/tasks/:id/comments` and `/attachments` · tier 0
 
 A comment is a message with `taskId` set, posted in the task's thread, so it
