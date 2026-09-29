@@ -6,6 +6,7 @@
 export * from "./errors.js";
 export * from "./auth/capabilities.js";
 export * from "./tasks/order.js";
+export * from "./messages/mentions.js";
 export * from "./schemas/auth-user/auth-user.js";
 export * from "./schemas/invite/invite.js";
 export * from "./schemas/member/member.js";
