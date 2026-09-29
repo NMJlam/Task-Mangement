@@ -1,6 +1,15 @@
-import type { Thread, Tier } from "@ctp/shared";
-import { and, asc, eq, inArray, lte, max, or, sql, type SQL } from "drizzle-orm";
-import { chanMembers, channels, events, messages } from "../../db/schema/index.js";
+import type { ChannelKind, Thread, Tier } from "@ctp/shared";
+import { extractMentionedIds } from "@ctp/shared";
+import { and, asc, eq, gte, inArray, lte, max, or, sql, type SQL } from "drizzle-orm";
+import { newId } from "../../db/id.js";
+import {
+  appUsers,
+  chanMembers,
+  channels,
+  events,
+  messages,
+  notifications,
+} from "../../db/schema/index.js";
 import { visibleEvents, type Queryable } from "../events/service.js";
 
 /**
@@ -52,14 +61,27 @@ export function visibleThreads(viewer: Viewer): SQL {
  * The thread matching `where`, and whether the viewer may see it. One query
  * answers both because the task routes treat the two misses differently: no
  * thread is a 409, a hidden one a 404. Oldest first when several match.
+ *
+ * Carries `kind`/`minTier`/`eventId` too — the same row already has them, and
+ * both message-creation routes need them again right after to resolve
+ * mentions via `mentionableIds`.
  */
 export async function findThread(
   db: Queryable,
   viewer: Viewer,
   where: SQL,
-): Promise<{ id: string; visible: boolean } | undefined> {
+): Promise<
+  | { id: string; visible: boolean; kind: ChannelKind; minTier: Tier; eventId: string | null }
+  | undefined
+> {
   const [thread] = await db
-    .select({ id: channels.id, visible: sql<boolean>`${visibleThreads(viewer)}` })
+    .select({
+      id: channels.id,
+      visible: sql<boolean>`${visibleThreads(viewer)}`,
+      kind: channels.kind,
+      minTier: sql<Tier>`${channels.minTier}`,
+      eventId: channels.eventId,
+    })
     .from(channels)
     .where(where)
     .orderBy(asc(channels.createdAt), asc(channels.id))
@@ -169,4 +191,86 @@ export function commentRecipients(
 /** Escapes LIKE's wildcards, so searching for "50%" finds "50%", not "50". */
 export function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+// ── @mentions ─────────────────────────────────────────────────────────────
+
+/** The channel columns `mentionableIds` needs — a subset of `channels`, not
+ * the full row, so a caller who already has the row can pass it as-is. */
+export interface MentionScope {
+  id: string;
+  kind: ChannelKind;
+  minTier: Tier;
+  eventId: string | null;
+}
+
+const MEMBERSHIP_KINDS_SET = new Set<ChannelKind>(["group", "dm", "ai"]);
+
+/**
+ * Of `candidateIds`, the ones who may actually see `channel` — the same two
+ * rules `visibleThreads` checks for one viewer, run the other way round for
+ * many. A mention naming someone who cannot see the thread is dropped here
+ * rather than notified: the notification itself would be the leak, confirming
+ * a hidden thread exists to someone `visibleThreads` keeps it from. An id that
+ * isn't a real app_user at all drops out the same way, with no separate
+ * existence check needed.
+ */
+export async function mentionableIds(
+  db: Queryable,
+  channel: MentionScope,
+  candidateIds: readonly string[],
+): Promise<string[]> {
+  if (candidateIds.length === 0) return [];
+
+  if (MEMBERSHIP_KINDS_SET.has(channel.kind)) {
+    const rows = await db
+      .select({ userId: chanMembers.userId })
+      .from(chanMembers)
+      .where(and(eq(chanMembers.channelId, channel.id), inArray(chanMembers.userId, candidateIds)));
+    return rows.map((row) => row.userId);
+  }
+
+  // team or event, gated by tier — event also needs its event visible, the
+  // same EXISTS visibleThreads runs, just against a candidate's tier instead
+  // of one fixed viewer's, so it isn't reusable as the function directly.
+  const rows = await db
+    .select({ id: appUsers.id })
+    .from(appUsers)
+    .where(
+      and(
+        inArray(appUsers.id, candidateIds),
+        gte(appUsers.tier, channel.minTier),
+        channel.kind === "event"
+          ? sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${channel.eventId} AND ${lte(events.minTier, appUsers.tier)} AND ${events.status} != 'cancelled')`
+          : sql`true`,
+      ),
+    );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * `@[user-id]` tokens in `body`, turned into `mention` notification rows for
+ * whoever both wrote one and can see `channel` — self-mentions never notify,
+ * the same way `commentRecipients` drops the comment's own author. Returns
+ * rows ready to insert, or `[]`; the caller decides whether to bother with an
+ * empty insert.
+ */
+export async function mentionNotifications(
+  db: Queryable,
+  channel: MentionScope,
+  body: string,
+  authorId: string,
+  message: { id: string },
+): Promise<(typeof notifications.$inferInsert)[]> {
+  const candidates = extractMentionedIds(body).filter((id) => id !== authorId);
+  if (candidates.length === 0) return [];
+  const recipients = await mentionableIds(db, channel, candidates);
+  return recipients.map((userId) => ({
+    id: newId(),
+    userId,
+    kind: "mention" as const,
+    body: "You were mentioned in a message.",
+    entityType: "message" as const,
+    entityId: message.id,
+  }));
 }
