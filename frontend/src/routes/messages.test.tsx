@@ -78,6 +78,110 @@ describe("MessagesPage", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("renders a mention token as the mentioned member's name", async () => {
+    const threadId = "018f3a4b-0000-7000-8000-000000000002";
+    const authorId = "018f3a4b-0000-7000-8000-000000000003";
+    const mentioned = "018f3a4b-0000-7000-8000-000000000007";
+    const message = buildMessage(threadId, authorId, `hey @[${mentioned}] check this`);
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === "/api/threads") {
+        return response({
+          threads: [
+            {
+              id: threadId,
+              kind: "event",
+              name: "Winter Showcase",
+              teamId: null,
+              eventId: "018f3a4b-0000-7000-8000-000000000004",
+              minTier: 0,
+              createdAt: "2026-06-01T00:00:00.000Z",
+              memberIds: [],
+              lastReadAt: null,
+              unreadCount: 0,
+              lastMessageAt: "2026-09-18T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (input === "/api/members") {
+        return response({
+          members: [
+            {
+              id: mentioned,
+              role: "officer",
+              tier: 0,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              name: "Jamie Lee",
+              email: "jamie@example.com",
+              teamIds: [],
+              portfolio: null,
+            },
+          ],
+        });
+      }
+      return response({ messages: [message], nextCursor: null });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MessagesPage />);
+
+    await waitFor(() => expect(screen.getByText("@Jamie Lee")).toBeInTheDocument());
+    expect(screen.queryByText(`@[${mentioned}]`)).not.toBeInTheDocument();
+  });
+
+  it("opens the mention picker on @ and inserts the token on pick", async () => {
+    const threadId = "018f3a4b-0000-7000-8000-000000000002";
+    const other = "018f3a4b-0000-7000-8000-000000000008";
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === "/api/threads") {
+        return response({
+          threads: [
+            {
+              id: threadId,
+              kind: "event",
+              name: "Winter Showcase",
+              teamId: null,
+              eventId: "018f3a4b-0000-7000-8000-000000000004",
+              minTier: 0,
+              createdAt: "2026-06-01T00:00:00.000Z",
+              memberIds: [],
+              lastReadAt: null,
+              unreadCount: 0,
+              lastMessageAt: "2026-09-18T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (input === "/api/members") {
+        return response({
+          members: [
+            {
+              id: other,
+              role: "officer",
+              tier: 0,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              name: "Jamie Lee",
+              email: "jamie@example.com",
+              teamIds: [],
+              portfolio: null,
+            },
+          ],
+        });
+      }
+      return response({ messages: [], nextCursor: null });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MessagesPage />);
+    const input = await screen.findByLabelText(/message winter showcase/i);
+
+    fireEvent.change(input, { target: { value: "hi @Jam", selectionStart: 7 } });
+    const option = await screen.findByRole("option", { name: "Jamie Lee" });
+    fireEvent.click(option);
+
+    await waitFor(() => expect(input).toHaveValue(`hi @[${other}] `));
+  });
 });
 
 function response(body: unknown) {
