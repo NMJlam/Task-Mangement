@@ -1,7 +1,8 @@
 import { aiBriefingResponseSchema, type AiBriefing } from "@ctp/shared";
 import { useEffect, useState } from "react";
+import { readAiError } from "@/lib/ai-errors";
 
-/** `disabled` is a 503: the deployment has no assistant, which the dashboard shows by showing nothing. */
+/** `disabled` is `AI_DISABLED`: the deployment has no assistant, which the dashboard shows by showing nothing. */
 type BriefingState =
   | { status: "loading" }
   | { status: "ok"; briefing: AiBriefing; generatedAt: Date }
@@ -23,11 +24,16 @@ export function useBriefing(): BriefingState {
       try {
         const response = await fetch("/api/ai/briefing", { credentials: "include" });
         if (!active) return;
-        if (response.status === 503) {
-          setState({ status: "disabled" });
+        if (!response.ok) {
+          const failure = await readAiError(response, "Failed to load the briefing");
+          if (!active) return;
+          setState(
+            failure.disabled
+              ? { status: "disabled" }
+              : { status: "error", message: failure.message },
+          );
           return;
         }
-        if (!response.ok) throw new Error("Failed to load the briefing");
         const body = aiBriefingResponseSchema.parse(await response.json());
         if (active) {
           setState({

@@ -48,3 +48,17 @@ it("reports a 503 as the assistant being off", async () => {
 
   expect(result.current.state.status).toBe("disabled");
 });
+
+it("reports a busy AI service as an error the member can retry", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(respond(503, { error: { code: "AI_UNAVAILABLE", message: "Busy." } })),
+  );
+  const { result } = renderHook(() => useThreadSummary(CHANNEL_ID));
+
+  await act(() => result.current.summarise());
+
+  expect(result.current.state).toEqual({ status: "error", message: "Busy." });
+});

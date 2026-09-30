@@ -105,3 +105,20 @@ it("treats a 503 as the assistant being off, not as an error", async () => {
   expect(result.current.state.status).toBe("disabled");
   expect(result.current.error).toBeUndefined();
 });
+
+it("keeps the chat usable and relays the message when the AI service is only busy", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      respond(503, {
+        error: { code: "AI_UNAVAILABLE", message: "The AI service is busy right now." },
+      }),
+    ),
+  );
+  const { result } = renderHook(() => useAssistant());
+
+  await act(() => result.current.send("Hello"));
+
+  expect(result.current.state.status).toBe("ok");
+  expect(result.current.error).toBe("The AI service is busy right now.");
+});

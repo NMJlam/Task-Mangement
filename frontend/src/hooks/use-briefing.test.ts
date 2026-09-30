@@ -40,3 +40,16 @@ it("reports a 503 as the assistant being off", async () => {
 
   await waitFor(() => expect(result.current.status).toBe("disabled"));
 });
+
+it("treats a busy AI service as a failure, not as the assistant being off", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(respond(503, { error: { code: "AI_UNAVAILABLE", message: "Busy." } })),
+  );
+
+  const { result } = renderHook(() => useBriefing());
+
+  await waitFor(() => expect(result.current.status).toBe("error"));
+});
