@@ -1,9 +1,15 @@
-import type { Message, Task } from "@ctp/shared";
-import { Bot, Sparkles } from "lucide-react";
+import { aiBriefingSchema, type AiBriefing, type Message, type Task } from "@ctp/shared";
+import { Bot, PowerOff, Send } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import { ProposalCard } from "@/components/ai/proposal-card";
 import { PageHeader } from "@/components/common/page-header";
 import { PriorityDot } from "@/components/common/priority-dot";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useAssistant, type AssistantTurn } from "@/hooks/use-assistant";
+import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
 import { useThreadMessages, useThreads } from "@/hooks/use-threads";
 
@@ -13,6 +19,10 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
 });
 
 export function AiBreakdownPage() {
+  const [searchParams] = useSearchParams();
+  const assistant = useAssistant({ eventId: searchParams.get("eventId") ?? undefined });
+  const members = useMembers();
+  const [draft, setDraft] = useState("");
   const threads = useThreads();
   const tasks = useTasks();
   const assistantThread =
@@ -36,33 +46,24 @@ export function AiBreakdownPage() {
           ? messages.state.message
           : undefined;
 
+  const history = messages.state.status === "ok" ? [...messages.state.items].reverse() : [];
+  const turns = assistant.state.status === "ok" ? assistant.state.turns : [];
+  const staged = assistant.state.status === "ok" ? assistant.state.staged : undefined;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || assistant.pending) return;
+    setDraft("");
+    void assistant.send(text);
+  }
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
-        title="AI Task Breakdown"
-        description="Review assistant-generated plans and the tasks created from them."
-        actions={
-          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            History only
-          </span>
-        }
+        title="AI Assistant"
+        description="Ask about the club's work, or have the assistant draft a plan for you to check and confirm."
       />
-
-      <section
-        aria-labelledby="ai-availability-heading"
-        className="mt-6 flex items-start gap-3 rounded-xl border border-dashed bg-card p-4"
-      >
-        <Sparkles aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-        <div>
-          <h2 id="ai-availability-heading" className="text-sm font-semibold">
-            Planning is not connected yet
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            This page shows saved assistant output. New breakdowns will be available when the AI
-            service is connected.
-          </p>
-        </div>
-      </section>
 
       {loading && (
         <p className="mt-8 text-sm text-muted-foreground" role="status">
@@ -78,20 +79,81 @@ export function AiBreakdownPage() {
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
           <Card className="shadow-none">
             <CardHeader>
-              <h2 className="text-lg font-semibold tracking-tight">Past breakdowns</h2>
-              <p className="text-sm text-muted-foreground">The saved assistant conversation.</p>
+              <h2 className="text-lg font-semibold tracking-tight">Conversation</h2>
+              <p className="text-sm text-muted-foreground">
+                Nothing changes until you confirm a plan.
+              </p>
             </CardHeader>
-            <CardContent>
-              {messages.state.status === "ok" && messages.state.items.length > 0 ? (
+            <CardContent className="grid gap-5">
+              {history.length > 0 || turns.length > 0 ? (
                 <ol className="grid gap-5">
-                  {[...messages.state.items].reverse().map((message) => (
+                  {history.map((message) => (
                     <AssistantMessage key={message.id} message={message} />
+                  ))}
+                  {turns.map((turn) => (
+                    <LiveTurn key={turn.id} turn={turn} />
                   ))}
                 </ol>
               ) : (
                 <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-                  No saved breakdowns yet.
+                  No conversation yet. Ask what&apos;s overdue, or to plan an event.
                 </p>
+              )}
+
+              {staged && (
+                <ProposalCard
+                  key={staged.runId}
+                  proposal={staged.proposal}
+                  members={members.state.status === "ok" ? members.state.items : []}
+                  onApply={(operations, stats) => void assistant.apply(operations, stats)}
+                  onDiscard={assistant.discard}
+                  busy={assistant.pending}
+                />
+              )}
+              {assistant.error && (
+                <p className="text-sm text-destructive" role="alert">
+                  {assistant.error}
+                </p>
+              )}
+
+              {assistant.state.status === "disabled" ? (
+                <div className="flex items-start gap-3 rounded-lg border border-dashed p-4">
+                  <PowerOff
+                    aria-hidden="true"
+                    className="mt-0.5 size-5 shrink-0 text-muted-foreground"
+                  />
+                  <div>
+                    <h3 className="text-sm font-semibold">The assistant is switched off</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      This deployment has no AI service connected. Past conversations stay here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={submit} className="flex items-end gap-2">
+                  <label htmlFor="assistant-draft" className="sr-only">
+                    Message the assistant
+                  </label>
+                  <textarea
+                    id="assistant-draft"
+                    rows={2}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Enter sends, Shift+Enter keeps a newline — the chat convention.
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    placeholder="Plan the hack night, or ask what's overdue…"
+                    className="min-h-10 flex-1 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                  <Button type="submit" disabled={assistant.pending || !draft.trim()}>
+                    <Send aria-hidden="true" />
+                    Send
+                  </Button>
+                </form>
               )}
             </CardContent>
           </Card>
@@ -121,6 +183,34 @@ export function AiBreakdownPage() {
   );
 }
 
+/** A daily briefing is stored as its JSON (D15); anything that isn't one is plain text. */
+function asBriefing(body: string): AiBriefing | undefined {
+  if (!body.startsWith("{")) return undefined;
+  try {
+    const parsed = aiBriefingSchema.safeParse(JSON.parse(body));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function MessageBody({ body }: { body: string }) {
+  const briefing = asBriefing(body);
+  if (!briefing) return <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{body}</p>;
+  return (
+    <div className="mt-2 text-sm leading-6">
+      <p>{briefing.summary}</p>
+      {briefing.bullets.length > 0 && (
+        <ul className="mt-1 list-disc pl-5">
+          {briefing.bullets.map((bullet) => (
+            <li key={bullet}>{bullet}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function AssistantMessage({ message }: { message: Message }) {
   const assistant = Boolean(message.aiRunId);
 
@@ -143,7 +233,29 @@ function AssistantMessage({ message }: { message: Message }) {
             {dateTime.format(message.createdAt)}
           </time>
         </div>
-        <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{message.body}</p>
+        <MessageBody body={message.body} />
+      </article>
+    </li>
+  );
+}
+
+/** A turn from this visit, shown before it is part of the stored history. */
+function LiveTurn({ turn }: { turn: AssistantTurn }) {
+  const fromAssistant = turn.role === "assistant";
+  return (
+    <li className={fromAssistant ? "pr-6" : "pl-6"}>
+      <article
+        className={
+          fromAssistant
+            ? "rounded-lg border bg-background p-4"
+            : "rounded-lg bg-secondary p-4 text-secondary-foreground"
+        }
+      >
+        <div className="flex items-center gap-2">
+          {fromAssistant && <Bot aria-hidden="true" className="size-4 text-muted-foreground" />}
+          <h3 className="text-xs font-semibold">{fromAssistant ? "MAC Assistant" : "You"}</h3>
+        </div>
+        <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{turn.text}</p>
       </article>
     </li>
   );

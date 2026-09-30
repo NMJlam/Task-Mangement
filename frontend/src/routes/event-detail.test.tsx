@@ -325,6 +325,24 @@ describe("EventDetailPage", () => {
     expect(screen.queryByRole("button", { name: "Delete Task" })).not.toBeInTheDocument();
   });
 
+  it("links a tier-1 member to the assistant, seeded with this event", async () => {
+    stubEvent({ role: "director", tier: 1 });
+    renderDetail("?tab=tasks");
+
+    const link = await screen.findByRole("link", { name: "Plan with AI" });
+
+    expect(link).toHaveAttribute("href", `/ai?eventId=${EVENT_ID}`);
+  });
+
+  it("offers no Plan with AI link below tier 1, who could not create the plan", async () => {
+    stubEvent({ role: "officer", tier: 0 });
+    renderDetail("?tab=tasks");
+
+    await screen.findByRole("button", { name: "Add Task" });
+
+    expect(screen.queryByRole("link", { name: "Plan with AI" })).not.toBeInTheDocument();
+  });
+
   it("takes the open tab from the URL", async () => {
     stubEvent();
     renderDetail("?tab=tasks");
