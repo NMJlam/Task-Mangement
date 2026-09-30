@@ -21,3 +21,22 @@ describe("buildSystemPrompt", () => {
     expect(buildSystemPrompt(tools, "Event: Hackathon 2026")).toContain("Hackathon 2026");
   });
 });
+
+describe("buildSystemPrompt and the calendar", () => {
+  it("tells the model today's date, so a plan can be dated without guessing the year", () => {
+    const prompt = buildSystemPrompt(tools, "", new Date("2026-09-30T13:30:00Z"));
+
+    // 13:30 UTC on the 30th is still the 30th in Melbourne — and a Wednesday.
+    expect(prompt).toContain("Wednesday, 30 September 2026");
+  });
+
+  it("tells the model to choose a date itself rather than stall when none was given", () => {
+    expect(buildSystemPrompt(tools, "", new Date())).toMatch(/no date[^.]*choose/iu);
+  });
+});
+
+describe("buildSystemPrompt and the member's reading of a reply", () => {
+  it("tells the model to speak in names and titles, since a handle means nothing to a member", () => {
+    expect(buildSystemPrompt(tools, "")).toMatch(/reply[^.]*names[^.]*never[^.]*handle/iu);
+  });
+});

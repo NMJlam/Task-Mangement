@@ -26,6 +26,17 @@ const proposeUpdateTasksArgsSchema = z.object({
 });
 
 /**
+ * What a rejected call is told. The field path matters as much as the message:
+ * "Invalid input" alone gives the model nothing to correct, and it gives up.
+ */
+function rejection(error: z.ZodError, fallback: string): { error: string } {
+  const issue = error.issues[0];
+  if (!issue) return { error: fallback };
+  const path = issue.path.join(".");
+  return { error: path ? `${path}: ${issue.message}` : issue.message };
+}
+
+/**
  * Staging, not writing. The tool's whole effect is to put rows on the card the
  * member is about to read; nothing reaches the database until they confirm it.
  * The tier here mirrors POST /api/events, and Task 7 re-checks it at apply
@@ -36,10 +47,10 @@ export const proposeCreateEvent: Tool = {
   name: "proposeCreateEvent",
   minTier: 1,
   describe:
-    "Stage ONE new event for the member to review. Give it a ref like $event1 so tasks can be attached to it.",
+    "Stage ONE new event for the member to review. Args: ref (a label like $event1, so tasks can attach to it), title, startsAt (ISO 8601 date-time such as 2026-11-20T18:00:00+11:00); optional: endsAt (ISO 8601 date-time), venue, description.",
   async run(ctx: ToolContext, args): Promise<unknown> {
     const parsed = aiProposedEventSchema.safeParse(args);
-    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid event" };
+    if (!parsed.success) return rejection(parsed.error, "Invalid event");
     ctx.staged.createEvent = parsed.data;
     return { staged: "event", ref: parsed.data.ref };
   },
@@ -57,10 +68,10 @@ export const proposeCreateEvent: Tool = {
 export const proposeCreateTasks: Tool = {
   name: "proposeCreateTasks",
   minTier: 0,
-  describe: `Stage one or more new tasks for the member to review, in a single call. Args: tasks (array; each may bind to a staged event with eventRef, an existing one with eventHandle, or neither for standing work). A tier-0 caller may stage at most 1 task in total this turn; tier 1+ may stage up to ${AI_MAX_PROPOSALS}.`,
+  describe: `Stage one or more new tasks for the member to review, in a single call. Args: tasks (array). Each task: title (required); optional: description, priority (low|medium|high|urgent), dueOffsetDays (whole days from the event's start, negative is before: -7 is a week ahead), assigneeHandles (array of member handles such as M2), and either eventRef ($event1, an event staged this turn) or eventHandle (E3, an existing event), or neither for standing work. A tier-0 caller may stage at most 1 task in total this turn; tier 1+ may stage up to ${AI_MAX_PROPOSALS}.`,
   async run(ctx: ToolContext, args): Promise<unknown> {
     const parsed = proposeCreateTasksArgsSchema.safeParse(args);
-    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid tasks" };
+    if (!parsed.success) return rejection(parsed.error, "Invalid tasks");
 
     const limit = ctx.tier >= 1 ? AI_MAX_PROPOSALS : 1;
     const staged = ctx.staged.createTasks ?? [];
@@ -92,11 +103,10 @@ export const proposeCreateTasks: Tool = {
 export const proposeUpdateTasks: Tool = {
   name: "proposeUpdateTasks",
   minTier: 0,
-  describe: `Stage field changes to one or more existing tasks, in a single call, each addressed by handle. Args: diffs (array; each needs a handle plus at least one field to change). Provide only the fields that change. A single turn may stage at most ${AI_MAX_PROPOSALS} task changes in total.`,
+  describe: `Stage field changes to one or more existing tasks, in a single call, each addressed by handle. Args: diffs (array). Each diff: handle (the task, such as T4) plus only the fields that change: title, description, priority (low|medium|high|urgent), dueAt (ISO 8601 date-time, or null to clear), assigneeHandles (the full new set of member handles). A single turn may stage at most ${AI_MAX_PROPOSALS} task changes in total.`,
   async run(ctx: ToolContext, args): Promise<unknown> {
     const parsed = proposeUpdateTasksArgsSchema.safeParse(args);
-    if (!parsed.success)
-      return { error: parsed.error.issues[0]?.message ?? "Invalid task updates" };
+    if (!parsed.success) return rejection(parsed.error, "Invalid task updates");
 
     const staged = ctx.staged.updateTasks ?? [];
     const total = staged.length + parsed.data.diffs.length;
@@ -128,11 +138,10 @@ export const proposeUpdateEvent: Tool = {
   name: "proposeUpdateEvent",
   minTier: 1,
   describe:
-    "Stage a change to ONE existing event, addressed by handle. Provide only the fields that change: title, description, venue, startsAt, endsAt, status (planning|live|wrapped).",
+    "Stage a change to ONE existing event. Args: handle (the event, such as E2) plus only the fields that change: title, description, venue, startsAt (ISO 8601 date-time), endsAt (ISO 8601 date-time), status (planning|live|wrapped).",
   async run(ctx: ToolContext, args): Promise<unknown> {
     const parsed = aiEventDiffSchema.safeParse(args);
-    if (!parsed.success)
-      return { error: parsed.error.issues[0]?.message ?? "Invalid event update" };
+    if (!parsed.success) return rejection(parsed.error, "Invalid event update");
     ctx.staged.updateEvent = parsed.data;
     return { staged: "eventUpdate", handle: parsed.data.handle };
   },
