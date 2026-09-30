@@ -59,7 +59,7 @@ const READ_LIMIT = 50;
  * passes. Mirrors the `EXISTS` shape `visibleThreads` already uses rather
  * than a join, so callers need not pull `events` into their own `.from()`.
  */
-function taskEventVisible(tier: Tier): SQL {
+export function taskEventVisible(tier: Tier): SQL {
   return or(
     isNull(tasks.eventId),
     sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${tasks.eventId} AND ${visibleEvents(tier)})`,

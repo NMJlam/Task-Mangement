@@ -4,11 +4,11 @@ import {
   type AiProposalStatus,
   type AiRunKind,
 } from "@ctp/shared";
-import { and, asc, count, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { CLUB_TIMEZONE } from "../../config/club.js";
 import { newId } from "../../db/id.js";
-import { aiRuns, chanMembers, channels } from "../../db/schema/index.js";
+import { aiRuns } from "../../db/schema/index.js";
 import { AiQuotaError, type CompletionFn } from "../../lib/ai/client.js";
 // `Tx` and `Queryable` are derived ONCE, in routes/events/service.ts, and
 // imported everywhere else — routes/threads/service.ts already does exactly
@@ -81,41 +81,6 @@ export async function completeJson<T extends z.ZodTypeAny>(
     }
   }
   throw new AiOutputError();
-}
-
-/**
- * `ai_run.channel_id` is NOT NULL, and channel.ts says the assistant "is
- * kind = 'ai', a dedicated PAGE" — so each member gets exactly one, made on
- * first use. Three CHECK constraints apply: the name must be non-blank,
- * min_tier must stay 0, and both parents must be NULL.
- *
- * Two first-use calls for the same member can both read "no channel yet"
- * and both insert, permanently splitting that member's history across two
- * `kind='ai'` channels — channel_one_per_team is kind-scoped, so nothing in
- * the schema stops it. The lock serialises the check-then-insert for this
- * user, same idea as allocateToEvent (routes/events/service.ts) locking the
- * settings row before checking the budget, and the same pattern
- * routes/threads/threads.ts already uses for a dm pair; it is
- * transaction-scoped, so it releases automatically at commit or rollback.
- * ORDER BY keeps the read deterministic even if a duplicate already exists
- * from before this lock did.
- */
-export async function resolveAiChannel(tx: Tx, userId: string): Promise<string> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-channel:${userId}`}))`);
-
-  const [existing] = await tx
-    .select({ id: channels.id })
-    .from(channels)
-    .innerJoin(chanMembers, eq(chanMembers.channelId, channels.id))
-    .where(and(eq(channels.kind, "ai"), eq(chanMembers.userId, userId)))
-    .orderBy(asc(channels.createdAt), asc(channels.id))
-    .limit(1);
-  if (existing) return existing.id;
-
-  const channelId = newId();
-  await tx.insert(channels).values({ id: channelId, kind: "ai", name: "Assistant" });
-  await tx.insert(chanMembers).values({ channelId, userId });
-  return channelId;
 }
 
 /**
@@ -300,4 +265,23 @@ export async function findTodaysBriefing(
   return parsed.success
     ? { briefing: parsed.data, generatedAt: new Date(row.createdAt), runId: row.id }
     : undefined;
+}
+
+/** How much of a chat the model is shown each turn (spec §4.2). */
+export const CHAT_HISTORY_MESSAGES = 40;
+export const CHAT_HISTORY_CHAR_BUDGET = 6000;
+
+/**
+ * What a chat remembers (spec M2, M3): the words of its recent messages and
+ * nothing else. No tool results and no handles cross from one turn to the
+ * next — the model re-reads through its tools, under today's permissions, so
+ * memory can never hand it an identifier it was not shown this turn.
+ */
+export function conversationBlock(history: PromptMessage[], maxChars: number): string {
+  const kept = budgetMessages(history, maxChars);
+  if (kept.length === 0) return "";
+  return [
+    "CONVERSATION SO FAR:",
+    ...kept.map((message) => `${message.author}: ${message.body}`),
+  ].join("\n");
 }
