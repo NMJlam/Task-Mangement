@@ -153,7 +153,7 @@ function GeneratedTask({ task }: { task: Task }) {
   return (
     <li className="rounded-lg border p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-1.5">
+        <span className="flex h-5 shrink-0 items-center">
           <PriorityDot priority={task.priority} />
         </span>
         <p className="text-sm leading-5 font-medium">{task.title}</p>

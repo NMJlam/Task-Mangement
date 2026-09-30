@@ -70,7 +70,7 @@ export function TaskCard({
       />
       <CardContent className="px-4">
         <div className="flex items-start gap-2">
-          <span className="mt-1.5">
+          <span className="flex h-5 shrink-0 items-center">
             <PriorityDot priority={task.priority} />
           </span>
           <h3 className="min-w-0 flex-1 text-sm leading-5 font-medium">{task.title}</h3>
