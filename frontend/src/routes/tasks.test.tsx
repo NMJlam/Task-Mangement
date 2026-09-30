@@ -187,7 +187,7 @@ describe("TasksPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("creates a task through the Add Tasks modal and shows it on the board", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const due = todayLocal();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -278,7 +278,7 @@ describe("TasksPage", () => {
   });
 
   it("keeps the modal open with its entries when the create fails", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -306,7 +306,7 @@ describe("TasksPage", () => {
   });
 
   it("links a task to an event and exposes the event page from the modal", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = { ...buildTask(), eventId: EVENT_ID };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -339,7 +339,7 @@ describe("TasksPage", () => {
   });
 
   it("changes a task's priority from the modal", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -373,7 +373,7 @@ describe("TasksPage", () => {
   });
 
   it("moves an existing card's deadline from the modal, then clears it", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const due = todayLocal();
     const sentBodies: unknown[] = [];
@@ -417,7 +417,7 @@ describe("TasksPage", () => {
   });
 
   it("filters the board by title, case-insensitively", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const other = { ...buildTask(), id: "018f3a4b-0000-7000-8000-000000000003", title: "Book AV" };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -449,7 +449,7 @@ describe("TasksPage", () => {
   });
 
   it("turns the URL's filters into a server read, and Clear Filters back into /tasks", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

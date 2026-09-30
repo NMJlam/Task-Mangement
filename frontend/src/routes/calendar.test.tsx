@@ -260,7 +260,7 @@ describe("CalendarPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("asks for events only, over exactly the days each view shows", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
     renderPage();
 
@@ -315,7 +315,7 @@ describe("CalendarPage", () => {
   });
 
   it("steps by a month, a week and a day, and Today returns to the anchor", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
     renderPage();
     await waitFor(() => expect(screen.getByText("Winter Showcase")).toBeInTheDocument());
@@ -472,7 +472,7 @@ describe("CalendarPage", () => {
   });
 
   it("opens an event's overview and links on to the full event page", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubFetch([showcase]);
     renderPage();
 
@@ -496,7 +496,7 @@ describe("CalendarPage", () => {
   });
 
   it("reschedules from the preview through the same visual picker", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase], { tier: 1 });
     renderPage();
 
@@ -538,7 +538,7 @@ describe("CalendarPage", () => {
   });
 
   it("refuses an end before the start without calling the API", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase], { tier: 1 });
     renderPage();
 
@@ -561,7 +561,7 @@ describe("CalendarPage", () => {
   });
 
   it("closes the overview on Escape and gives focus back to the event button", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubFetch([showcase]);
     renderPage();
 
@@ -589,7 +589,7 @@ describe("CalendarPage", () => {
   });
 
   it("takes the view and the anchor from the URL, and steps them through it", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
     // A Monday: the Sunday-first week around it starts on the 11th.
     renderPage("/calendar?view=week&date=2026-10-12");
@@ -620,7 +620,7 @@ describe("CalendarPage", () => {
   });
 
   it("restores the previous range on Back, and the next one on Forward", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
     renderPage("/calendar");
 
@@ -650,7 +650,7 @@ describe("CalendarPage", () => {
   });
 
   it("opens the day view from a day cell's own button", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
     renderPage();
 
@@ -691,7 +691,7 @@ describe("CalendarPage", () => {
   });
 
   it("recovers a failed range with Try Again instead of a page refresh", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let failed = true;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -756,7 +756,7 @@ describe("CalendarPage", () => {
  * `day: null` keeps the day the popover opened on.
  */
 async function pick(popover: HTMLElement, day: Date | null, timeLabel: string, time: string) {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   if (day) {
     const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     const cell = document.querySelector(`[data-day="${iso}"]`);

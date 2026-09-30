@@ -26,7 +26,7 @@ describe("Tabs", () => {
   });
 
   it("moves between tabs with the arrow keys", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderTabs();
 
     await user.tab();

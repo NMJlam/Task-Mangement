@@ -302,7 +302,7 @@ describe("TaskBoard", () => {
   });
 
   it("opens a task's details in a modal and names the assignee", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -324,7 +324,7 @@ describe("TaskBoard", () => {
   });
 
   it("closes the modal on Escape", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -343,7 +343,7 @@ describe("TaskBoard", () => {
   });
 
   it("says nobody is assigned rather than inventing a name", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[{ ...task, assigneeIds: [] }]}
@@ -359,7 +359,7 @@ describe("TaskBoard", () => {
   });
 
   it("lists every assignee, and names an id the roster no longer holds", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[
@@ -383,7 +383,7 @@ describe("TaskBoard", () => {
   // The dialog's Due date row is the same control the create modal uses, so a
   // card's deadline is edited through one popover, not a second code path.
   it("edits a card's deadline through the shared date picker", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onUpdate = vi.fn();
     renderBoard(
       <TaskBoard
@@ -424,7 +424,7 @@ describe("TaskBoard", () => {
   // A caller that wires no mutation still gets the read-only presentation of the
   // same fields, which is what a board with no `onUpdate` relies on.
   it("offers no assignment editor without an onUpdate handler", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -445,7 +445,7 @@ describe("TaskBoard", () => {
 
   // With `onUpdate` given the dialog edits the task; the board supplies the task.
   it("forwards a dialog patch for the open task when onUpdate is given", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onUpdate = vi.fn();
     renderBoard(
       <TaskBoard
