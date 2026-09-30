@@ -22,8 +22,17 @@ export interface Viewer {
   tier: Tier;
 }
 
-/** The kinds gated by a `chan_member` row rather than by `min_tier`. */
-const MEMBERSHIP_KINDS = ["group", "dm", "ai"] as const;
+/**
+ * The kinds gated by a `chan_member` row rather than by `min_tier`.
+ *
+ * `ai` is deliberately absent. An assistant chat is a channel too, and its
+ * owner is its one member — but it is not a thread: it is served only by
+ * routes/ai, under that router's own ownership check. Leaving it out here is
+ * what keeps AI chats out of Messages and out of every thread route at once
+ * (list, read, post, mark read, mentions), rather than relying on each caller
+ * to filter.
+ */
+const MEMBERSHIP_KINDS = ["group", "dm"] as const;
 
 function isMembershipKind(kind: Thread["kind"]): boolean {
   return (MEMBERSHIP_KINDS as readonly string[]).includes(kind);
@@ -227,7 +236,7 @@ export interface MentionScope {
   eventId: string | null;
 }
 
-const MEMBERSHIP_KINDS_SET = new Set<ChannelKind>(["group", "dm", "ai"]);
+const MEMBERSHIP_KINDS_SET = new Set<ChannelKind>(MEMBERSHIP_KINDS);
 
 /**
  * Of `candidateIds`, the ones who may actually see `channel` — the same two
