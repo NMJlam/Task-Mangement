@@ -62,6 +62,7 @@ export function DateTimePicker({
   onChange,
   label,
   timeLabel = "Time",
+  defaultTime = "",
   allowClear = true,
   disabled = false,
   portalTarget = null,
@@ -72,6 +73,13 @@ export function DateTimePicker({
   /** Noun phrase the trigger, popover and clear action are worded from. */
   label: string;
   timeLabel?: string;
+  /**
+   * `HH:MM` the time field starts on when there is no value yet — `"23:59"` for a
+   * deadline, where end-of-day is what "due that day" means and typing a time
+   * every single task is busywork. `""` leaves the field empty, so a domain with
+   * no sensible default (an event's start) still makes the user state one.
+   */
+  defaultTime?: string;
   /** Off for a required instant, where clearing is not a state the caller accepts. */
   allowClear?: boolean;
   disabled?: boolean;
@@ -79,7 +87,7 @@ export function DateTimePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [day, setDay] = useState<Date | undefined>(value ?? undefined);
-  const [time, setTime] = useState(timeOf(value));
+  const [time, setTime] = useState(value ? timeOf(value) : defaultTime);
   const timeId = `${id}-time`;
   // A day with no time is not an instant, and guessing midnight would invent a
   // fact the user did not state — so Apply stays disabled until both are given.
@@ -90,7 +98,7 @@ export function DateTimePicker({
     // nothing half-edited behind.
     if (next) {
       setDay(value ?? undefined);
-      setTime(timeOf(value));
+      setTime(value ? timeOf(value) : defaultTime);
     }
     setOpen(next);
   }
