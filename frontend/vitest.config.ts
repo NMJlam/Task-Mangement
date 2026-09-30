@@ -12,6 +12,9 @@ export default mergeConfig(
       globals: true,
       setupFiles: ["./vitest.setup.ts"],
       include: ["src/**/*.test.{ts,tsx}"],
+      // Route tests drive whole pages through modals and pickers; a few take
+      // 2-3s alone, so vitest's 5s default leaves no headroom on a busy machine.
+      testTimeout: 15_000,
     },
   }),
 );
