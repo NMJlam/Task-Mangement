@@ -22,7 +22,12 @@ import { CLUB_TIMEZONE } from "../../config/club.js";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import { events, messages } from "../../db/schema/index.js";
-import { AiDisabledError, AiQuotaError, geminiComplete } from "../../lib/ai/client.js";
+import {
+  AiDisabledError,
+  AiQuotaError,
+  AiUnavailableError,
+  geminiComplete,
+} from "../../lib/ai/client.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
 import { assertCanReadChannel, ChannelForbiddenError } from "../threads/service.js";
@@ -113,6 +118,10 @@ async function seedContext(
 function sendAiError(res: Response, error: unknown): boolean {
   if (error instanceof AiDisabledError) {
     res.status(503).json({ error: { code: "AI_DISABLED", message: error.message } });
+  } else if (error instanceof AiUnavailableError) {
+    // 503 like AI_DISABLED, but a different code: the assistant is on and the
+    // provider is momentarily busy, so the client keeps the composer and says so.
+    res.status(503).json({ error: { code: "AI_UNAVAILABLE", message: error.message } });
   } else if (error instanceof AiQuotaError) {
     res.status(429).json({ error: { code: "AI_QUOTA_EXCEEDED", message: error.message } });
   } else if (error instanceof AiOutputError) {
