@@ -16,6 +16,7 @@ import {
   taskAssignees,
   tasks,
 } from "../../db/schema/index.js";
+import { AiUnavailableError } from "../../lib/ai/client.js";
 import { dueAtFromOffset } from "./resolve.js";
 
 const getSession = vi.hoisted(() => vi.fn());
@@ -150,6 +151,19 @@ describe("/api/ai", () => {
       expect(response.status).toBe(503);
       expect(response.body.error.code).toBe("AI_DISABLED");
       expect(complete).not.toHaveBeenCalled();
+    });
+
+    it("says the AI service is busy, not switched off, when the provider cannot answer", async () => {
+      signedInAs(await member("unlucky-timing", "officer"));
+      complete.mockRejectedValue(new AiUnavailableError());
+
+      const response = await request(app).post("/api/ai/messages").send({ text: "Hello" });
+
+      expect(response.status).toBe(503);
+      expect(response.body.error).toEqual({
+        code: "AI_UNAVAILABLE",
+        message: "The AI service is busy right now. Try again in a moment.",
+      });
     });
 
     it("answers a question that stages nothing with a reply and no proposal", async () => {

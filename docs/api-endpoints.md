@@ -933,6 +933,9 @@ from there. A page refresh is not a model call.
   cancelling an event, changing a role, creating an invite, or touching
   `expense` / `budget` / `event.allocation_cents` — so none of those can appear
   in `operations`.
+- **A busy provider** is `503 AI_UNAVAILABLE`, after two quick retries — same
+  status as `AI_DISABLED`, different code: the assistant is on, so clients keep
+  the composer and show the message instead of the "switched off" state.
 - **Quota** is `AI_DAILY_RUN_CAP` `ai_run` rows per user per rolling 24h;
   exceeding it, or a provider 429, is `429 AI_QUOTA_EXCEEDED`.
 - **Unparseable model output** is `422 AI_OUTPUT_INVALID` after one retry, as
