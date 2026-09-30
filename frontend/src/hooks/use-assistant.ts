@@ -6,6 +6,7 @@ import {
   type AiResolvedProposal,
 } from "@ctp/shared";
 import { useCallback, useState } from "react";
+import { readAiError } from "@/lib/ai-errors";
 
 export type AssistantTurn = { id: string; role: "member" | "assistant"; text: string };
 
@@ -15,23 +16,15 @@ export type StagedProposal = { runId: string; proposal: AiResolvedProposal };
 /**
  * `loading` and `error` never occur: the conversation starts empty and grows
  * as the member speaks — past runs are the page's own history read. `disabled`
- * is the deployment answering 503: the assistant is off, which is a state of
- * the page, not a failure of this request.
+ * is the deployment answering `AI_DISABLED`: the assistant is off, which is a
+ * state of the page, not a failure of this request. A busy provider
+ * (`AI_UNAVAILABLE`) is the opposite — an error to show and retry.
  */
 type AssistantState =
   | { status: "loading" }
   | { status: "ok"; turns: AssistantTurn[]; staged?: StagedProposal }
   | { status: "error"; message: string }
   | { status: "disabled" };
-
-async function errorMessage(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 let turnCount = 0;
 const turn = (role: AssistantTurn["role"], text: string): AssistantTurn => ({
@@ -77,12 +70,10 @@ export function useAssistant(seed?: { eventId?: string }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text, seed: eventId ? { eventId } : undefined }),
         });
-        if (response.status === 503) {
-          setState({ status: "disabled" });
-          return;
-        }
         if (!response.ok) {
-          setError(await errorMessage(response, "The assistant couldn't answer. Try again."));
+          const failure = await readAiError(response, "The assistant couldn't answer. Try again.");
+          if (failure.disabled) setState({ status: "disabled" });
+          else setError(failure.message);
           return;
         }
         const body = aiMessageResponseSchema.parse(await response.json());
@@ -116,7 +107,7 @@ export function useAssistant(seed?: { eventId?: string }) {
           body: JSON.stringify({ runId: state.staged.runId, operations, stats }),
         });
         if (!response.ok) {
-          setError(await errorMessage(response, "Nothing was applied. Try again."));
+          setError((await readAiError(response, "Nothing was applied. Try again.")).message);
           return undefined;
         }
         const applied = aiApplyResponseSchema.parse(await response.json());
