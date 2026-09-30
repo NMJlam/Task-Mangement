@@ -447,6 +447,61 @@ describe("/api/ai", () => {
     });
   });
 
+  describe("GET /api/ai/briefing", () => {
+    const briefingJson = JSON.stringify({
+      summary: "One task is due before Hack Night.",
+      bullets: ["Book the room"],
+    });
+
+    /** Every message in `userId`'s ai channel. */
+    async function aiMessages(userId: string) {
+      return db
+        .select({ body: messages.body, aiRunId: messages.aiRunId })
+        .from(messages)
+        .innerJoin(chanMembers, eq(chanMembers.channelId, messages.channelId))
+        .innerJoin(channels, eq(channels.id, messages.channelId))
+        .where(and(eq(channels.kind, "ai"), eq(chanMembers.userId, userId)));
+    }
+
+    it("generates today's briefing from the member's own work and stores it once", async () => {
+      const reader = await member("morning", "officer");
+      signedInAs(reader);
+      await seedTask(null, [reader.id], { title: "test-ai-book-room" });
+      script(briefingJson);
+
+      const response = await request(app).get("/api/ai/briefing");
+
+      expect(response.status).toBe(200);
+      expect(response.body.briefing).toEqual(JSON.parse(briefingJson));
+      expect(prompts[0]).toContain("test-ai-book-room");
+      const stored = await aiMessages(reader.id);
+      expect(stored).toHaveLength(1);
+      expect(stored[0]!.aiRunId).not.toBeNull();
+    });
+
+    it("returns the same briefing again that club day without calling the model", async () => {
+      signedInAs(await member("again", "officer"));
+      script(briefingJson);
+
+      const first = await request(app).get("/api/ai/briefing");
+      const second = await request(app).get("/api/ai/briefing");
+
+      expect(second.status).toBe(200);
+      expect(second.body.generatedAt).toBe(first.body.generatedAt);
+      expect(complete).toHaveBeenCalledTimes(1);
+    });
+
+    it("503s when the assistant is not enabled", async () => {
+      vi.stubEnv("AI_ENABLED", "");
+      signedInAs(await member("dark", "officer"));
+
+      const response = await request(app).get("/api/ai/briefing");
+
+      expect(response.status).toBe(503);
+      expect(complete).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /api/ai/threads/:id/summary", () => {
     const summaryJson = JSON.stringify({
       summary: ["The room is booked.", "Pizza is still open."],

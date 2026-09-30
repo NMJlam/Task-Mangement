@@ -1,6 +1,8 @@
 import {
   aiApplyRequestSchema,
   aiApplyResponseSchema,
+  aiBriefingResponseSchema,
+  aiBriefingSchema,
   aiThreadSummaryResponseSchema,
   aiThreadSummarySchema,
   aiMessageRequestSchema,
@@ -30,7 +32,12 @@ import { resolveProposal } from "./resolve.js";
 import {
   AiOutputError,
   assertUnderDailyCap,
+  BRIEFING_RUN_PROMPT,
   budgetMessages,
+  buildBriefingPrompt,
+  clubDayKey,
+  findTodaysBriefing,
+  type BriefingInput,
   buildSummaryPrompt,
   completeJson,
   recordRun,
@@ -38,6 +45,7 @@ import {
   resolveAiChannel,
   type RunStep,
 } from "./service.js";
+import { listEvents, listMembers, listOverdueTasks, listTasks } from "./tools/read.js";
 import { runTool, toolsFor, type ToolContext } from "./tools/registry.js";
 
 export const aiRouter = Router();
@@ -328,3 +336,113 @@ aiRouter.post(
     }
   },
 );
+
+// ── GET /api/ai/briefing ─────────────────────────────────────────────────────
+
+type TaskRow = { title: string; status: string; priority: string; dueAt: string | null };
+type EventRow = { handle: string; title: string; startsAt: string };
+type MemberRow = { handle: string; name: string; openTaskCount: number };
+
+/**
+ * The dashboard's figures, read through the assistant's own tools so the
+ * briefing sees exactly what the member could see there — and nothing a
+ * tier-gated event would add.
+ */
+async function briefingInput(ctx: ToolContext, now: Date): Promise<BriefingInput> {
+  const myHandle = ctx.handles.issue("M", ctx.userId);
+  const mine = (await listTasks.run(ctx, { assigneeHandle: myHandle })) as TaskRow[];
+  const overdue = (await listOverdueTasks.run(ctx, { assigneeHandle: myHandle })) as TaskRow[];
+  const week = (await listEvents.run(ctx, {
+    from: now.toISOString(),
+    to: new Date(now.getTime() + 7 * 86_400_000).toISOString(),
+  })) as EventRow[];
+  const roster = (await listMembers.run(ctx, {})) as MemberRow[];
+
+  const weekEvents = await Promise.all(
+    week.map(async (event) => {
+      const eventTasks = (await listTasks.run(ctx, { eventHandle: event.handle })) as TaskRow[];
+      const doneTasks = eventTasks.filter((task) => task.status === "done").length;
+      return {
+        title: event.title,
+        startsAt: event.startsAt,
+        openTasks: eventTasks.length - doneTasks,
+        doneTasks,
+      };
+    }),
+  );
+
+  return {
+    memberName: roster.find((row) => row.handle === myHandle)?.name ?? "the member",
+    openTasks: mine
+      .filter((task) => task.status !== "done")
+      .map(({ title, priority, dueAt }) => ({ title, priority, dueAt })),
+    overdueCount: overdue.length,
+    weekEvents,
+    committeeLoad: roster
+      .filter((row) => row.openTaskCount > 0)
+      .sort((a, b) => b.openTaskCount - a.openTaskCount)
+      .slice(0, 10)
+      .map(({ name, openTaskCount }) => ({ name, openTaskCount })),
+  };
+}
+
+aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) => {
+  try {
+    const config = aiConfig();
+    if (!config.enabled) throw new AiDisabledError();
+    const me = req.user!;
+    const db = getDb();
+    const now = new Date();
+
+    // One per member per club day (D15): a second visit reads the stored one.
+    const today = await findTodaysBriefing(db, me.id, clubDayKey(now, CLUB_TIMEZONE));
+    if (today) {
+      res.status(200).json(
+        aiBriefingResponseSchema.parse({
+          briefing: today.briefing,
+          generatedAt: today.generatedAt.toISOString(),
+        }),
+      );
+      return;
+    }
+
+    await assertUnderDailyCap(db, me.id, config.dailyRunCap);
+    const ctx: ToolContext = {
+      db,
+      userId: me.id,
+      tier: me.tier,
+      handles: new HandleMap(),
+      staged: {},
+    };
+    const started = Date.now();
+    const briefing = await completeJson(
+      geminiComplete,
+      buildBriefingPrompt(await briefingInput(ctx, now)),
+      aiBriefingSchema,
+    );
+
+    const generatedAt = new Date();
+    await db.transaction(async (tx) => {
+      const runId = await recordRun(tx, {
+        userId: me.id,
+        prompt: BRIEFING_RUN_PROMPT,
+        steps: [{ tool: "dailyBriefing", ms: Date.now() - started }],
+      });
+      const channelId = await resolveAiChannel(tx, me.id);
+      await tx.insert(messages).values({
+        id: newId(),
+        channelId,
+        author: null,
+        body: JSON.stringify(briefing),
+        aiRunId: runId,
+        createdAt: generatedAt,
+      });
+    });
+
+    res
+      .status(200)
+      .json(aiBriefingResponseSchema.parse({ briefing, generatedAt: generatedAt.toISOString() }));
+  } catch (error) {
+    if (!sendAiError(res, error)) next(error);
+  }
+});
