@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/dev-server.ts",
+    "dev": "tsx watch --include ../.env src/dev-server.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
