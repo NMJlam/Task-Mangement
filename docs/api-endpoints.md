@@ -815,16 +815,18 @@ budget context. A second or out-of-order decision is
 
 ## AI
 
-Every endpoint here returns `503 AI_DISABLED` unless `AI_ENABLED=1`, which is
-**off by default**. Design and the full tool inventory:
+Every endpoint here returns `503 AI_DISABLED` unless `AI_ENABLED=1` and
+`GEMINI_API_KEY` are both set, which is **off by default**. Request and response
+shapes are the zod schemas in `shared/src/schemas/ai/ai.ts` — those are the
+source of truth, and this page follows them. Design and the full tool inventory:
 [`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md).
 
-| Endpoint                           | Who      | Input                          | Success                         |
-| ---------------------------------- | -------- | ------------------------------ | ------------------------------- |
-| `POST /api/ai/messages`            | tier 0   | `{ "text": "…", "seed": { } }` | `200 { message, proposals }`    |
-| `GET /api/ai/briefing`             | tier 0   | —                              | `200 { briefing }`              |
-| `POST /api/ai/proposals/apply`     | tier 0 † | `{ runId, operations, stats }` | `201 { events: [], tasks: [] }` |
-| `POST /api/ai/threads/:id/summary` | tier 0   | —                              | `200 { summary }`               |
+| Endpoint                           | Who      | Input                                     | Success                                                    |
+| ---------------------------------- | -------- | ----------------------------------------- | ---------------------------------------------------------- |
+| `POST /api/ai/messages`            | tier 0   | `{ "text": "…", "seed"?: { "eventId" } }` | `200 { runId, reply, proposal }`                           |
+| `POST /api/ai/proposals/apply`     | tier 0 † | `{ runId, operations, stats }`            | `201 { events: [{ id, title }], tasks: [{ id, title }] }`  |
+| `POST /api/ai/threads/:id/summary` | tier 0   | —                                         | `200 { summary: { summary, actionItems }, asOfMessageId }` |
+| `GET /api/ai/briefing`             | tier 0   | —                                         | `200 { briefing: { summary, bullets }, generatedAt }`      |
 
 † Tier 0 gets you in the door. **Each operation inside `operations` is gated
 separately**, against the same check its equivalent route uses:
@@ -835,63 +837,106 @@ separately**, against the same check its equivalent route uses:
 | Create one task          | `POST /api/tasks`              | tier 0           |
 | Create two or more tasks | `POST /api/tasks/bulk`         | tier 1           |
 | Update task              | `PATCH /api/tasks/:id`         | tier 0           |
-| Update task status       | `PATCH /api/tasks/:id/status`  | tier 0           |
 | Update event             | `PATCH /api/events/:id`        | owner, or tier 1 |
 | Update event status      | `PATCH /api/events/:id/status` | tier 1           |
 
-`POST /api/ai/messages` appends to the caller's `ai` channel — created on first
-use, named `"Assistant"` — and returns the assistant's reply together with any
-proposals it staged. **This call writes no tasks and no events.** Proposals are
-client state until applied.
+### `POST /api/ai/messages`
+
+Runs the model through up to eight tool steps as the caller, then answers. The
+member's message and the reply are both appended to the caller's `ai` channel —
+created on first use, named `"Assistant"` — the reply stamped with `ai_run_id`.
+**This call writes no tasks and no events.**
+
+`proposal` is `null` when the turn staged nothing. Otherwise it is the
+**resolved** card (`aiResolvedProposalSchema`): every handle the model used has
+already become an id, a task's `dueOffsetDays` has become an absolute `dueAt`
+(23:59 club time on that day, computed in `CLUB_TIMEZONE`), assignees are
+`{ id, name }` pairs, and each update carries the row's current `title` and a
+`diffs` list of `{ field, before, after }` — plus `assigneeIds` when it moves
+assignees. Handles never reach the client.
 
 `seed` is optional starting context from whichever surface opened the chat —
 `{ "eventId": "<uuid>" }` from an event's "Plan with AI" button, for instance.
 It only pre-loads what the assistant reads first; it grants no access the caller
 does not already have, and a seed naming something they cannot see is ignored.
 
-Apply body:
+### `POST /api/ai/proposals/apply`
+
+The payload is the card **as the member edited it**:
 
 ```json
 {
   "runId": "<uuid>",
   "operations": [
-    { "op": "create", "entity": "event", "ref": "$event1", "data": { "name": "Hackathon 2026" } },
-    { "op": "create", "entity": "task", "data": { "title": "Book venue", "eventRef": "$event1" } },
+    {
+      "op": "create",
+      "entity": "event",
+      "ref": "$event1",
+      "data": { "title": "Hackathon 2026", "startsAt": "2026-11-20T08:00:00.000Z" }
+    },
+    {
+      "op": "create",
+      "entity": "task",
+      "data": {
+        "title": "Book venue",
+        "priority": "high",
+        "assigneeIds": [],
+        "eventRef": "$event1"
+      }
+    },
     { "op": "update", "entity": "task", "id": "<uuid>", "data": { "assigneeIds": ["<uuid>"] } }
   ],
   "stats": { "proposed": 9, "kept": 7, "edited": 2 }
 }
 ```
 
-Things worth knowing before you test:
+| Status | Code                                     | When                                                         |
+| ------ | ---------------------------------------- | ------------------------------------------------------------ |
+| 403    | `FORBIDDEN`                              | an operation's gate (table above) refuses the caller         |
+| 404    | `RUN_NOT_FOUND`                          | `runId` is not a run the caller made                         |
+| 404    | `TASK_NOT_FOUND` / `EVENT_NOT_FOUND`     | an update names a row that does not exist                    |
+| 409    | `INVALID_TRANSITION` / `WRAP_BLOCKED`    | an event status change the status route would refuse         |
+| 422    | `EVENT_NOT_FOUND` / `ASSIGNEE_NOT_FOUND` | a task names an event the caller cannot see, or a non-member |
+| 422    | `VALIDATION_ERROR`                       | an event would end before it starts                          |
+
+### `POST /api/ai/threads/:id/summary`
+
+`:id` is a channel id. Summarises the newest 100 messages, trimmed from the
+oldest end to a character budget. `403 FORBIDDEN` on a channel the caller
+cannot read (the threads route's own visibility rule), `409 THREAD_EMPTY` on a
+thread with no messages. A repeat for an unchanged thread is served from an
+in-process cache — a local convenience; on Vercel the daily cap is what guards
+the quota.
+
+### `GET /api/ai/briefing`
+
+Today's briefing for the caller, one per club day: generated from what their
+dashboard already shows, read through the assistant's own tools (so it sees only
+what they can), then stored as a message in their `ai` channel and re-served
+from there. A page refresh is not a model call.
+
+### Things worth knowing before you test
 
 - **The model never emits a UUID.** Read tools issue short per-run handles
-  (`T1`, `E2`) and the server resolves them. A handle this run never issued is
-  `422 AI_OUTPUT_INVALID`, not a `404`.
-- **Apply is all-or-nothing.** Every checked operation runs in one transaction,
-  in dependency order — a staged event is created before the tasks that name it
-  by `ref`, and the real id is substituted in. One bad reference writes nothing.
-- **The payload is the _edited_ card**, so by apply time it is an ordinary form
-  submission that happens to carry provenance. It is re-validated against the
-  same shared schemas the manual routes use. Rows created or changed carry
-  `ai_run_id`.
+  (`T1`, `E2`) and the server resolves them. A tool the model aims at a handle
+  this run never issued, or at a thread the caller cannot read, gets a refusal
+  back as its result and the assistant says so; a bad handle left in the final
+  proposal is `422 AI_OUTPUT_INVALID`.
+- **Apply is all-or-nothing.** Every operation runs in one transaction, in
+  dependency order — a staged event is created before the tasks that name it
+  by `ref`, and the real id is substituted in. One refusal writes nothing.
+- **Rows created or changed carry `ai_run_id`**, and `stats` lands on that run
+  as `proposed_count` / `kept_count` / `edited_count` — evaluation data, never
+  acted on. The client computes it because only it knows what was unchecked or
+  edited.
 - **Proposals can only create and update.** There is no tool for deleting,
   cancelling an event, changing a role, creating an invite, or touching
   `expense` / `budget` / `event.allocation_cents` — so none of those can appear
   in `operations`.
-- **`stats` is evaluation data**, written to `ai_run` and never acted on. The
-  client computes it because it is the only party that knows what was unchecked
-  or edited.
-- **`POST /api/ai/threads/:id/summary` is ephemeral** — no summary row, no
-  summary table, re-runnable. It reuses the threads route's own visibility
-  check, so it can only summarise what you can already read.
-- **`GET /api/ai/briefing`** returns today's briefing for the caller, generating
-  and storing it as a message in their `ai` channel if none exists yet. A page
-  refresh is not a model call.
 - **Quota** is `AI_DAILY_RUN_CAP` `ai_run` rows per user per rolling 24h;
   exceeding it, or a provider 429, is `429 AI_QUOTA_EXCEEDED`.
-- **Unparseable model output** is `422 AI_OUTPUT_INVALID` after one retry —
-  never a partial write.
+- **Unparseable model output** is `422 AI_OUTPUT_INVALID` after one retry, as
+  is a turn that runs out of tool steps — never a partial write.
 
 ## Notifications
 
