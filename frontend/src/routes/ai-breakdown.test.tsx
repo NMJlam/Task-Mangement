@@ -1,33 +1,109 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { AiBreakdownPage } from "./ai-breakdown";
 
 const threadId = "018f3a4b-0000-7000-8000-000000000001";
 const runId = "018f3a4b-0000-7000-8000-000000000002";
+const eventId = "018f3a4b-0000-7000-8000-000000000005";
 
 afterEach(() => vi.unstubAllGlobals());
 
-it("shows saved assistant output and generated tasks without fake controls", async () => {
+type Answer = { status: number; body: unknown };
+
+/** Serves the page's reads, and answers the assistant with `assistant` when asked. */
+function stubApi(assistant?: Answer, history: unknown[] = [message()]) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/threads") return Promise.resolve(response({ threads: [thread()] }));
     if (url === `/api/threads/${threadId}/messages`)
-      return Promise.resolve(response({ messages: [message()], nextCursor: null }));
+      return Promise.resolve(response({ messages: history, nextCursor: null }));
     if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task()] }));
+    if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+    if (url === "/api/ai/messages" && assistant)
+      return Promise.resolve(response(assistant.body, assistant.status));
     throw new Error(`Unexpected request: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
-  render(<AiBreakdownPage />);
+function renderPage(path = "/ai") {
+  render(
+    <MemoryRouter
+      initialEntries={[path]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <AiBreakdownPage />
+    </MemoryRouter>,
+  );
+  return userEvent.setup({ delay: null });
+}
+
+it("shows saved assistant output and generated tasks beside the composer", async () => {
+  stubApi();
+  renderPage();
 
   await waitFor(() => expect(screen.getByText("Film the opening keynote")).toBeInTheDocument());
   expect(screen.getByText(/I created 1 task for the media team/i)).toBeInTheDocument();
-  expect(screen.getByText("Planning is not connected yet")).toBeInTheDocument();
-  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeInTheDocument();
+  expect(screen.queryByText("Planning is not connected yet")).not.toBeInTheDocument();
 });
 
-function response(body: unknown) {
-  return { ok: true, status: 200, json: async () => body };
+it("sends a message with the page's event seed and shows the plan it drafts", async () => {
+  const fetchMock = stubApi({
+    status: 200,
+    body: {
+      runId,
+      reply: "Here is a plan.",
+      proposal: {
+        createTasks: [{ title: "Book the room", priority: "medium", dueAt: null, assignees: [] }],
+      },
+    },
+  });
+  const user = renderPage(`/ai?eventId=${eventId}`);
+  await screen.findByRole("textbox", { name: "Message the assistant" });
+
+  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Plan it");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+
+  expect(await screen.findByText("Here is a plan.")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Include Book the room" })).toBeChecked();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/ai/messages",
+    expect.objectContaining({
+      body: JSON.stringify({ text: "Plan it", seed: { eventId } }),
+    }),
+  );
+});
+
+it("says the assistant is off on a 503, and keeps the history", async () => {
+  stubApi({ status: 503, body: { error: { code: "AI_DISABLED", message: "Off." } } });
+  const user = renderPage();
+  await screen.findByRole("textbox", { name: "Message the assistant" });
+
+  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Hello");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+
+  expect(await screen.findByText("The assistant is switched off")).toBeInTheDocument();
+  expect(screen.getByText(/I created 1 task for the media team/i)).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Message the assistant" })).not.toBeInTheDocument();
+});
+
+it("reads a stored daily briefing as prose, not as its JSON", async () => {
+  stubApi(undefined, [
+    message({ body: JSON.stringify({ summary: "A quiet day.", bullets: ["Book the room"] }) }),
+  ]);
+  renderPage();
+
+  expect(await screen.findByText("A quiet day.")).toBeInTheDocument();
+  expect(screen.getByText("Book the room")).toBeInTheDocument();
+  expect(screen.queryByText(/"summary"/u)).not.toBeInTheDocument();
+});
+
+function response(body: unknown, status = 200) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
 function thread() {
@@ -46,7 +122,7 @@ function thread() {
   };
 }
 
-function message() {
+function message(overrides: Record<string, unknown> = {}) {
   return {
     id: "018f3a4b-0000-7000-8000-000000000003",
     channelId: threadId,
@@ -61,6 +137,7 @@ function message() {
     aiRunId: runId,
     createdAt: "2026-09-16T00:00:00.000Z",
     editedAt: null,
+    ...overrides,
   };
 }
 

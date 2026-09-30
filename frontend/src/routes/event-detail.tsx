@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
   ListPlus,
   MapPin,
+  Sparkles,
   UserRound,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -98,6 +99,9 @@ export function EventDetailPage() {
   // `DELETE /api/tasks/:id` is `authorise(1)` too, and the Tasks tab hosts the
   // same shared dialog as /tasks — so the same rule reaches it from here.
   const canDeleteTask = me.status === "ok" && me.user.tier >= 1;
+  // A plan is several tasks at once — `POST /api/tasks/bulk` is `authorise(1)`,
+  // so below that the assistant could only draft what the member can't confirm.
+  const canPlanWithAi = me.status === "ok" && me.user.tier >= 1;
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams);
@@ -324,7 +328,15 @@ export function EventDetailPage() {
         <TabsContent value="tasks">
           {/* The board's own action, so it sits with the board rather than in the
               page header's event-level controls. */}
-          <div className="mb-4 flex justify-end">
+          <div className="mb-4 flex justify-end gap-2">
+            {canPlanWithAi && (
+              <Button asChild variant="outline">
+                <Link to={`/ai?eventId=${event.id}`}>
+                  <Sparkles aria-hidden="true" />
+                  Plan with AI
+                </Link>
+              </Button>
+            )}
             <Button onClick={() => setAddingTask(true)}>
               <ListPlus aria-hidden="true" />
               Add Task
