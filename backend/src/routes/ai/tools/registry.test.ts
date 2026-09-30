@@ -54,3 +54,41 @@ describe("runTool", () => {
     expect(JSON.stringify(result)).toMatch(/unknown/iu);
   });
 });
+
+/**
+ * A model only knows a tool from its description. These are the defects a
+ * scripted model can never surface: it does not have to read the instructions.
+ */
+describe("what the model is told about the propose tools", () => {
+  const described = (name: string) => toolsFor(2).find((tool) => tool.name === name)!.describe;
+
+  it("names every argument an event needs, and the date format", () => {
+    for (const argument of ["ref", "title", "startsAt", "endsAt", "venue", "description"]) {
+      expect(described("proposeCreateEvent")).toContain(argument);
+    }
+    expect(described("proposeCreateEvent")).toMatch(/ISO/u);
+  });
+
+  it("names every field a new task takes", () => {
+    for (const field of ["title", "description", "priority", "dueOffsetDays", "assigneeHandles"]) {
+      expect(described("proposeCreateTasks")).toContain(field);
+    }
+  });
+
+  it("says which field was wrong when it rejects an event, so the model can correct it", async () => {
+    const result = await runTool({ ...ctx(), tier: 1 }, "proposeCreateEvent", {
+      ref: "$event1",
+      title: "Poker Bot Hackathon",
+    });
+
+    expect(result).toEqual({ error: expect.stringContaining("startsAt") });
+  });
+
+  it("says which task and field was wrong when it rejects a batch", async () => {
+    const result = await runTool({ ...ctx(), tier: 1 }, "proposeCreateTasks", {
+      tasks: [{ title: "Book venue" }, { title: "Order chips", priority: "asap" }],
+    });
+
+    expect(result).toEqual({ error: expect.stringContaining("tasks.1.priority") });
+  });
+});
