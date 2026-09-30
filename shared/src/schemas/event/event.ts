@@ -215,6 +215,12 @@ export const eventSummarySchema = z.object({
   endsAt: z.coerce.date().nullable(),
   venue: z.string().nullable(),
   minTier: tierSchema,
+  /**
+   * The assistant run that created or last changed it; null for one made by
+   * hand. Defaulted so a response from before the field existed still parses —
+   * the API always sends it.
+   */
+  aiRunId: z.uuid().nullable().default(null),
   owner: eventOwnerSchema,
   taskCounts: taskCountsSchema,
   overdueCount: z.number().int().nonnegative(),

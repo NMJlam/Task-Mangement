@@ -94,6 +94,7 @@ interface EventRow {
   // JS Date. Every date field below must be run through toDate() before use.
   endsAt: string | null;
   minTier: number;
+  aiRunId: string | null;
   allocationCents: string;
   attendanceEstimate: number | null;
   ownerId: string | null;
@@ -113,6 +114,7 @@ const EVENT_ROW_SELECT = sql`
   SELECT
     e.id, e.title, e.description, e.venue, e.status,
     e.starts_at AS "startsAt", e.ends_at AS "endsAt", e.min_tier AS "minTier",
+    e.ai_run_id AS "aiRunId",
     e.allocation_cents AS "allocationCents", e.attendance_estimate AS "attendanceEstimate",
     owner_user.id AS "ownerId", owner_auth.name AS "ownerName",
     e.created_at AS "createdAt", e.updated_at AS "updatedAt",
@@ -173,6 +175,7 @@ function toSummary(row: EventRow): EventSummary {
     endsAt: row.endsAt ? toDate(row.endsAt) : null,
     venue: row.venue,
     minTier: row.minTier as Tier,
+    aiRunId: row.aiRunId,
     owner: row.ownerId ? { id: row.ownerId, name: row.ownerName ?? "" } : null,
     taskCounts: toTaskCounts(row),
     overdueCount: Number(row.overdueCount),

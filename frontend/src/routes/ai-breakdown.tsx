@@ -1,11 +1,16 @@
+import { ListChecks } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChatList } from "@/components/ai/chat-list";
 import { ChatThread } from "@/components/ai/chat-thread";
+import { GeneratedPanel } from "@/components/ai/generated-panel";
 import { PageHeader } from "@/components/common/page-header";
+import { Button } from "@/components/ui/button";
 import { useAiChat } from "@/hooks/use-ai-chat";
 import { useAiChats } from "@/hooks/use-ai-chats";
 import { useMembers } from "@/hooks/use-members";
+
+const GENERATED_PANEL_ID = "ai-generated-panel";
 
 /**
  * AI Breakdown: the member's assistant chats beside the open one, laid out like
@@ -21,6 +26,7 @@ export function AiBreakdownPage() {
   const members = useMembers();
   const chats = useAiChats();
   const [notice, setNotice] = useState<string>();
+  const [showGenerated, setShowGenerated] = useState(false);
   const chat = useAiChat(chatId, {
     // From an event's "Plan with AI" link: the new chat is about that event.
     seed: eventId ? { eventId } : undefined,
@@ -98,7 +104,21 @@ export function AiBreakdownPage() {
           }}
           onApply={(runId, operations, stats) => void chat.apply(runId, operations, stats)}
           onDiscard={(runId) => void chat.discard(runId)}
-        />
+          headerActions={
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={showGenerated}
+              aria-controls={GENERATED_PANEL_ID}
+              onClick={() => setShowGenerated((open) => !open)}
+            >
+              <ListChecks aria-hidden="true" />
+              Generated
+            </Button>
+          }
+        >
+          {showGenerated && <GeneratedPanel id={GENERATED_PANEL_ID} />}
+        </ChatThread>
       </div>
     </main>
   );
