@@ -8,8 +8,10 @@ import type { ToolContext } from "./registry.js";
  * `listMembers`'s open-task count is new server-side code, not a reuse — no
  * backend route computes per-member open-task counts today, the dashboard's
  * Committee Load widget derives it client-side. This is the pure half of that
- * rule (the SQL wiring is exercised by integration tests elsewhere), so it is
- * unit-tested here with no database, the same split `computeProgress` in
+ * rule (the SQL wiring — including the `taskEventVisible` filter this counts
+ * through — is exercised against a real database by
+ * `routes/ai/ai.integration.test.ts`'s visibility suite), so it is unit-tested
+ * here with no database, the same split `computeProgress` in
  * `routes/events/service.ts` uses.
  */
 describe("countOpenTasksByAssignee", () => {
