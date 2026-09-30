@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 type Answer = { status: number; body: unknown };
 
 /** Serves the page's reads, and answers the assistant with `assistant` when asked. */
-function stubApi(assistant?: Answer, history: unknown[] = [message()]) {
+function stubApi(assistant?: Answer | Promise<Answer>, history: unknown[] = [message()]) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/threads") return Promise.resolve(response({ threads: [thread()] }));
@@ -22,7 +22,7 @@ function stubApi(assistant?: Answer, history: unknown[] = [message()]) {
     if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task()] }));
     if (url === "/api/members") return Promise.resolve(response({ members: [] }));
     if (url === "/api/ai/messages" && assistant)
-      return Promise.resolve(response(assistant.body, assistant.status));
+      return Promise.resolve(assistant).then((answer) => response(answer.body, answer.status));
     throw new Error(`Unexpected request: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -76,6 +76,43 @@ it("sends a message with the page's event seed and shows the plan it drafts", as
       body: JSON.stringify({ text: "Plan it", seed: { eventId } }),
     }),
   );
+});
+
+it("shows the assistant thinking while a reply is on its way, then the reply", async () => {
+  let answer!: (value: Answer) => void;
+  stubApi(new Promise<Answer>((resolve) => (answer = resolve)));
+  const user = renderPage();
+  await screen.findByRole("textbox", { name: "Message the assistant" });
+
+  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Plan it");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+
+  // The member's own message is on screen at once, with the assistant visibly working.
+  expect(await screen.findByText("Plan it")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "MAC Assistant is thinking" })).toBeInTheDocument();
+
+  answer({ status: 200, body: { runId, reply: "All planned.", proposal: null } });
+
+  expect(await screen.findByText("All planned.")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: "MAC Assistant is thinking" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps the composer and says the AI service is busy when the provider is", async () => {
+  stubApi({
+    status: 503,
+    body: { error: { code: "AI_UNAVAILABLE", message: "The AI service is busy right now." } },
+  });
+  const user = renderPage();
+  await screen.findByRole("textbox", { name: "Message the assistant" });
+
+  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Hello");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("The AI service is busy right now.");
+  expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeInTheDocument();
+  expect(screen.queryByText("The assistant is switched off")).not.toBeInTheDocument();
 });
 
 it("says the assistant is off on a 503, and keeps the history", async () => {
