@@ -190,6 +190,25 @@ describe("EventsPage", () => {
     });
   });
 
+  it("asks for cancelled events under Any status, and stops once one is chosen", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fetchMock = stubFetch({ items: [], nextCursor: null });
+    renderPage();
+
+    await waitFor(() => {
+      const request = lastEventsRequest(fetchMock);
+      expect(request?.searchParams.get("includeCancelled")).toBe("true");
+    });
+
+    await user.selectOptions(screen.getByLabelText("Status"), "live");
+
+    await waitFor(() => {
+      const request = lastEventsRequest(fetchMock)!;
+      expect(request.searchParams.get("status")).toBe("live");
+      expect(request.searchParams.get("includeCancelled")).toBeNull();
+    });
+  });
+
   it("appends the next page and hides the button at the end of the list", async () => {
     const user = userEvent.setup({ delay: null });
     // Routed by URL, not call order — `useMe` also fetches, and the page may
