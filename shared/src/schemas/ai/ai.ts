@@ -125,6 +125,11 @@ const resolvedUpdateSchema = z.object({
   /** The row's current title, so the card can label the diff. */
   title: z.string().min(1),
   diffs: z.array(resolvedFieldDiffSchema).min(1),
+  /**
+   * The proposed assignee set, when the diff changes it. The `assignees` diff
+   * shows names for the member to read; these are what apply needs back.
+   */
+  assigneeIds: z.array(z.uuid()).max(10).optional(),
 });
 
 /** `dueOffsetDays` has become an absolute `dueAt`, computed server-side in CLUB_TIMEZONE (D14). */
