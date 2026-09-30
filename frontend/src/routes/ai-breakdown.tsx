@@ -49,6 +49,9 @@ export function AiBreakdownPage() {
   const history = messages.state.status === "ok" ? [...messages.state.items].reverse() : [];
   const turns = assistant.state.status === "ok" ? assistant.state.turns : [];
   const staged = assistant.state.status === "ok" ? assistant.state.staged : undefined;
+  // Waiting on a reply, as opposed to waiting on an apply: the last thing said
+  // was the member's. A turn is several model calls, so this can be many seconds.
+  const thinking = assistant.pending && turns.at(-1)?.role === "member";
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -93,6 +96,7 @@ export function AiBreakdownPage() {
                   {turns.map((turn) => (
                     <LiveTurn key={turn.id} turn={turn} />
                   ))}
+                  {thinking && <ThinkingTurn />}
                 </ol>
               ) : (
                 <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
@@ -234,6 +238,34 @@ function AssistantMessage({ message }: { message: Message }) {
           </time>
         </div>
         <MessageBody body={message.body} />
+      </article>
+    </li>
+  );
+}
+
+/**
+ * The assistant's bubble while its reply is still being worked out. The dots
+ * are decoration: the status text is what assistive tech announces, and they
+ * hold still for anyone who has asked their system for reduced motion.
+ */
+function ThinkingTurn() {
+  return (
+    <li className="pr-6">
+      <article className="rounded-lg border bg-background p-4">
+        <div className="flex items-center gap-2">
+          <Bot aria-hidden="true" className="size-4 text-muted-foreground" />
+          <h3 className="text-xs font-semibold">MAC Assistant</h3>
+        </div>
+        <div role="status" aria-label="MAC Assistant is thinking" className="mt-3 flex gap-1">
+          {[0, 150, 300].map((delay) => (
+            <span
+              key={delay}
+              aria-hidden="true"
+              style={{ animationDelay: `${delay}ms` }}
+              className="size-2 animate-bounce rounded-full bg-muted-foreground motion-reduce:animate-none"
+            />
+          ))}
+        </div>
       </article>
     </li>
   );
