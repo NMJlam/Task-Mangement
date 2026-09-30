@@ -447,6 +447,106 @@ describe("/api/ai", () => {
     });
   });
 
+  describe("POST /api/ai/threads/:id/summary", () => {
+    const summaryJson = JSON.stringify({
+      summary: ["The room is booked.", "Pizza is still open."],
+      actionItems: [{ text: "Order pizza", suggestedAssigneeName: "test-ai-talker" }],
+    });
+
+    /** An event thread at `minTier`, with `bodies` said in order by one member. */
+    async function thread(minTier: 0 | 1 | 2, bodies: readonly string[]) {
+      const talker = await member(`talker-${minTier}-${bodies.length}`, "officer");
+      const event = await seedEvent({ title: `test-ai-thread-${minTier}`, minTier });
+      const [channel] = await db
+        .insert(channels)
+        .values({ id: newId(), kind: "event", eventId: event.id, name: event.title, minTier })
+        .returning();
+      const ids: string[] = [];
+      for (const [index, body] of bodies.entries()) {
+        const id = newId();
+        await db.insert(messages).values({
+          id,
+          channelId: channel!.id,
+          author: talker.id,
+          body,
+          createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)),
+        });
+        ids.push(id);
+      }
+      return { channelId: channel!.id, ids };
+    }
+
+    it("summarises a thread the member can read, as of its newest message", async () => {
+      signedInAs(await member("catcher", "officer"));
+      const { channelId, ids } = await thread(0, ["Room booked", "Who does pizza?"]);
+      script(summaryJson);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        summary: JSON.parse(summaryJson),
+        asOfMessageId: ids.at(-1),
+      });
+      expect(prompts[0]).toContain("Who does pizza?");
+    });
+
+    it("403s a thread the member cannot open, before the model is called", async () => {
+      signedInAs(await member("outsider", "officer"));
+      const { channelId } = await thread(2, ["Budget talk"]);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(403);
+      expect(complete).not.toHaveBeenCalled();
+    });
+
+    it("422s when the model returns junk twice", async () => {
+      signedInAs(await member("junked", "officer"));
+      const { channelId } = await thread(0, ["Hello"]);
+      script("not json", "still not json");
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe("AI_OUTPUT_INVALID");
+    });
+
+    it("serves the same thread again from cache without calling the model", async () => {
+      signedInAs(await member("repeat", "officer"));
+      const { channelId } = await thread(0, ["Once", "Twice"]);
+      script(summaryJson);
+
+      const first = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+      const second = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(second.status).toBe(200);
+      expect(second.body).toEqual(first.body);
+      expect(complete).toHaveBeenCalledTimes(1);
+    });
+
+    it("409s an empty thread rather than asking the model to invent one", async () => {
+      signedInAs(await member("early", "officer"));
+      const { channelId } = await thread(0, []);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("THREAD_EMPTY");
+      expect(complete).not.toHaveBeenCalled();
+    });
+
+    it("503s when the assistant is not enabled", async () => {
+      vi.stubEnv("AI_ENABLED", "");
+      signedInAs(await member("off", "officer"));
+      const { channelId } = await thread(0, ["Hi"]);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(503);
+    });
+  });
+
   /**
    * The property the whole design rests on: the assistant sees what its
    * caller could see in the app, and nothing else. A tier-2-only event and a
