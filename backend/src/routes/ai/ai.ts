@@ -106,7 +106,7 @@ async function seedContext(
   tier: Tier,
   seed: AiMessageRequest["seed"],
 ): Promise<string> {
-  if (!seed?.eventId) return "";
+  if (!seed || !("eventId" in seed)) return "";
   const [event] = await db
     .select({ id: events.id, title: events.title, startsAt: events.startsAt })
     .from(events)
@@ -220,7 +220,7 @@ aiRouter.post(
         throw error;
       }
 
-      const runId = await db.transaction(async (tx) => {
+      const { runId, chatId } = await db.transaction(async (tx) => {
         const id = await recordRun(tx, { userId: me.id, prompt: body.text, steps });
         const channelId = await resolveAiChannel(tx, me.id);
         // Explicit timestamps: both rows share one transaction, and now() is
@@ -236,10 +236,12 @@ aiRouter.post(
             createdAt: new Date(),
           },
         ]);
-        return id;
+        return { runId: id, chatId: channelId };
       });
 
-      res.status(200).json(aiMessageResponseSchema.parse({ runId, reply: replyText, proposal }));
+      res
+        .status(200)
+        .json(aiMessageResponseSchema.parse({ chatId, runId, reply: replyText, proposal }));
     } catch (error) {
       if (!sendAiError(res, error)) next(error);
     }

@@ -96,6 +96,10 @@ afterAll(async () => {
   for (const statement of [
     sql`DELETE FROM "message" WHERE "channel_id" = ${channelId}::uuid`,
     sql`DELETE FROM "ai_run" WHERE "channel_id" = ${channelId}::uuid`,
+    // Rows the chat-model tests below make: runs with no channel, and ai chats.
+    sql`DELETE FROM "ai_run" WHERE "prompt" LIKE 'test-constraint-%'`,
+    sql`DELETE FROM "channel" WHERE "name" LIKE 'test-constraint-%'`,
+    sql`DELETE FROM "event" WHERE "title" LIKE 'test-constraint-%'`,
     sql`DELETE FROM "channel" WHERE "id" = ${channelId}::uuid`,
     sql`DELETE FROM "event" WHERE "id" = ${eventId}::uuid`,
     sql`DELETE FROM "team" WHERE "id" = ${teamId}::uuid`,
@@ -462,6 +466,93 @@ describe("ai_run constraints", () => {
          VALUES ('${newId()}', '${channelId}', 'hello', -1)`,
       ),
     ).toBe("ai_run_cost_non_negative_check");
+  });
+
+  it("rejects an unknown kind", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "ai_run" ("id", "prompt", "kind") VALUES ('${newId()}', 'test-constraint-kind', 'dream')`,
+      ),
+    ).toBe("ai_run_kind_check");
+  });
+
+  it("rejects an unknown proposal status", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "ai_run" ("id", "prompt", "proposal_status")
+         VALUES ('${newId()}', 'test-constraint-status', 'maybe')`,
+      ),
+    ).toBe("ai_run_proposal_status_check");
+  });
+
+  it("rejects a proposal status on a run that is not a chat", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "ai_run" ("id", "prompt", "kind", "proposal_status")
+         VALUES ('${newId()}', 'test-constraint-summary', 'summary', 'open')`,
+      ),
+    ).toBe("ai_run_proposal_status_only_on_chat_check");
+  });
+
+  // Not a CHECK, but the two properties the chat model rests on (spec M4, M6):
+  // a run may have no chat at all, and outlives the chat it belonged to.
+  it("lets a run exist with no channel", async () => {
+    const id = newId();
+    await db.execute(sql`
+      INSERT INTO "ai_run" ("id", "prompt", "kind") VALUES (${id}::uuid, 'test-constraint-briefing', 'briefing')
+    `);
+    const stored = await db.execute<{ channel_id: string | null }>(
+      sql`SELECT "channel_id" FROM "ai_run" WHERE "id" = ${id}::uuid`,
+    );
+    expect(stored.rows).toEqual([{ channel_id: null }]);
+  });
+
+  it("keeps a run when its chat is deleted, clearing the link", async () => {
+    const chat = newId();
+    const run = newId();
+    await db.execute(sql`
+      INSERT INTO "channel" ("id", "kind", "name") VALUES (${chat}::uuid, 'ai', 'test-constraint-chat')
+    `);
+    await db.execute(sql`
+      INSERT INTO "ai_run" ("id", "channel_id", "prompt") VALUES (${run}::uuid, ${chat}::uuid, 'test-constraint-orphan')
+    `);
+
+    await db.execute(sql`DELETE FROM "channel" WHERE "id" = ${chat}::uuid`);
+
+    const stored = await db.execute<{ channel_id: string | null }>(
+      sql`SELECT "channel_id" FROM "ai_run" WHERE "id" = ${run}::uuid`,
+    );
+    expect(stored.rows).toEqual([{ channel_id: null }]);
+  });
+});
+
+describe("assistant chat constraints", () => {
+  it("rejects a seed event on a channel that is not an ai chat", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "channel" ("id", "kind", "name", "seed_event_id")
+         VALUES ('${newId()}', 'group', 'test-constraint-seeded-group', '${eventId}')`,
+      ),
+    ).toBe("channel_seed_only_on_ai_check");
+  });
+
+  it("clears a chat's seed when its event row is deleted, keeping the chat", async () => {
+    const seedEvent = newId();
+    const chat = newId();
+    await db.execute(sql`
+      INSERT INTO "event" ("id", "title", "starts_at") VALUES (${seedEvent}::uuid, 'test-constraint-seed-event', now())
+    `);
+    await db.execute(sql`
+      INSERT INTO "channel" ("id", "kind", "name", "seed_event_id")
+      VALUES (${chat}::uuid, 'ai', 'test-constraint-seeded-chat', ${seedEvent}::uuid)
+    `);
+
+    await db.execute(sql`DELETE FROM "event" WHERE "id" = ${seedEvent}::uuid`);
+
+    const stored = await db.execute<{ seed_event_id: string | null }>(
+      sql`SELECT "seed_event_id" FROM "channel" WHERE "id" = ${chat}::uuid`,
+    );
+    expect(stored.rows).toEqual([{ seed_event_id: null }]);
   });
 });
 

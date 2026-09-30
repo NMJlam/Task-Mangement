@@ -434,7 +434,6 @@ export async function seedDemo(production = false): Promise<void> {
         minTier: 1,
       },
       { id: channel("committee"), kind: "group", name: "committee-private" },
-      { id: channel("assistant"), kind: "ai", name: "assistant" },
       // The one channel allowed an absent name (channel_named_unless_dm_check).
       // The slug keeps its original spelling because the id is derived from it, so
       // renaming it would strand the rows an earlier seed already wrote. Its two
@@ -451,8 +450,6 @@ export async function seedDemo(production = false): Promise<void> {
       { channelId: channel("committee"), userId: member("secretary"), lastReadAt: at(-1) },
       { channelId: channel("dm-pres-dir"), userId: member("vice_president"), lastReadAt: at(-1) },
       { channelId: channel("dm-pres-dir"), userId: member("director"), lastReadAt: at(-4) },
-      { channelId: channel("assistant"), userId: member("vice_president"), lastReadAt: at(-1) },
-      { channelId: channel("assistant"), userId: member("director"), lastReadAt: at(-2) },
     ])
     .onConflictDoNothing();
 
@@ -462,7 +459,11 @@ export async function seedDemo(production = false): Promise<void> {
     .values([
       {
         id: demoId("airun:breakdown"),
-        channelId: channel("assistant"),
+        // No chat: the demo seeds what the assistant MADE (the task below keeps
+        // its provenance), not a conversation. Assistant chats are each
+        // member's own and start empty.
+        kind: "chat",
+        channelId: null,
         userId: member("vice_president"),
         prompt: "Break the hackathon down into tasks for the media team.",
         steps: [
@@ -670,15 +671,6 @@ export async function seedDemo(production = false): Promise<void> {
         fileSizeBytes: 184_320,
         fileMime: "application/pdf",
         createdAt: at(-1, 2),
-      },
-      // author NULL + ai_run_id set is what marks a message as model-produced;
-      // there is no is_bot flag.
-      {
-        id: message("assistant-reply"),
-        channelId: channel("assistant"),
-        aiRunId: demoId("airun:breakdown"),
-        body: "I created 1 task for the media team: Film the opening keynote.",
-        createdAt: at(-2),
       },
       {
         id: message("dm-hello"),
