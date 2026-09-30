@@ -482,7 +482,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onUpdate={vi.fn()}
       />,
     );
@@ -503,7 +503,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onDelete={onDelete}
       />,
     );
@@ -530,7 +530,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onDelete={vi.fn(async () => true)}
       />,
     );
@@ -554,7 +554,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onDelete={vi.fn(async () => true)}
       />,
     );
@@ -574,7 +574,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onDelete={onDelete}
       />,
     );
@@ -597,7 +597,7 @@ describe("TaskBoard", () => {
         tasks={[task]}
         members={members}
         emptyMessage="No tasks are linked to this event yet."
-        onStatusChange={vi.fn()}
+        onMove={vi.fn()}
         onDelete={onDelete}
       />,
     );
