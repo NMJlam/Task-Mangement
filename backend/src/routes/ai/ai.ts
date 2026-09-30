@@ -212,6 +212,8 @@ aiRouter.post(
           await db.transaction((tx) =>
             recordRun(tx, {
               userId: me.id,
+              kind: "chat",
+              channelId: null,
               prompt: body.text,
               steps: [...steps, { tool: "failed", ms: 0 }],
             }),
@@ -221,8 +223,14 @@ aiRouter.post(
       }
 
       const { runId, chatId } = await db.transaction(async (tx) => {
-        const id = await recordRun(tx, { userId: me.id, prompt: body.text, steps });
         const channelId = await resolveAiChannel(tx, me.id);
+        const id = await recordRun(tx, {
+          userId: me.id,
+          kind: "chat",
+          channelId,
+          prompt: body.text,
+          steps,
+        });
         // Explicit timestamps: both rows share one transaction, and now() is
         // the transaction's start, so the default would tie them.
         await tx.insert(messages).values([
@@ -341,6 +349,8 @@ aiRouter.post(
       await db.transaction((tx) =>
         recordRun(tx, {
           userId: me.id,
+          kind: "summary",
+          channelId,
           prompt: `Summarise thread ${channelId}`,
           steps: [{ tool: "summariseThread", ms: Date.now() - started }],
         }),
@@ -449,23 +459,20 @@ aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) 
       aiBriefingSchema,
     );
 
+    // The briefing lives on its run (spec M4): no chat, no message. The run's
+    // own timestamp is the one reported, so a second visit reads back the same.
     const generatedAt = new Date();
-    await db.transaction(async (tx) => {
-      const runId = await recordRun(tx, {
+    await db.transaction((tx) =>
+      recordRun(tx, {
         userId: me.id,
+        kind: "briefing",
+        channelId: null,
         prompt: BRIEFING_RUN_PROMPT,
         steps: [{ tool: "dailyBriefing", ms: Date.now() - started }],
-      });
-      const channelId = await resolveAiChannel(tx, me.id);
-      await tx.insert(messages).values({
-        id: newId(),
-        channelId,
-        author: null,
-        body: JSON.stringify(briefing),
-        aiRunId: runId,
+        result: briefing,
         createdAt: generatedAt,
-      });
-    });
+      }),
+    );
 
     res
       .status(200)

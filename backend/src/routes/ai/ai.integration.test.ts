@@ -534,9 +534,15 @@ describe("/api/ai", () => {
       expect(response.status).toBe(200);
       expect(response.body.briefing).toEqual(JSON.parse(briefingJson));
       expect(prompts[0]).toContain("test-ai-book-room");
-      const stored = await aiMessages(reader.id);
-      expect(stored).toHaveLength(1);
-      expect(stored[0]!.aiRunId).not.toBeNull();
+      const runs = await db
+        .select({ kind: aiRuns.kind, channelId: aiRuns.channelId, result: aiRuns.result })
+        .from(aiRuns)
+        .where(eq(aiRuns.userId, reader.id));
+      expect(runs).toEqual([
+        { kind: "briefing", channelId: null, result: JSON.parse(briefingJson) },
+      ]);
+      // A briefing is not a chat: it makes no channel and no message.
+      expect(await aiMessages(reader.id)).toEqual([]);
     });
 
     it("returns the same briefing again that club day without calling the model", async () => {
@@ -592,7 +598,8 @@ describe("/api/ai", () => {
     }
 
     it("summarises a thread the member can read, as of its newest message", async () => {
-      signedInAs(await member("catcher", "officer"));
+      const catcher = await member("catcher", "officer");
+      signedInAs(catcher);
       const { channelId, ids } = await thread(0, ["Room booked", "Who does pizza?"]);
       script(summaryJson);
 
@@ -604,6 +611,12 @@ describe("/api/ai", () => {
         asOfMessageId: ids.at(-1),
       });
       expect(prompts[0]).toContain("Who does pizza?");
+      // The run says what it was and which thread it read — not a chat of the member's.
+      const runs = await db
+        .select({ kind: aiRuns.kind, channelId: aiRuns.channelId })
+        .from(aiRuns)
+        .where(eq(aiRuns.userId, catcher.id));
+      expect(runs).toEqual([{ kind: "summary", channelId }]);
     });
 
     it("403s a thread the member cannot open, before the model is called", async () => {

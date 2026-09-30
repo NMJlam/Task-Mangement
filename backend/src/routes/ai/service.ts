@@ -1,4 +1,9 @@
-import { aiBriefingSchema, type AiBriefing } from "@ctp/shared";
+import {
+  aiBriefingSchema,
+  type AiBriefing,
+  type AiProposalStatus,
+  type AiRunKind,
+} from "@ctp/shared";
 import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { CLUB_TIMEZONE } from "../../config/club.js";
@@ -132,22 +137,39 @@ export async function assertUnderDailyCap(
 export type RunStep = { tool: string; ms: number; detail?: Record<string, string | number> };
 
 /**
- * The audit row. `cost_micro_usd` is 0 because the Gemini free tier is free —
- * the column stays for the day the club moves to a paid provider.
+ * The audit row, one per model-backed request. `kind` says what the run was,
+ * and `channelId` what it belongs to: a chat run its chat, a summary run the
+ * thread it read, a briefing nothing. `cost_micro_usd` is 0 because the Gemini
+ * free tier is free — the column stays for the day the club moves to a paid
+ * provider.
  */
 export async function recordRun(
   tx: Tx,
-  args: { userId: string; prompt: string; steps: RunStep[] },
+  args: {
+    userId: string;
+    kind: AiRunKind;
+    channelId: string | null;
+    prompt: string;
+    steps: RunStep[];
+    /** chat: the plan it drafted. briefing: the briefing. */
+    result?: unknown;
+    proposalStatus?: AiProposalStatus | null;
+    /** Set when the caller reports this instant to the client and must read it back unchanged. */
+    createdAt?: Date;
+  },
 ): Promise<string> {
-  const channelId = await resolveAiChannel(tx, args.userId);
   const id = newId();
   await tx.insert(aiRuns).values({
     id,
-    channelId,
+    kind: args.kind,
+    channelId: args.channelId,
     userId: args.userId,
     prompt: args.prompt,
     steps: args.steps,
+    result: args.result ?? null,
+    proposalStatus: args.proposalStatus ?? null,
     costMicroUsd: 0,
+    ...(args.createdAt ? { createdAt: args.createdAt } : {}),
   });
   return id;
 }
@@ -244,32 +266,38 @@ export function buildBriefingPrompt(input: BriefingInput): string {
   ].join("\n");
 }
 
-/** The ai_run prompt a briefing is recorded under — how its message is told apart from a chat reply. */
+/** What a briefing run is recorded as asking — a label for the audit trail, not a discriminator. */
 export const BRIEFING_RUN_PROMPT = "Daily briefing";
 
+/** The briefing as a member reads it in a chat: the summary, then one line per bullet. */
+export function briefingText(briefing: AiBriefing): string {
+  return [briefing.summary, ...briefing.bullets.map((bullet) => `- ${bullet}`)].join("\n");
+}
+
 /**
- * Today's briefing, if one was already generated (D15). The newest message in
- * the caller's ai channel from a briefing run, on the club's calendar day.
+ * Today's briefing, if one was already generated: the newest briefing run of
+ * the caller's on the club's calendar day. It lives on the run itself (spec
+ * M4), so it needs no chat and a second visit is not a model call.
  */
 export async function findTodaysBriefing(
   db: Queryable,
   userId: string,
   dayKey: string,
-): Promise<{ briefing: AiBriefing; generatedAt: Date } | undefined> {
-  const result = await db.execute<{ body: string; createdAt: Date }>(sql`
-    SELECT m."body", m."created_at" AS "createdAt"
-    FROM "message" m
-    JOIN "ai_run" r ON r."id" = m."ai_run_id"
+): Promise<{ briefing: AiBriefing; generatedAt: Date; runId: string } | undefined> {
+  const result = await db.execute<{ id: string; result: unknown; createdAt: Date }>(sql`
+    SELECT r."id", r."result", r."created_at" AS "createdAt"
+    FROM "ai_run" r
     WHERE r."user_id" = ${userId}
-      AND r."prompt" = ${BRIEFING_RUN_PROMPT}
-      AND to_char(m."created_at" AT TIME ZONE ${CLUB_TIMEZONE}, 'YYYY-MM-DD') = ${dayKey}
-    ORDER BY m."created_at" DESC
+      AND r."kind" = 'briefing'
+      AND r."result" IS NOT NULL
+      AND to_char(r."created_at" AT TIME ZONE ${CLUB_TIMEZONE}, 'YYYY-MM-DD') = ${dayKey}
+    ORDER BY r."created_at" DESC
     LIMIT 1
   `);
   const row = result.rows[0];
   if (!row) return undefined;
-  const parsed = aiBriefingSchema.safeParse(JSON.parse(row.body));
+  const parsed = aiBriefingSchema.safeParse(row.result);
   return parsed.success
-    ? { briefing: parsed.data, generatedAt: new Date(row.createdAt) }
+    ? { briefing: parsed.data, generatedAt: new Date(row.createdAt), runId: row.id }
     : undefined;
 }
