@@ -58,6 +58,8 @@ describe("production demo seed", () => {
   const runProductionDemoScript = async (script: "db:migrate" | "db:seed") => {
     await exec("npm", ["run", script], {
       cwd: repoRoot,
+      // On Windows npm is `npm.cmd`, which Node only launches through a shell.
+      shell: process.platform === "win32",
       env: {
         ...process.env,
         DATABASE_URL: testUrl,
