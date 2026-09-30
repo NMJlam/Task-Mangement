@@ -59,6 +59,10 @@ export function EventsPage() {
   const query = useMemo(
     () => ({
       status: filters.status || undefined,
+      // "Any status" has to mean any status: with no `status` named the API
+      // leaves cancelled events out, so the one filter that claims to narrow
+      // nothing would still be hiding a whole state.
+      includeCancelled: !filters.status,
       from: filters.time === "upcoming" ? now : undefined,
       to: filters.time === "past" ? now : undefined,
       ownerId: filters.mine && identityReady ? me.user.id : undefined,

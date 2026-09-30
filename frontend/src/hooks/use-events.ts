@@ -8,6 +8,12 @@ export type EventsQuery = {
   to?: string;
   ownerId?: string;
   /**
+   * Shows cancelled events, which the API otherwise leaves out of a read that
+   * names no `status` — cancellation is the soft delete. Only a list whose own
+   * control offers "Any status" should ask for them.
+   */
+  includeCancelled?: boolean;
+  /**
    * Direction of the keyset read. `asc` is what "soonest first" means over a
    * capped page: sorting the returned rows on the client would only reorder the
    * ones that page happens to hold, and the soonest event of all could be the
@@ -29,6 +35,7 @@ function toSearch(query: EventsQuery, cursor?: string) {
   if (query.from) params.set("from", query.from);
   if (query.to) params.set("to", query.to);
   if (query.ownerId) params.set("ownerId", query.ownerId);
+  if (query.includeCancelled) params.set("includeCancelled", "true");
   if (query.order) params.set("order", query.order);
   if (cursor) params.set("cursor", cursor);
   const search = params.toString();
@@ -52,7 +59,7 @@ function toSearch(query: EventsQuery, cursor?: string) {
  * different question, and nothing on screen would say so.
  */
 export function useEvents(query: EventsQuery = {}, { enabled = true }: { enabled?: boolean } = {}) {
-  const { teamId, status, from, to, ownerId, order } = query;
+  const { teamId, status, from, to, ownerId, order, includeCancelled } = query;
   const [state, setState] = useState<EventsState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
@@ -67,9 +74,12 @@ export function useEvents(query: EventsQuery = {}, { enabled = true }: { enabled
     let active = true;
     setState({ status: "loading" });
 
-    fetch(`/api/events${toSearch({ teamId, status, from, to, ownerId, order })}`, {
-      credentials: "include",
-    })
+    fetch(
+      `/api/events${toSearch({ teamId, status, from, to, ownerId, order, includeCancelled })}`,
+      {
+        credentials: "include",
+      },
+    )
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load events");
         return listEventsResponseSchema.parse(await res.json());
@@ -89,14 +99,17 @@ export function useEvents(query: EventsQuery = {}, { enabled = true }: { enabled
     return () => {
       active = false;
     };
-  }, [enabled, teamId, status, from, to, ownerId, order]);
+  }, [enabled, teamId, status, from, to, ownerId, order, includeCancelled]);
 
   const loadMore = useCallback(async () => {
     if (state.status !== "ok" || !state.nextCursor || loadingMore) return;
     setLoadingMore(true);
     setMutationError(undefined);
     try {
-      const search = toSearch({ teamId, status, from, to, ownerId, order }, state.nextCursor);
+      const search = toSearch(
+        { teamId, status, from, to, ownerId, order, includeCancelled },
+        state.nextCursor,
+      );
       const res = await fetch(`/api/events${search}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load more events");
       const parsed = listEventsResponseSchema.parse(await res.json());
@@ -114,7 +127,7 @@ export function useEvents(query: EventsQuery = {}, { enabled = true }: { enabled
     } finally {
       setLoadingMore(false);
     }
-  }, [state, loadingMore, teamId, status, from, to, ownerId, order]);
+  }, [state, loadingMore, teamId, status, from, to, ownerId, order, includeCancelled]);
 
   // Creating an event lives on `/events/new` (`useCreateEvent`), which validates
   // the full `createEventSchema` before posting. This hook stays read-only.

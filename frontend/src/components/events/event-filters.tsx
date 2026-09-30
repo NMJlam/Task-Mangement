@@ -90,7 +90,7 @@ export function EventFilters({
             onChange={(event) => onStatusChange(event.target.value)}
             className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            {/* `cancelled` opts in: the API excludes it unless it is asked for by name. */}
+            {/* Literal: the page asks for `includeCancelled` whenever nothing is picked. */}
             <option value="">Any status</option>
             {eventStatusSchema.options.map((option) => (
               <option key={option} value={option}>
