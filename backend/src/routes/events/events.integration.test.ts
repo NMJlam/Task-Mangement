@@ -6,6 +6,7 @@ import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import {
+  aiRuns,
   appUsers,
   events,
   expenses,
@@ -81,6 +82,7 @@ describe("/api/events", () => {
       DELETE FROM "expense" WHERE "event_id" IN (SELECT "id" FROM "event" WHERE ${ours})
     `);
     await db.execute(sql`DELETE FROM "event" WHERE ${ours}`);
+    await db.execute(sql`DELETE FROM "ai_run" WHERE "prompt" LIKE 'test-event-%'`);
     await db.execute(sql`DELETE FROM "app_user" WHERE "auth_user_id" LIKE 'test-event-%'`);
     await db.execute(sql`DELETE FROM auth."user" WHERE id LIKE 'test-event-%'`);
   }
@@ -236,6 +238,28 @@ describe("/api/events", () => {
       const ids = response.body.items.map((item: { id: string }) => item.id);
       expect(ids).toContain(cancelled.id);
       expect(ids).toContain(live.id);
+    });
+
+    it("says which assistant run made an event, and null for one made by hand", async () => {
+      const officer = await member("officer-provenance", "officer");
+      const runId = newId();
+      await db
+        .insert(aiRuns)
+        .values({ id: runId, userId: officer.id, prompt: "test-event-plan", kind: "chat" });
+      const drafted = await seedEvent({ title: "test-event-by-assistant", aiRunId: runId });
+      const manual = await seedEvent({ title: "test-event-by-hand" });
+      signedInAs(officer);
+
+      const response = await request(app).get("/api/events?limit=100");
+
+      const byId = new Map(
+        response.body.items.map((item: { id: string; aiRunId: string | null }) => [
+          item.id,
+          item.aiRunId,
+        ]),
+      );
+      expect(byId.get(drafted.id)).toBe(runId);
+      expect(byId.get(manual.id)).toBeNull();
     });
   });
 
