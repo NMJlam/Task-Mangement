@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils";
  * group to assistive tech, and so `disabled` greys every control inside it —
  * which is how a task whose staged event was unchecked drops out.
  *
+ * A left-out row is marked by its background, never by opacity: fading the
+ * whole row takes its muted text below AA contrast (2.4:1 measured by axe).
+ *
  * The checkbox is native: it is a plain two-state control inside a form-like
  * list, with no styling Radix would add, and it keeps keyboard and label
  * behaviour for free.
@@ -40,7 +43,7 @@ export function RowShell({
     <fieldset
       aria-label={label}
       disabled={disabled}
-      className={cn("flex gap-3 px-4 py-3", (disabled || !checked) && "opacity-60")}
+      className={cn("flex gap-3 px-4 py-3", (disabled || !checked) && "bg-muted/40")}
     >
       <input
         type="checkbox"
