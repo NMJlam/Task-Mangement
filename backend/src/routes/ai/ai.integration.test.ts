@@ -315,6 +315,18 @@ describe("/api/ai", () => {
       expect(response.body.error.code).toBe("AI_OUTPUT_INVALID");
     });
 
+    it("counts a turn that failed toward the daily cap, since it still spent model calls", async () => {
+      vi.stubEnv("AI_DAILY_RUN_CAP", "1");
+      signedInAs(await member("failing", "officer"));
+      script("Sure! Let me think.", "Still thinking, in prose.");
+
+      const first = await request(app).post("/api/ai/messages").send({ text: "One" });
+      const second = await request(app).post("/api/ai/messages").send({ text: "Two" });
+
+      expect(first.status).toBe(422);
+      expect(second.status).toBe(429);
+    });
+
     it("429s once the member has spent their daily runs", async () => {
       vi.stubEnv("AI_DAILY_RUN_CAP", "1");
       signedInAs(await member("capped", "officer"));
