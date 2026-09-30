@@ -165,18 +165,15 @@ export async function resolveProposal(
           .where(eq(taskAssignees.taskId, id));
         const nameList = (ids: readonly string[]) =>
           ids.map((userId) => names.get(userId) ?? "").join(", ");
+        const assigneeIds = assigneeHandles?.map((assignee) => person(assignee).id);
         return {
           id,
           title: row.title,
           diffs: fieldDiffs(
             { ...row, assignees: nameList(holders.map((holder) => holder.userId)) },
-            {
-              ...changes,
-              assignees: assigneeHandles
-                ? nameList(assigneeHandles.map((assignee) => person(assignee).id))
-                : undefined,
-            },
+            { ...changes, assignees: assigneeIds ? nameList(assigneeIds) : undefined },
           ),
+          assigneeIds,
         };
       }),
     );

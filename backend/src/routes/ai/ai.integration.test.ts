@@ -271,6 +271,40 @@ describe("/api/ai", () => {
       ]);
     });
 
+    it("carries a reassignment's new assignee ids, which the card must send back", async () => {
+      signedInAs(await member("shuffler", "officer"));
+      const newcomer = await member("newcomer", "officer");
+      const task = await seedTask(null, [], { title: "test-ai-banner" });
+      script(
+        callTool("listTasks"),
+        callTool("listMembers"),
+        (prompt) => {
+          const rows = toolResult(prompt, "listTasks") as { handle: string; title: string }[];
+          const roster = toolResult(prompt, "listMembers") as { handle: string; name: string }[];
+          return callTool("proposeUpdateTasks", {
+            diffs: [
+              {
+                handle: rows.find((row) => row.title === "test-ai-banner")!.handle,
+                assigneeHandles: [roster.find((row) => row.name === "test-ai-newcomer")!.handle],
+              },
+            ],
+          });
+        },
+        reply(),
+      );
+
+      const response = await request(app).post("/api/ai/messages").send({ text: "Give it away" });
+
+      expect(response.body.proposal.updateTasks).toEqual([
+        {
+          id: task.id,
+          title: "test-ai-banner",
+          diffs: [{ field: "assignees", before: "", after: "test-ai-newcomer" }],
+          assigneeIds: [newcomer.id],
+        },
+      ]);
+    });
+
     it("422s when the model answers in prose twice", async () => {
       signedInAs(await member("prose", "officer"));
       script("Sure! Let me think about that.", "Here is what I found, in words.");
