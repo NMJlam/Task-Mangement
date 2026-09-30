@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { BriefingCard } from "@/components/ai/briefing-card";
 import { DashboardSearch } from "@/components/common/dashboard-search";
 import { PageHeader } from "@/components/common/page-header";
 import { PriorityDot } from "@/components/common/priority-dot";
@@ -308,6 +309,7 @@ export function DashboardPage() {
               aria-label="Overview details"
               className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"
             >
+              <BriefingCard />
               <Card className="gap-0 py-0 shadow-none">
                 <SectionHeading title="Today" to="/calendar" action="Calendar" compact />
                 <CardContent className="px-5 pb-5">

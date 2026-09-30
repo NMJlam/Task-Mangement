@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
@@ -386,6 +387,11 @@ export function EventDetailPage() {
               </p>
             </CardHeader>
             <CardContent>
+              {event.channelId &&
+                messages.state.status === "ok" &&
+                messages.state.items.length > 0 && (
+                  <ThreadSummaryPanel channelId={event.channelId} />
+                )}
               {!event.channelId ? (
                 <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
                   This event has no thread yet.
