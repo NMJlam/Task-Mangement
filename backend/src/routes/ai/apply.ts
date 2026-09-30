@@ -16,6 +16,7 @@ import {
   notifyAssignees,
   visibleEvents,
   wrapBlockers,
+  type Queryable,
   type Tx,
 } from "../events/service.js";
 import { recordRunOutcome } from "./service.js";
@@ -260,6 +261,47 @@ async function updateEvent(tx: Tx, caller: Caller, runId: string, operation: Upd
   return { id: event.id, title: columns.title ?? event.title };
 }
 
+/** The caller's own chat run, with a plan nobody has applied or discarded yet. */
+const ownOpenPlan = (userId: string, runId: string) =>
+  and(
+    eq(aiRuns.id, runId),
+    eq(aiRuns.userId, userId),
+    eq(aiRuns.kind, "chat"),
+    eq(aiRuns.proposalStatus, "open"),
+  );
+
+/**
+ * Why a claim found nothing: the run is not the caller's (or does not exist) —
+ * a 404, never a 403 — or its plan is already closed.
+ */
+async function refuseClosedPlan(
+  db: Queryable,
+  userId: string,
+  runId: string,
+  action: string,
+): Promise<never> {
+  const [run] = await db
+    .select({ id: aiRuns.id })
+    .from(aiRuns)
+    .where(and(eq(aiRuns.id, runId), eq(aiRuns.userId, userId)));
+  if (!run)
+    throw new ApplyError(404, "RUN_NOT_FOUND", `That assistant run is not yours ${action}.`);
+  throw new ApplyError(409, "PROPOSAL_CLOSED", "This plan has already been applied or discarded.");
+}
+
+/**
+ * Turns a drafted plan down, so it does not come back when the chat reopens
+ * (spec M7). The same single-statement claim as apply, for the same reason.
+ */
+export async function discardProposal(db: Queryable, userId: string, runId: string): Promise<void> {
+  const [discarded] = await db
+    .update(aiRuns)
+    .set({ proposalStatus: "discarded" })
+    .where(ownOpenPlan(userId, runId))
+    .returning({ id: aiRuns.id });
+  if (!discarded) await refuseClosedPlan(db, userId, runId, "to discard");
+}
+
 /**
  * Applies a confirmed card as the caller, inside the caller's transaction. Each
  * operation clears the gate its own route clears (`requiredTierFor`, plus the
@@ -272,12 +314,18 @@ export async function applyProposal(
   caller: Caller,
   request: AiApplyRequest,
 ): Promise<AiApplyResponse> {
-  // Only the member who ran the assistant scores and applies its card.
-  const [run] = await tx
-    .select({ id: aiRuns.id })
-    .from(aiRuns)
-    .where(and(eq(aiRuns.id, request.runId), eq(aiRuns.userId, caller.id)));
-  if (!run) throw new ApplyError(404, "RUN_NOT_FOUND", "That assistant run is not yours to apply.");
+  // Claim the plan before doing any work: only the member who ran the
+  // assistant applies its card, and only while it is still open. The row lock
+  // this UPDATE takes is what makes two applies of one plan impossible — a
+  // second one waits on it, then finds the plan no longer open and is refused
+  // with nothing written. Any refusal below throws, which rolls the claim back
+  // with everything else, so a plan that failed to apply is still open.
+  const [claimed] = await tx
+    .update(aiRuns)
+    .set({ proposalStatus: "applied" })
+    .where(ownOpenPlan(caller.id, request.runId))
+    .returning({ id: aiRuns.id });
+  if (!claimed) await refuseClosedPlan(tx, caller.id, request.runId, "to apply");
 
   const bulk = request.operations.filter(isTaskCreate).length > 1;
   const refused = request.operations.find((operation) => tierFor(operation, bulk) > caller.tier);

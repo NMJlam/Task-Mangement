@@ -13,6 +13,7 @@ import {
   aiMessageRequestSchema,
   aiMessageResponseSchema,
   aiProposalSchema,
+  aiRunParamsSchema,
   type AiApplyRequest,
   type AiRenameChat,
   type AiResolvedProposal,
@@ -37,7 +38,7 @@ import {
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
 import { assertCanReadChannel, ChannelForbiddenError } from "../threads/service.js";
-import { applyProposal, ApplyError } from "./apply.js";
+import { applyProposal, ApplyError, discardProposal } from "./apply.js";
 import {
   chatHistory,
   chatMessages,
@@ -348,6 +349,26 @@ aiRouter.post(
       const body = res.locals.validated as AiApplyRequest;
       const applied = await getDb().transaction((tx) => applyProposal(tx, req.user!, body));
       res.status(201).json(aiApplyResponseSchema.parse(applied));
+    } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
+
+// ── POST /api/ai/proposals/:runId/discard ────────────────────────────────────
+//
+// Calls no model and writes no work, so it needs neither the assistant enabled
+// nor a transaction: it is one guarded UPDATE.
+
+aiRouter.post(
+  "/ai/proposals/:runId/discard",
+  authenticate,
+  authorise(0),
+  validate(aiRunParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      await discardProposal(getDb(), req.user!.id, req.params.runId!);
+      res.status(204).end();
     } catch (error) {
       if (!sendAiError(res, error)) next(error);
     }
