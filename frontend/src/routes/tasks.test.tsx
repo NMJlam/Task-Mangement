@@ -230,6 +230,10 @@ describe("TasksPage", () => {
     // The due date is a popover, not a form field: a day and a time, then Apply.
     await user.click(within(dialog).getByLabelText(/^due date$/i));
     await user.click(dayCell(due.isoDate));
+    // A deadline defaults to end of the chosen day, so overriding it means
+    // replacing what is already there rather than typing into an empty field.
+    expect(screen.getByLabelText("Deadline time")).toHaveValue("23:59");
+    await user.clear(screen.getByLabelText("Deadline time"));
     await user.type(screen.getByLabelText("Deadline time"), "14:30");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
@@ -399,6 +403,7 @@ describe("TasksPage", () => {
 
     await user.click(dueRow());
     await user.click(dayCell(due.isoDate));
+    await user.clear(screen.getByLabelText("Deadline time"));
     await user.type(screen.getByLabelText("Deadline time"), "09:15");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
