@@ -2,9 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The assistant as a member meets it, with AI OFF — the default this suite
- * runs under, so no test here can spend the club's model quota. The one spec
- * that needs a plan on screen stubs /api/ai/messages in the browser instead.
+ * The assistant as a member meets it, with AI OFF. Every /api/ai call is
+ * answered in the browser — "switched off" by default, a fixed plan for the
+ * card spec — so the suite reads the same whether or not this machine's .env
+ * has the assistant enabled, and no test here can spend the club's model quota.
  * Signed-in, so it switches itself off without a dev member, exactly as the
  * signed-in scans in a11y.spec.ts do (docs/accessibility.md).
  */
@@ -39,6 +40,12 @@ async function ask(page: Page, text: string) {
 
 test.beforeEach(async ({ page }) => {
   await signIn(page);
+  await page.route("**/api/ai/**", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: "AI_DISABLED", message: "The assistant is not enabled." } },
+    }),
+  );
 });
 
 test("says the assistant is off, and keeps the generated-task rail", async ({ page }) => {
