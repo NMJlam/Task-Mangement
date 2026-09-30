@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AiQuotaError } from "../../lib/ai/client.js";
 import {
   AiOutputError,
+  briefingText,
   budgetMessages,
   buildBriefingPrompt,
   clubDayKey,
@@ -159,5 +160,17 @@ describe("buildBriefingPrompt", () => {
     const prompt = buildBriefingPrompt(input);
     expect(prompt).toContain('"bullets"');
     expect(prompt).toMatch(/only.*names?/iu);
+  });
+});
+
+describe("briefingText", () => {
+  it("reads as the summary followed by one dash line per bullet", () => {
+    expect(
+      briefingText({ summary: "A quiet day.", bullets: ["Book the room", "Chase pizza"] }),
+    ).toBe("A quiet day.\n- Book the room\n- Chase pizza");
+  });
+
+  it("is just the summary when there are no bullets", () => {
+    expect(briefingText({ summary: "Nothing on.", bullets: [] })).toBe("Nothing on.");
   });
 });
