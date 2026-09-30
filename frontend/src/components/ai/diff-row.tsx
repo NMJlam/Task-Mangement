@@ -53,7 +53,7 @@ export function DiffRow({
   return (
     <fieldset
       aria-label={value.title}
-      className={cn("flex gap-3 px-4 py-3", !checked && "opacity-60")}
+      className={cn("flex gap-3 px-4 py-3", !checked && "bg-muted/40")}
     >
       <input
         type="checkbox"
