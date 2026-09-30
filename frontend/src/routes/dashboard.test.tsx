@@ -56,7 +56,8 @@ it("summarises the current member’s work and upcoming events", async () => {
     "href",
     `/events/${eventId}`,
   );
-  expect(fetchMock).toHaveBeenCalledTimes(6);
+  // Six dashboard reads plus the daily briefing's one.
+  expect(fetchMock).toHaveBeenCalledTimes(7);
 });
 
 it("keeps an activity outage out of the page-level error banner", async () => {
@@ -208,6 +209,15 @@ function stubFetch(
       return resolve(stubs.notifications ?? { notifications: [], unreadCount: 0 });
     }
     if (url === "/api/members") return resolve(stubs.members ?? { members: [] });
+    // The assistant is off here, so the briefing card renders nothing and every
+    // other assertion reads the dashboard exactly as it was.
+    if (url === "/api/ai/briefing") {
+      return resolve({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: { code: "AI_DISABLED" } }),
+      });
+    }
     throw new Error(`Unexpected request: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
