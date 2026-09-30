@@ -295,7 +295,7 @@ describe("EventDetailPage", () => {
   // Same shared dialog as /tasks, so the same tier rule has to reach it here —
   // a task deletable on one board and not the other would be arbitrary.
   it("deletes an event task from the dialog once a tier-1 member confirms", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent({ role: "director", tier: 1 });
     renderDetail("?tab=tasks");
 
@@ -314,7 +314,7 @@ describe("EventDetailPage", () => {
   });
 
   it("offers no delete control on the Tasks tab below tier 1", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubEvent({ role: "officer", tier: 0 });
     renderDetail("?tab=tasks");
 

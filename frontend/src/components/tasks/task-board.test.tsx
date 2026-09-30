@@ -476,7 +476,7 @@ describe("TaskBoard", () => {
   // and the board mirrors that by receiving `onDelete` only from a caller who
   // may use it — an officer's dialog has no button to press.
   it("offers no delete control when the caller cannot delete tasks", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -496,7 +496,7 @@ describe("TaskBoard", () => {
   // The row is gone for good once this lands — there is no soft delete to
   // restore from, so the first click only asks.
   it("asks before deleting, and deletes nothing when the reader backs out", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onDelete = vi.fn(async () => true);
     renderBoard(
       <TaskBoard
@@ -524,7 +524,7 @@ describe("TaskBoard", () => {
   // this focus lands on the document body: a keyboard reader would be left with
   // no idea a question had been asked, and nothing announced.
   it("moves focus to the safe answer when the confirmation appears", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -548,7 +548,7 @@ describe("TaskBoard", () => {
   // Backing out unmounts the question the same way asking it unmounted the
   // button, so focus has to be handed back rather than dropped on the body.
   it("returns focus to the delete control when the reader backs out", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderBoard(
       <TaskBoard
         tasks={[task]}
@@ -567,7 +567,7 @@ describe("TaskBoard", () => {
   });
 
   it("deletes the task and closes the dialog once the reader confirms", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onDelete = vi.fn(async () => true);
     renderBoard(
       <TaskBoard
@@ -590,7 +590,7 @@ describe("TaskBoard", () => {
   // A dialog that closed on a failed delete would read as success and leave the
   // card on the board with no explanation.
   it("keeps the dialog open and says so when the delete does not land", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onDelete = vi.fn(async () => false);
     renderBoard(
       <TaskBoard

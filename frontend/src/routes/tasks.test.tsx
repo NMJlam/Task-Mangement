@@ -870,7 +870,7 @@ describe("TasksPage", () => {
   // control to tier 1 and up and to nobody else. The pair of tests below is the
   // gate: same page, same task, only `/api/me` differs.
   it("offers no delete control to a member below tier 1", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -894,7 +894,7 @@ describe("TasksPage", () => {
   });
 
   it("deletes a task from the dialog and drops it from the board", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
