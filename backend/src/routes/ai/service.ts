@@ -161,3 +161,40 @@ export async function recordRunOutcome(
     .set({ proposedCount: stats.proposed, keptCount: stats.kept, editedCount: stats.edited })
     .where(eq(aiRuns.id, runId));
 }
+
+export type PromptMessage = { id: string; author: string; body: string; createdAt: Date };
+
+/**
+ * Free-tier context windows are small, and one pasted wall of text otherwise
+ * blows the request. Budget by CHARACTERS, not message count — oldest dropped
+ * first, because the recent end of a thread is what a catch-up needs.
+ */
+export function budgetMessages(messages: PromptMessage[], maxChars: number): PromptMessage[] {
+  const kept: PromptMessage[] = [];
+  let used = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    const remaining = maxChars - used;
+    // Only the newest message is ever cut, and only when it alone overflows the
+    // budget: a half-message from further back would read as something said.
+    if (message.body.length > remaining && kept.length > 0) break;
+    const body = message.body.slice(0, remaining);
+    kept.unshift({ ...message, body });
+    used += body.length;
+  }
+  return kept;
+}
+
+export function buildSummaryPrompt(messages: PromptMessage[]): string {
+  return [
+    "Summarise this club discussion thread for a committee member catching up.",
+    "Reply with ONE JSON object and nothing else. No markdown, no commentary.",
+    "",
+    '{"summary": ["3-5 short bullets, most important first"],',
+    ' "actionItems": [{"text": "what needs doing", "suggestedAssigneeName": "a name from the thread, or null"}]}',
+    "",
+    "Only use names that appear as authors below. Invent nothing. If nothing was decided, return an empty actionItems array.",
+    "",
+    ...messages.map((message) => `${message.author}: ${message.body}`),
+  ].join("\n");
+}

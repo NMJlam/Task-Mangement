@@ -1,6 +1,8 @@
 import {
   aiApplyRequestSchema,
   aiApplyResponseSchema,
+  aiThreadSummaryResponseSchema,
+  aiThreadSummarySchema,
   aiMessageRequestSchema,
   aiMessageResponseSchema,
   aiProposalSchema,
@@ -9,7 +11,7 @@ import {
   type AiProposal,
   type Tier,
 } from "@ctp/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { aiConfig } from "../../config/ai.js";
@@ -20,7 +22,7 @@ import { events, messages } from "../../db/schema/index.js";
 import { AiDisabledError, AiQuotaError, geminiComplete } from "../../lib/ai/client.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
-import { ChannelForbiddenError } from "../threads/service.js";
+import { assertCanReadChannel, ChannelForbiddenError } from "../threads/service.js";
 import { applyProposal, ApplyError } from "./apply.js";
 import { HandleMap } from "./handles.js";
 import { buildSystemPrompt } from "./prompt.js";
@@ -28,8 +30,11 @@ import { resolveProposal } from "./resolve.js";
 import {
   AiOutputError,
   assertUnderDailyCap,
+  budgetMessages,
+  buildSummaryPrompt,
   completeJson,
   recordRun,
+  type PromptMessage,
   resolveAiChannel,
   type RunStep,
 } from "./service.js";
@@ -103,6 +108,8 @@ function sendAiError(res: Response, error: unknown): boolean {
     res.status(429).json({ error: { code: "AI_QUOTA_EXCEEDED", message: error.message } });
   } else if (error instanceof AiOutputError) {
     res.status(422).json({ error: { code: "AI_OUTPUT_INVALID", message: error.message } });
+  } else if (error instanceof ChannelForbiddenError) {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: error.message } });
   } else if (error instanceof ApplyError) {
     res.status(error.status).json({ error: { code: error.code, message: error.message } });
   } else if (error instanceof ValidationError) {
@@ -219,6 +226,104 @@ aiRouter.post(
       const applied = await getDb().transaction((tx) => applyProposal(tx, req.user!, body));
       res.status(201).json(aiApplyResponseSchema.parse(applied));
     } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
+
+// ── POST /api/ai/threads/:id/summary ─────────────────────────────────────────
+
+/** The newest messages a catch-up reads, then trimmed to the character budget below. */
+const SUMMARY_MESSAGE_LIMIT = 100;
+const SUMMARY_CHAR_BUDGET = 12000;
+const SUMMARY_CACHE_LIMIT = 50;
+
+/**
+ * A local convenience: reopening a tab during development costs nothing. On
+ * Vercel each invocation is a fresh process, so AI_DAILY_RUN_CAP is the quota
+ * guard that matters. Keyed on the newest message id, so a summary is never
+ * served for a thread that has moved on.
+ */
+const summaryCache = new Map<string, z.infer<typeof aiThreadSummaryResponseSchema>>();
+
+const threadParamsSchema = z.object({ id: z.uuid() });
+
+class ThreadEmptyError extends Error {}
+
+/** Newest-last, each with its author's display name — the thread as a member reads it. */
+async function threadMessages(db: Queryable, channelId: string): Promise<PromptMessage[]> {
+  const result = await db.execute<{
+    id: string;
+    author: string;
+    body: string;
+    createdAt: Date;
+  }>(sql`
+    SELECT m."id", COALESCE(u."name", 'Someone') AS "author", m."body", m."created_at" AS "createdAt"
+    FROM "message" m
+    LEFT JOIN "app_user" au ON au."id" = m."author"
+    LEFT JOIN auth."user" u ON u."id" = au."auth_user_id"
+    WHERE m."channel_id" = ${channelId} AND m."body" <> ''
+    ORDER BY m."created_at" DESC, m."id" DESC
+    LIMIT ${SUMMARY_MESSAGE_LIMIT}
+  `);
+  return result.rows.reverse().map((row) => ({ ...row, createdAt: new Date(row.createdAt) }));
+}
+
+aiRouter.post(
+  "/ai/threads/:id/summary",
+  authenticate,
+  authorise(0),
+  validate(threadParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      const config = aiConfig();
+      if (!config.enabled) throw new AiDisabledError();
+      const me = req.user!;
+      const channelId = req.params.id!;
+      const db = getDb();
+
+      await assertCanReadChannel(db, { id: me.id, tier: me.tier as Tier }, channelId);
+      const thread = await threadMessages(db, channelId);
+      const newest = thread.at(-1);
+      if (!newest) throw new ThreadEmptyError();
+
+      const key = `${channelId}:${newest.id}`;
+      const cached = summaryCache.get(key);
+      if (cached) {
+        res.status(200).json(cached);
+        return;
+      }
+
+      await assertUnderDailyCap(db, me.id, config.dailyRunCap);
+      const kept = budgetMessages(thread, SUMMARY_CHAR_BUDGET);
+      const started = Date.now();
+      const summary = await completeJson(
+        geminiComplete,
+        buildSummaryPrompt(kept),
+        aiThreadSummarySchema,
+      );
+      await db.transaction((tx) =>
+        recordRun(tx, {
+          userId: me.id,
+          prompt: `Summarise thread ${channelId}`,
+          steps: [{ tool: "summariseThread", ms: Date.now() - started }],
+        }),
+      );
+
+      const body = aiThreadSummaryResponseSchema.parse({ summary, asOfMessageId: newest.id });
+      summaryCache.set(key, body);
+      // A Map iterates in insertion order, so the first key is the oldest entry.
+      if (summaryCache.size > SUMMARY_CACHE_LIMIT) {
+        summaryCache.delete(summaryCache.keys().next().value!);
+      }
+      res.status(200).json(body);
+    } catch (error) {
+      if (error instanceof ThreadEmptyError) {
+        res
+          .status(409)
+          .json({ error: { code: "THREAD_EMPTY", message: "There is nothing to summarise yet." } });
+        return;
+      }
       if (!sendAiError(res, error)) next(error);
     }
   },

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AiQuotaError } from "../../lib/ai/client.js";
-import { AiOutputError, completeJson, extractJson } from "./service.js";
+import { AiOutputError, budgetMessages, completeJson, extractJson } from "./service.js";
 
 const schema = z.object({ ok: z.boolean() });
 
@@ -83,5 +83,33 @@ describe("completeJson", () => {
     const complete = vi.fn().mockRejectedValue(new AiQuotaError());
     await expect(completeJson(complete, "p", schema)).rejects.toBeInstanceOf(AiQuotaError);
     expect(complete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("budgetMessages", () => {
+  const message = (id: string, body: string) => ({
+    id,
+    author: "Alice",
+    body,
+    createdAt: new Date(0),
+  });
+
+  it("keeps everything when it fits", () => {
+    expect(budgetMessages([message("1", "hello"), message("2", "world")], 1000)).toHaveLength(2);
+  });
+
+  it("drops the oldest first, because a catch-up needs the recent end", () => {
+    const input = [
+      message("1", "a".repeat(60)),
+      message("2", "b".repeat(60)),
+      message("3", "c".repeat(60)),
+    ];
+    expect(budgetMessages(input, 140).map((row) => row.id)).toEqual(["2", "3"]);
+  });
+
+  it("truncates one oversized message rather than dropping the whole thread", () => {
+    const kept = budgetMessages([message("1", "x".repeat(500))], 100);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.body.length).toBeLessThanOrEqual(100);
   });
 });
