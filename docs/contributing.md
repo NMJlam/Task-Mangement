@@ -152,6 +152,10 @@ For pure logic and single middleware, call the function directly with mocked
 middleware's folder. Pattern —
 `backend/src/middleware/validate/validate.test.ts`.
 
+AI services take the model as a `CompletionFn` parameter (`lib/ai/client.ts`),
+so a unit test passes a fake and the tier stays DB-free and network-free —
+pattern: `backend/src/routes/ai/service.test.ts`.
+
 ### Backend integration tests (supertest)
 
 When you need to prove a **route** works — the real middleware chain, real
