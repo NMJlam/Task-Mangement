@@ -140,6 +140,30 @@ describe("DateTimePicker", () => {
     expect(screen.getByLabelText("Deadline time")).toHaveValue("14:30");
   });
 
+  it("starts an empty deadline at the default time, so only a day has to be picked", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onChange = vi.fn();
+    render(
+      <DateTimePicker
+        id="due"
+        label="due date"
+        timeLabel="Deadline time"
+        // "Due that day" means end of day, so the time is pre-stated.
+        defaultTime="23:59"
+        value={null}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select due date" }));
+    expect(screen.getByLabelText("Deadline time")).toHaveValue("23:59");
+
+    await user.click(dayButton(PICKED_DAY));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(onChange).toHaveBeenCalledWith(new Date(2026, 8, 21, 23, 59));
+  });
+
   it("words the control from its label, and hides Clear where the value is required", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onChange = vi.fn();
