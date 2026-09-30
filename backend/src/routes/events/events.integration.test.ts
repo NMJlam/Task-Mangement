@@ -216,6 +216,20 @@ describe("/api/events", () => {
         true,
       );
     });
+
+    it("returns cancelled alongside every other status when includeCancelled=true", async () => {
+      const officer = await member("officer-any", "officer");
+      const cancelled = await seedEvent({ title: "test-event-any-cancelled", status: "cancelled" });
+      const live = await seedEvent({ title: "test-event-any-live", status: "live" });
+      signedInAs(officer);
+
+      const response = await request(app).get("/api/events?limit=100&includeCancelled=true");
+
+      expect(response.status).toBe(200);
+      const ids = response.body.items.map((item: { id: string }) => item.id);
+      expect(ids).toContain(cancelled.id);
+      expect(ids).toContain(live.id);
+    });
   });
 
   describe("PATCH /api/events/:id", () => {

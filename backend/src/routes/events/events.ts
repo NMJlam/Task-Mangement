@@ -276,10 +276,15 @@ eventsRouter.get(
       }
 
       const filters: SQL[] = [sql`e.min_tier <= ${userTier}`];
-      // An explicit status opts in (including "cancelled"); otherwise the
-      // default excludes it — cancelled is the soft delete, not a real state
-      // most reads want to see.
-      filters.push(query.status ? sql`e.status = ${query.status}` : sql`e.status <> 'cancelled'`);
+      // An explicit status opts in (including "cancelled"), and so does
+      // `includeCancelled` for a read that wants every status at once;
+      // otherwise the default excludes it — cancelled is the soft delete, not a
+      // real state most reads want to see.
+      if (query.status) {
+        filters.push(sql`e.status = ${query.status}`);
+      } else if (!query.includeCancelled) {
+        filters.push(sql`e.status <> 'cancelled'`);
+      }
       if (query.teamId) {
         filters.push(
           sql`EXISTS (SELECT 1 FROM "workstream" w WHERE w.event_id = e.id AND w.team_id = ${query.teamId})`,
