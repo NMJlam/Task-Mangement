@@ -33,10 +33,8 @@ import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import {
   appUsers,
-  auditLog,
   channels,
   events,
-  notifications,
   taskAssignees,
   tasks,
   teams,
@@ -49,14 +47,14 @@ import {
   allocateToEvent,
   assertEventDates,
   assertNoTierEscalation,
+  auditEvent,
   BudgetExceededError,
   cancelBlockers,
   releaseAllocation,
   computeProgress,
+  notifyAssignees,
   ValidationError,
   wrapBlockers,
-  type Queryable,
-  type Tx,
 } from "./service.js";
 
 export const eventsRouter = Router();
@@ -65,50 +63,6 @@ function validationErrorResponse(res: Response, error: ValidationError): void {
   res.status(422).json({
     error: { code: "VALIDATION_ERROR", message: "Request validation failed", fields: error.fields },
   });
-}
-
-async function audit(
-  tx: Queryable,
-  actorId: string,
-  action: string,
-  eventId: string,
-  changes: Record<string, unknown>,
-): Promise<void> {
-  await tx.insert(auditLog).values({
-    id: newId(),
-    actorId,
-    action,
-    entityType: "event",
-    entityId: eventId,
-    changes,
-  });
-}
-
-/** Fans a notification out to every distinct assignee of the event's tasks. */
-async function notifyAssignees(
-  tx: Tx,
-  eventId: string,
-  kind: "event_date_changed" | "event_cancelled",
-  body: string,
-): Promise<void> {
-  const assigneeRows = await tx
-    .selectDistinct({ userId: taskAssignees.userId })
-    .from(taskAssignees)
-    .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
-    .where(and(eq(tasks.eventId, eventId), ne(tasks.status, "done")));
-  const assignees = assigneeRows.map((row) => row.userId);
-  if (assignees.length === 0) return;
-
-  await tx.insert(notifications).values(
-    assignees.map((userId) => ({
-      id: newId(),
-      userId,
-      kind,
-      body,
-      entityType: "event",
-      entityId: eventId,
-    })),
-  );
 }
 
 function notFound(res: Response): void {
@@ -582,7 +536,7 @@ eventsRouter.post(
             await allocateToEvent(tx, eventId, input.allocationCents);
           }
 
-          await audit(tx, req.user!.id, "event.created", eventId, { title: input.title });
+          await auditEvent(tx, req.user!.id, "event.created", eventId, { title: input.title });
         });
       } catch (error) {
         if (error instanceof BudgetExceededError) {
@@ -681,7 +635,7 @@ eventsRouter.patch(
             await notifyAssignees(tx, id, "event_date_changed", `"${event.title}" date changed.`);
           }
 
-          await audit(tx, req.user!.id, "event.updated", id, input);
+          await auditEvent(tx, req.user!.id, "event.updated", id, input);
         });
       } catch (error) {
         if (error instanceof BudgetExceededError) {
@@ -748,7 +702,7 @@ eventsRouter.patch(
 
       const updated = result.rows[0];
       if (updated) {
-        await audit(db, req.user!.id, "event.status_changed", id, { to: target });
+        await auditEvent(db, req.user!.id, "event.status_changed", id, { to: target });
         res.status(200).json({
           id: updated.id,
           status: updated.status,
@@ -858,7 +812,7 @@ eventsRouter.delete(
           .where(and(eq(events.id, id), ne(events.status, "cancelled")));
         await releaseAllocation(tx, id);
         await notifyAssignees(tx, id, "event_cancelled", `"${event.title}" was cancelled.`);
-        await audit(tx, req.user!.id, "event.cancelled", id, { from: event.status });
+        await auditEvent(tx, req.user!.id, "event.cancelled", id, { from: event.status });
       });
 
       res.status(204).end();

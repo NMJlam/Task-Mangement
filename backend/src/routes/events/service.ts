@@ -7,10 +7,11 @@ import {
   type TaskCounts,
   type Tier,
 } from "@ctp/shared";
-import { and, lte, ne, sql } from "drizzle-orm";
+import { and, eq, lte, ne, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { CLUB_TIMEZONE } from "../../config/club.js";
-import { events } from "../../db/schema/index.js";
+import { newId } from "../../db/id.js";
+import { auditLog, events, notifications, taskAssignees, tasks } from "../../db/schema/index.js";
 import type * as schema from "../../db/schema/index.js";
 
 /**
@@ -293,4 +294,51 @@ export function computeProgress(input: ComputeProgressInput): EventProgress {
     risk,
     riskReasons,
   };
+}
+
+// ── Side effects every event write shares ────────────────────────────────
+
+/** The event half of the audit trail, shared by the route and the assistant's apply. */
+export async function auditEvent(
+  tx: Queryable,
+  actorId: string,
+  action: string,
+  eventId: string,
+  changes: Record<string, unknown>,
+): Promise<void> {
+  await tx.insert(auditLog).values({
+    id: newId(),
+    actorId,
+    action,
+    entityType: "event",
+    entityId: eventId,
+    changes,
+  });
+}
+
+/** Fans a notification out to every distinct assignee of the event's tasks. */
+export async function notifyAssignees(
+  tx: Tx,
+  eventId: string,
+  kind: "event_date_changed" | "event_cancelled",
+  body: string,
+): Promise<void> {
+  const assigneeRows = await tx
+    .selectDistinct({ userId: taskAssignees.userId })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+    .where(and(eq(tasks.eventId, eventId), ne(tasks.status, "done")));
+  const assignees = assigneeRows.map((row) => row.userId);
+  if (assignees.length === 0) return;
+
+  await tx.insert(notifications).values(
+    assignees.map((userId) => ({
+      id: newId(),
+      userId,
+      kind,
+      body,
+      entityType: "event",
+      entityId: eventId,
+    })),
+  );
 }
