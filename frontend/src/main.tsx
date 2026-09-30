@@ -146,6 +146,14 @@ const router = createBrowserRouter([
     ),
   },
   {
+    path: "/ai/:chatId",
+    element: (
+      <RequireAuth>
+        <AiBreakdownPage />
+      </RequireAuth>
+    ),
+  },
+  {
     path: "/settings",
     element: (
       <RequireAuth>

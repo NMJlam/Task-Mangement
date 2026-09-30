@@ -171,7 +171,7 @@ export function MessagesPage() {
 
 function MessageRow({ message, members }: { message: Message; members: RosterMember[] }) {
   const author = members.find((member) => member.id === message.author);
-  const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
+  const name = author?.name || author?.email || "Former Member";
 
   return (
     <article className="flex items-start gap-3">
@@ -226,6 +226,5 @@ function threadName(thread: Thread, members: RosterMember[], myId: string | unde
     );
     return other?.name || other?.email || "Direct Message";
   }
-  if (thread.kind === "ai") return "MAC Assistant";
   return "Untitled Conversation";
 }

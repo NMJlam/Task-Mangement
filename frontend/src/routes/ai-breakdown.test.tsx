@@ -1,209 +1,397 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { AiBreakdownPage } from "./ai-breakdown";
 
-const threadId = "018f3a4b-0000-7000-8000-000000000001";
-const runId = "018f3a4b-0000-7000-8000-000000000002";
-const eventId = "018f3a4b-0000-7000-8000-000000000005";
+const CHAT_A = "018f3a4b-0000-7000-8000-0000000000a1";
+const CHAT_B = "018f3a4b-0000-7000-8000-0000000000b2";
+const NEW_CHAT = "018f3a4b-0000-7000-8000-0000000000c3";
+const RUN_ID = "018f3a4b-0000-7000-8000-000000000002";
+const EVENT_ID = "018f3a4b-0000-7000-8000-000000000005";
+const TASK_ID = "018f3a4b-0000-7000-8000-000000000006";
 
 afterEach(() => vi.unstubAllGlobals());
 
-type Answer = { status: number; body: unknown };
+type Answer = { status: number; body?: unknown };
 
-/** Serves the page's reads, and answers the assistant with `assistant` when asked. */
-function stubApi(assistant?: Answer | Promise<Answer>, history: unknown[] = [message()]) {
-  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+const chat = (id: string, title: string, seedEventId: string | null = null) => ({
+  id,
+  title,
+  seedEventId,
+  lastMessageAt: "2026-10-01T02:00:00.000Z",
+  createdAt: "2026-10-01T01:00:00.000Z",
+});
+
+let messageCount = 0;
+const message = (role: "member" | "assistant", body: string, extra: object = {}) => ({
+  id: `018f3a4b-0000-7000-8000-${String((messageCount += 1)).padStart(12, "0")}`,
+  role,
+  body,
+  createdAt: "2026-10-01T01:00:00.000Z",
+  runId: null,
+  proposal: null,
+  proposalStatus: null,
+  applied: null,
+  ...extra,
+});
+
+const plan = {
+  createTasks: [{ title: "Book the room", priority: "medium", dueAt: null, assignees: [] }],
+};
+
+const busy: Answer = {
+  status: 503,
+  body: { error: { code: "AI_UNAVAILABLE", message: "The AI service is busy right now." } },
+};
+const off: Answer = { status: 503, body: { error: { code: "AI_DISABLED", message: "Off." } } };
+
+/**
+ * The page's whole API. `conversations` maps a chat id to what reading it
+ * returns; a chat not listed there answers 404, as someone else's would.
+ */
+function stubApi(
+  api: {
+    chats?: ReturnType<typeof chat>[];
+    conversations?: Record<string, ReturnType<typeof message>[]>;
+    send?: Answer | Promise<Answer>;
+    apply?: Answer;
+  } = {},
+) {
+  const chats = api.chats ?? [chat(CHAT_A, "Hack night plan"), chat(CHAT_B, "What is overdue?")];
+  const respond = ({ status, body }: Answer) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  });
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/threads") return Promise.resolve(response({ threads: [thread()] }));
-    if (url === `/api/threads/${threadId}/messages`)
-      return Promise.resolve(response({ messages: history, nextCursor: null }));
-    if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task()] }));
-    if (url === "/api/members") return Promise.resolve(response({ members: [] }));
-    if (url === "/api/ai/messages" && assistant)
-      return Promise.resolve(assistant).then((answer) => response(answer.body, answer.status));
-    throw new Error(`Unexpected request: ${url}`);
+    const method = init?.method ?? "GET";
+    const chatMatch = /^\/api\/ai\/chats\/([^/]+)(\/messages)?$/u.exec(url);
+
+    if (url === "/api/members")
+      return Promise.resolve(respond({ status: 200, body: { members: [] } }));
+    if (url === "/api/ai/chats") return Promise.resolve(respond({ status: 200, body: { chats } }));
+    if (url === "/api/ai/briefing") return Promise.resolve(respond(off));
+    if (chatMatch && method === "GET") {
+      const id = chatMatch[1]!;
+      const messages = api.conversations?.[id];
+      return Promise.resolve(
+        respond(
+          messages
+            ? {
+                status: 200,
+                body: { chat: chats.find((item) => item.id === id) ?? chat(id, "Chat"), messages },
+              }
+            : {
+                status: 404,
+                body: { error: { code: "CHAT_NOT_FOUND", message: "Chat not found." } },
+              },
+        ),
+      );
+    }
+    if (chatMatch && method === "PATCH") {
+      const { title } = JSON.parse(String(init?.body)) as { title: string };
+      return Promise.resolve(respond({ status: 200, body: { chat: chat(chatMatch[1]!, title) } }));
+    }
+    if (chatMatch && method === "DELETE") return Promise.resolve(respond({ status: 204 }));
+    if (url === "/api/ai/messages" && api.send) return Promise.resolve(api.send).then(respond);
+    if (url === "/api/ai/proposals/apply" && api.apply) return Promise.resolve(respond(api.apply));
+    if (/^\/api\/ai\/proposals\/[^/]+\/discard$/u.test(url)) {
+      return Promise.resolve(respond({ status: 204 }));
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
-function renderPage(path = "/ai") {
-  render(
-    <MemoryRouter
-      initialEntries={[path]}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
-      <AiBreakdownPage />
-    </MemoryRouter>,
+function renderAt(path: string) {
+  const router = createMemoryRouter(
+    [
+      { path: "/ai", element: <AiBreakdownPage /> },
+      { path: "/ai/:chatId", element: <AiBreakdownPage /> },
+    ],
+    { initialEntries: [path], future: { v7_relativeSplatPath: true } },
   );
-  return userEvent.setup({ delay: null });
+  render(<RouterProvider router={router} future={{ v7_startTransition: true }} />);
+  return { router, user: userEvent.setup({ delay: null }) };
 }
 
-it("shows saved assistant output and generated tasks beside the composer", async () => {
-  stubApi();
-  renderPage();
+const composer = () => screen.getByRole("textbox", { name: "Message the assistant" });
+const chatLink = (title: string) => screen.findByRole("link", { name: new RegExp(title, "u") });
+const requests = (fetchMock: ReturnType<typeof stubApi>, method: string, url: string | RegExp) =>
+  fetchMock.mock.calls.filter(
+    ([input, init]) =>
+      (init?.method ?? "GET") === method &&
+      (typeof url === "string" ? String(input) === url : url.test(String(input))),
+  );
 
-  await waitFor(() => expect(screen.getByText("Film the opening keynote")).toBeInTheDocument());
-  expect(screen.getByText(/I created 1 task for the media team/i)).toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeInTheDocument();
-  expect(screen.queryByText("Planning is not connected yet")).not.toBeInTheDocument();
+it("lists the member's chats beside a blank New chat", async () => {
+  stubApi();
+  renderAt("/ai");
+
+  expect(await chatLink("Hack night plan")).toHaveAttribute("href", `/ai/${CHAT_A}`);
+  expect(await chatLink("What is overdue")).toHaveAttribute("href", `/ai/${CHAT_B}`);
+  expect(screen.getByRole("link", { name: "New chat" })).toHaveAttribute("href", "/ai");
+  expect(composer()).toBeInTheDocument();
+  // The old single-conversation page and its rail are gone.
+  expect(screen.queryByRole("heading", { name: "Generated tasks" })).not.toBeInTheDocument();
 });
 
-it("sends a message with the page's event seed and shows the plan it drafts", async () => {
-  const fetchMock = stubApi({
-    status: 200,
-    body: {
-      chatId: "018f3a4b-0000-7000-8000-0000000000c1",
-      runId,
-      reply: "Here is a plan.",
-      proposal: {
-        createTasks: [{ title: "Book the room", priority: "medium", dueAt: null, assignees: [] }],
-      },
+it("opens a chat from the list and marks it as the open one", async () => {
+  stubApi({
+    conversations: {
+      [CHAT_A]: [message("member", "Plan it"), message("assistant", "All planned.")],
     },
   });
-  const user = renderPage(`/ai?eventId=${eventId}`);
-  await screen.findByRole("textbox", { name: "Message the assistant" });
+  const { router, user } = renderAt("/ai");
 
-  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Plan it");
-  await user.click(screen.getByRole("button", { name: "Send" }));
+  await user.click(await chatLink("Hack night plan"));
 
-  expect(await screen.findByText("Here is a plan.")).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Include Book the room" })).toBeChecked();
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/ai/messages",
-    expect.objectContaining({
-      body: JSON.stringify({ text: "Plan it", seed: { eventId } }),
-    }),
-  );
+  expect(await screen.findByText("All planned.")).toBeInTheDocument();
+  expect(router.state.location.pathname).toBe(`/ai/${CHAT_A}`);
+  expect(await chatLink("Hack night plan")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("heading", { name: "Hack night plan" })).toBeInTheDocument();
 });
 
-it("shows the assistant thinking while a reply is on its way, then the reply", async () => {
+it("starts a chat with the first message and moves to it", async () => {
   let answer!: (value: Answer) => void;
-  stubApi(new Promise<Answer>((resolve) => (answer = resolve)));
-  const user = renderPage();
-  await screen.findByRole("textbox", { name: "Message the assistant" });
+  const fetchMock = stubApi({ send: new Promise<Answer>((resolve) => (answer = resolve)) });
+  const { router, user } = renderAt("/ai");
+  await chatLink("Hack night plan");
 
-  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Plan it");
+  await user.type(composer(), "Plan a poker night");
   await user.click(screen.getByRole("button", { name: "Send" }));
 
   // The member's own message is on screen at once, with the assistant visibly working.
-  expect(await screen.findByText("Plan it")).toBeInTheDocument();
+  expect(await screen.findByText("Plan a poker night")).toBeInTheDocument();
   expect(screen.getByRole("status", { name: "MAC Assistant is thinking" })).toBeInTheDocument();
 
   answer({
     status: 200,
-    body: {
-      chatId: "018f3a4b-0000-7000-8000-0000000000c1",
-      runId,
-      reply: "All planned.",
-      proposal: null,
-    },
+    body: { chatId: NEW_CHAT, runId: RUN_ID, reply: "Here is a plan.", proposal: null },
   });
 
-  expect(await screen.findByText("All planned.")).toBeInTheDocument();
+  expect(await screen.findByText("Here is a plan.")).toBeInTheDocument();
   expect(
     screen.queryByRole("status", { name: "MAC Assistant is thinking" }),
   ).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe(`/ai/${NEW_CHAT}`));
+  // The list is read again, so the new chat appears in it.
+  await waitFor(() => expect(requests(fetchMock, "GET", "/api/ai/chats")).toHaveLength(2));
+  // And the chat just created is not fetched back: it is already on screen.
+  expect(requests(fetchMock, "GET", `/api/ai/chats/${NEW_CHAT}/messages`)).toHaveLength(0);
 });
 
-it("keeps the composer and says the AI service is busy when the provider is", async () => {
-  stubApi({
-    status: 503,
-    body: { error: { code: "AI_UNAVAILABLE", message: "The AI service is busy right now." } },
+it("carries the event from the address into a new chat", async () => {
+  const fetchMock = stubApi({
+    send: {
+      status: 200,
+      body: { chatId: NEW_CHAT, runId: RUN_ID, reply: "Done.", proposal: null },
+    },
   });
-  const user = renderPage();
-  await screen.findByRole("textbox", { name: "Message the assistant" });
+  const { user } = renderAt(`/ai?eventId=${EVENT_ID}`);
+  await chatLink("Hack night plan");
 
-  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Hello");
+  await user.type(composer(), "Plan it");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+
+  await screen.findByText("Done.");
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/ai/messages",
+    expect.objectContaining({
+      body: JSON.stringify({ text: "Plan it", seed: { eventId: EVENT_ID } }),
+    }),
+  );
+});
+
+it("puts the text back when the assistant is busy, and makes no chat", async () => {
+  stubApi({ send: busy });
+  const { router, user } = renderAt("/ai");
+  await chatLink("Hack night plan");
+
+  await user.type(composer(), "Plan it");
   await user.click(screen.getByRole("button", { name: "Send" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("The AI service is busy right now.");
-  expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeInTheDocument();
+  expect(composer()).toHaveValue("Plan it");
+  expect(router.state.location.pathname).toBe("/ai");
   expect(screen.queryByText("The assistant is switched off")).not.toBeInTheDocument();
 });
 
-it("says the assistant is off on a 503, and keeps the history", async () => {
-  stubApi({ status: 503, body: { error: { code: "AI_DISABLED", message: "Off." } } });
-  const user = renderPage();
-  await screen.findByRole("textbox", { name: "Message the assistant" });
+it("replaces the composer with the switched-off notice, keeping the chats", async () => {
+  stubApi({ send: off });
+  const { user } = renderAt("/ai");
+  await chatLink("Hack night plan");
 
-  await user.type(screen.getByRole("textbox", { name: "Message the assistant" }), "Hello");
+  await user.type(composer(), "Hello");
   await user.click(screen.getByRole("button", { name: "Send" }));
 
   expect(await screen.findByText("The assistant is switched off")).toBeInTheDocument();
-  expect(screen.getByText(/I created 1 task for the media team/i)).toBeInTheDocument();
   expect(screen.queryByRole("textbox", { name: "Message the assistant" })).not.toBeInTheDocument();
+  expect(await chatLink("Hack night plan")).toBeInTheDocument();
 });
 
-it("reads a stored daily briefing as prose, not as its JSON", async () => {
-  stubApi(undefined, [
-    message({ body: JSON.stringify({ summary: "A quiet day.", bullets: ["Book the room"] }) }),
-  ]);
-  renderPage();
+it("renames a chat in place, and cancels on Escape without asking the server", async () => {
+  const fetchMock = stubApi();
+  const { user } = renderAt("/ai");
+  await chatLink("Hack night plan");
 
-  expect(await screen.findByText("A quiet day.")).toBeInTheDocument();
-  expect(screen.getByText("Book the room")).toBeInTheDocument();
-  expect(screen.queryByText(/"summary"/u)).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Rename Hack night plan" }));
+  await user.clear(screen.getByRole("textbox", { name: "Chat title" }));
+  await user.type(screen.getByRole("textbox", { name: "Chat title" }), "Poker night{Enter}");
+
+  expect(await chatLink("Poker night")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    `/api/ai/chats/${CHAT_A}`,
+    expect.objectContaining({ method: "PATCH", body: JSON.stringify({ title: "Poker night" }) }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Rename What is overdue?" }));
+  await user.type(screen.getByRole("textbox", { name: "Chat title" }), " changed{Escape}");
+
+  expect(await chatLink("What is overdue")).toBeInTheDocument();
+  expect(requests(fetchMock, "PATCH", /\/api\/ai\/chats\//u)).toHaveLength(1);
 });
 
-function response(body: unknown, status = 200) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
-}
+it("deletes the open chat only after confirming, then returns to a blank chat", async () => {
+  const fetchMock = stubApi({ conversations: { [CHAT_A]: [message("member", "Plan it")] } });
+  const { router, user } = renderAt(`/ai/${CHAT_A}`);
+  await screen.findByText("Plan it");
 
-function thread() {
-  return {
-    id: threadId,
-    kind: "ai",
-    name: "assistant",
-    teamId: null,
-    eventId: null,
-    minTier: 0,
-    createdAt: "2026-09-16T00:00:00.000Z",
-    memberIds: [],
-    lastReadAt: null,
-    unreadCount: 0,
-    lastMessageAt: "2026-09-16T00:00:00.000Z",
-  };
-}
+  await user.click(screen.getByRole("button", { name: "Delete Hack night plan" }));
+  const dialog = await screen.findByRole("dialog");
+  // Nothing is deleted by opening the dialog.
+  expect(requests(fetchMock, "DELETE", /\/api\/ai\/chats\//u)).toHaveLength(0);
+  await user.click(within(dialog).getByRole("button", { name: "Delete chat" }));
 
-function message(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "018f3a4b-0000-7000-8000-000000000003",
-    channelId: threadId,
-    taskId: null,
-    parentId: null,
-    author: null,
-    body: "I created 1 task for the media team: Film the opening keynote.",
-    fileKey: null,
-    fileName: null,
-    fileSizeBytes: null,
-    fileMime: null,
-    aiRunId: runId,
-    createdAt: "2026-09-16T00:00:00.000Z",
-    editedAt: null,
-    ...overrides,
-  };
-}
+  await waitFor(() => expect(router.state.location.pathname).toBe("/ai"));
+  expect(requests(fetchMock, "DELETE", `/api/ai/chats/${CHAT_A}`)).toHaveLength(1);
+  expect(screen.queryByRole("link", { name: /Hack night plan/u })).not.toBeInTheDocument();
+  expect(composer()).toBeInTheDocument();
+});
 
-function task() {
-  return {
-    id: "018f3a4b-0000-7000-8000-000000000004",
-    eventId: null,
-    teamId: null,
-    assigneeIds: [],
-    creator: null,
-    title: "Film the opening keynote",
-    description: null,
-    status: "todo",
-    priority: "high",
-    dueAt: null,
-    boardOrder: 0,
-    minTier: 0,
-    completedAt: null,
-    aiRunId: runId,
-    createdAt: "2026-09-16T00:00:00.000Z",
-    updatedAt: "2026-09-16T00:00:00.000Z",
-  };
-}
+it("shows a drafted plan as a live card under its reply, and applies it", async () => {
+  const fetchMock = stubApi({
+    conversations: {
+      [CHAT_A]: [
+        message("member", "Plan it"),
+        message("assistant", "Here is a plan.", {
+          runId: RUN_ID,
+          proposal: plan,
+          proposalStatus: "open",
+        }),
+      ],
+    },
+    apply: { status: 201, body: { events: [], tasks: [{ id: TASK_ID, title: "Book the room" }] } },
+  });
+  const { user } = renderAt(`/ai/${CHAT_A}`);
+
+  expect(await screen.findByRole("checkbox", { name: "Include Book the room" })).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Create 1 task" }));
+
+  await waitFor(() =>
+    expect(requests(fetchMock, "POST", "/api/ai/proposals/apply")).toHaveLength(1),
+  );
+  const [, init] = requests(fetchMock, "POST", "/api/ai/proposals/apply")[0]!;
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    runId: RUN_ID,
+    stats: { proposed: 1, kept: 1, edited: 0 },
+  });
+});
+
+it("shows an applied plan as what it made, not a card", async () => {
+  stubApi({
+    conversations: {
+      [CHAT_A]: [
+        message("assistant", "Here is a plan.", {
+          runId: RUN_ID,
+          proposal: plan,
+          proposalStatus: "applied",
+          applied: {
+            events: [{ id: EVENT_ID, title: "Hack Night" }],
+            tasks: [
+              { id: TASK_ID, title: "Book the room", eventId: EVENT_ID },
+              { id: NEW_CHAT, title: "Tidy the cupboard", eventId: null },
+            ],
+          },
+        }),
+      ],
+    },
+  });
+  renderAt(`/ai/${CHAT_A}`);
+
+  expect(await screen.findByText("Applied")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Hack Night" })).toHaveAttribute(
+    "href",
+    `/events/${EVENT_ID}`,
+  );
+  expect(screen.getByRole("link", { name: "Book the room" })).toHaveAttribute(
+    "href",
+    `/events/${EVENT_ID}?tab=tasks`,
+  );
+  expect(screen.getByRole("link", { name: "Tidy the cupboard" })).toHaveAttribute("href", "/tasks");
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+
+it("shows a discarded plan as discarded", async () => {
+  stubApi({
+    conversations: {
+      [CHAT_A]: [
+        message("assistant", "Here is a plan.", {
+          runId: RUN_ID,
+          proposal: plan,
+          proposalStatus: "discarded",
+        }),
+      ],
+    },
+  });
+  renderAt(`/ai/${CHAT_A}`);
+
+  expect(await screen.findByText("Discarded")).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+
+it("discards a plan from its card", async () => {
+  const fetchMock = stubApi({
+    conversations: {
+      [CHAT_A]: [
+        message("assistant", "Here is a plan.", {
+          runId: RUN_ID,
+          proposal: plan,
+          proposalStatus: "open",
+        }),
+      ],
+    },
+  });
+  const { user } = renderAt(`/ai/${CHAT_A}`);
+
+  await user.click(await screen.findByRole("button", { name: "Discard" }));
+
+  await waitFor(() =>
+    expect(requests(fetchMock, "POST", `/api/ai/proposals/${RUN_ID}/discard`)).toHaveLength(1),
+  );
+});
+
+it("says a chat no longer exists and offers a blank chat instead", async () => {
+  stubApi();
+  const { router } = renderAt(`/ai/${NEW_CHAT}`);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("This chat no longer exists");
+  await waitFor(() => expect(router.state.location.pathname).toBe("/ai"));
+  expect(composer()).toBeInTheDocument();
+});
+
+it("links a chat to the event it is about", async () => {
+  stubApi({
+    chats: [chat(CHAT_A, "Hack night plan", EVENT_ID)],
+    conversations: { [CHAT_A]: [message("member", "Plan it")] },
+  });
+  renderAt(`/ai/${CHAT_A}`);
+
+  expect(await screen.findByRole("link", { name: "About this event" })).toHaveAttribute(
+    "href",
+    `/events/${EVENT_ID}`,
+  );
+});
