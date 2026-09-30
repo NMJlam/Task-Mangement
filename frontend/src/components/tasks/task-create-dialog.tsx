@@ -163,6 +163,7 @@ export function TaskCreateDialog({
                 id="new-task-due"
                 label="due date"
                 timeLabel="Deadline time"
+                defaultTime="23:59"
                 value={dueAt}
                 onChange={setDueAt}
                 portalTarget={portalTarget}
