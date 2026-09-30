@@ -569,4 +569,51 @@ describe("/api/threads (integration)", () => {
       expect(malformed.status).toBe(422);
     });
   });
+
+  /**
+   * An assistant chat is a channel too, and its owner is its member — which is
+   * exactly what the thread routes used to look for. They must not serve it:
+   * AI chats live in AI Breakdown only, never in Messages.
+   */
+  describe("assistant chats", () => {
+    async function aiChat(owner: { id: string }) {
+      const id = newId();
+      await db.insert(channels).values({ id, kind: "ai", name: `${PREFIX}ai-chat` });
+      await db.insert(chanMembers).values({ channelId: id, userId: owner.id });
+      await db
+        .insert(messages)
+        .values({ id: newId(), channelId: id, author: owner.id, body: "hi" });
+      return id;
+    }
+
+    it("never lists an ai chat, even to its owner", async () => {
+      const owner = await member("chat-owner", "officer");
+      const chatId = await aiChat(owner);
+      signIn(owner);
+
+      const response = await request(app).get("/api/threads");
+
+      expect(response.status).toBe(200);
+      expect(response.body.threads.map((thread: { id: string }) => thread.id)).not.toContain(
+        chatId,
+      );
+    });
+
+    it("404s reading, posting to and marking an ai chat read, and writes nothing", async () => {
+      const owner = await member("chat-poster", "officer");
+      const chatId = await aiChat(owner);
+      signIn(owner);
+
+      const statuses = await Promise.all([
+        request(app).get(`/api/threads/${chatId}/messages`),
+        request(app).post(`/api/threads/${chatId}/messages`).send({ body: "from Messages" }),
+        request(app).post(`/api/threads/${chatId}/read`),
+      ]);
+
+      expect(statuses.map((response) => response.status)).toEqual([404, 404, 404]);
+      expect(statuses[0]!.body.error.code).toBe("THREAD_NOT_FOUND");
+      const stored = await db.select().from(messages).where(eq(messages.channelId, chatId));
+      expect(stored.map((message) => message.body)).toEqual(["hi"]);
+    });
+  });
 });
