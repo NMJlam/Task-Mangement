@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AiQuotaError } from "../../lib/ai/client.js";
-import { AiOutputError, budgetMessages, completeJson, extractJson } from "./service.js";
+import {
+  AiOutputError,
+  budgetMessages,
+  buildBriefingPrompt,
+  clubDayKey,
+  completeJson,
+  extractJson,
+} from "./service.js";
 
 const schema = z.object({ ok: z.boolean() });
 
@@ -111,5 +118,46 @@ describe("budgetMessages", () => {
     const kept = budgetMessages([message("1", "x".repeat(500))], 100);
     expect(kept).toHaveLength(1);
     expect(kept[0]!.body.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("clubDayKey", () => {
+  it("returns the club's calendar day, not UTC's", () => {
+    // 2026-10-14T22:30Z is already the 15th in Melbourne (UTC+11 in October).
+    expect(clubDayKey(new Date("2026-10-14T22:30:00.000Z"), "Australia/Melbourne")).toBe(
+      "2026-10-15",
+    );
+  });
+
+  it("is stable across the same club day", () => {
+    const zone = "Australia/Melbourne";
+    const morning = clubDayKey(new Date("2026-10-14T00:00:00.000Z"), zone);
+    const evening = clubDayKey(new Date("2026-10-14T08:00:00.000Z"), zone);
+    expect(morning).toBe(evening);
+  });
+});
+
+describe("buildBriefingPrompt", () => {
+  const input = {
+    memberName: "Alice",
+    openTasks: [{ title: "Book the room", priority: "high", dueAt: "2026-10-16T12:59:00.000Z" }],
+    overdueCount: 2,
+    weekEvents: [
+      { title: "Hack Night", startsAt: "2026-10-17T08:00:00.000Z", openTasks: 3, doneTasks: 5 },
+    ],
+    committeeLoad: [{ name: "Ben", openTaskCount: 9 }],
+  };
+
+  it("carries the figures it was given, so the model has nothing to guess", () => {
+    const prompt = buildBriefingPrompt(input);
+    for (const fact of ["Alice", "Book the room", "Hack Night", "Ben", "9"]) {
+      expect(prompt).toContain(fact);
+    }
+  });
+
+  it("asks for the briefing shape and forbids names not in the input", () => {
+    const prompt = buildBriefingPrompt(input);
+    expect(prompt).toContain('"bullets"');
+    expect(prompt).toMatch(/only.*names?/iu);
   });
 });

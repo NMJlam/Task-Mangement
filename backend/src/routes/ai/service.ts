@@ -1,5 +1,7 @@
+import { aiBriefingSchema, type AiBriefing } from "@ctp/shared";
 import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import type { z } from "zod";
+import { CLUB_TIMEZONE } from "../../config/club.js";
 import { newId } from "../../db/id.js";
 import { aiRuns, chanMembers, channels } from "../../db/schema/index.js";
 import { AiQuotaError, type CompletionFn } from "../../lib/ai/client.js";
@@ -197,4 +199,77 @@ export function buildSummaryPrompt(messages: PromptMessage[]): string {
     "",
     ...messages.map((message) => `${message.author}: ${message.body}`),
   ].join("\n");
+}
+
+/**
+ * One briefing per member per CLUB day. Computed in CLUB_TIMEZONE rather than
+ * UTC for the same reason `daysUntil` is: an evening in Melbourne is already
+ * tomorrow in UTC, and the briefing would roll over mid-evening.
+ */
+export function clubDayKey(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/** What the dashboard already shows the member, as the briefing's only source. */
+export type BriefingInput = {
+  memberName: string;
+  openTasks: { title: string; priority: string; dueAt: string | null }[];
+  overdueCount: number;
+  weekEvents: { title: string; startsAt: string; openTasks: number; doneTasks: number }[];
+  committeeLoad: { name: string; openTaskCount: number }[];
+};
+
+/**
+ * The briefing restates figures the server computed; it never computes its
+ * own. Every name and event it may mention is in the input, and the prompt
+ * says so, because a briefing that invents a teammate is worse than none.
+ */
+export function buildBriefingPrompt(input: BriefingInput): string {
+  return [
+    `Write ${input.memberName}'s daily briefing for their university club committee.`,
+    "Reply with ONE JSON object and nothing else. No markdown, no commentary:",
+    '{"summary": "one or two sentences on what matters today", "bullets": ["up to four short points"]}',
+    "",
+    "Only use names and events that appear below. Invent nothing; if a list is empty, say so plainly.",
+    "",
+    `THEIR OPEN TASKS: ${JSON.stringify(input.openTasks)}`,
+    `THEIR OVERDUE TASKS: ${input.overdueCount}`,
+    `EVENTS IN THE NEXT 7 DAYS: ${JSON.stringify(input.weekEvents)}`,
+    `COMMITTEE LOAD (open tasks each): ${JSON.stringify(input.committeeLoad)}`,
+  ].join("\n");
+}
+
+/** The ai_run prompt a briefing is recorded under — how its message is told apart from a chat reply. */
+export const BRIEFING_RUN_PROMPT = "Daily briefing";
+
+/**
+ * Today's briefing, if one was already generated (D15). The newest message in
+ * the caller's ai channel from a briefing run, on the club's calendar day.
+ */
+export async function findTodaysBriefing(
+  db: Queryable,
+  userId: string,
+  dayKey: string,
+): Promise<{ briefing: AiBriefing; generatedAt: Date } | undefined> {
+  const result = await db.execute<{ body: string; createdAt: Date }>(sql`
+    SELECT m."body", m."created_at" AS "createdAt"
+    FROM "message" m
+    JOIN "ai_run" r ON r."id" = m."ai_run_id"
+    WHERE r."user_id" = ${userId}
+      AND r."prompt" = ${BRIEFING_RUN_PROMPT}
+      AND to_char(m."created_at" AT TIME ZONE ${CLUB_TIMEZONE}, 'YYYY-MM-DD') = ${dayKey}
+    ORDER BY m."created_at" DESC
+    LIMIT 1
+  `);
+  const row = result.rows[0];
+  if (!row) return undefined;
+  const parsed = aiBriefingSchema.safeParse(JSON.parse(row.body));
+  return parsed.success
+    ? { briefing: parsed.data, generatedAt: new Date(row.createdAt) }
+    : undefined;
 }
