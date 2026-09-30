@@ -12,7 +12,7 @@ export type AiConfig = {
  * it with no code change, which is the point — free-tier model names change, and
  * a model that can only be changed by editing code is an outage waiting to happen.
  */
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 
 /**
  * AI is opt-in per deployment (R14): the assistant sends club data to Google,
