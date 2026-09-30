@@ -109,6 +109,14 @@ export const eventStatusTransitions: Record<EventStatus, readonly ChangeableEven
 export const listEventsQuerySchema = z.object({
   teamId: z.uuid().optional(),
   status: eventStatusSchema.optional(),
+  /**
+   * Opts the soft-deleted rows back in when no `status` is named. Without it,
+   * an unfiltered read means "every status but `cancelled`" — the right default
+   * for the dashboard and the event pickers, but a lie on a list whose status
+   * control says "Any status". A separate flag keeps that opt-in explicit
+   * rather than flipping the default for every caller.
+   */
+  includeCancelled: z.stringbool().default(false),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   ownerId: z.uuid().optional(),
