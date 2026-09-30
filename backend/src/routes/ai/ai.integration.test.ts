@@ -687,14 +687,18 @@ describe("/api/ai", () => {
   });
 
   describe("POST /api/ai/proposals/apply", () => {
-    /** A real run for the caller to apply against — the card always comes from one. */
-    async function runFor(actor: { authUserId: string }): Promise<string> {
+    /**
+     * A real chat turn that drafted a plan, for the caller to apply — the card
+     * always comes from one. One task, because that is what any tier may draft.
+     */
+    async function planFor(actor: { authUserId: string }) {
       signedInAs(actor);
-      script(reply());
+      script(callTool("proposeCreateTasks", { tasks: [{ title: "test-ai-drafted" }] }), reply());
       const response = await request(app).post("/api/ai/messages").send({ text: "Plan it" });
       prompts = [];
-      return response.body.runId as string;
+      return { runId: response.body.runId as string, chatId: response.body.chatId as string };
     }
+    const runFor = async (actor: { authUserId: string }) => (await planFor(actor)).runId;
 
     const newTask = (title: string, extra: Record<string, unknown> = {}) => ({
       op: "create",
@@ -834,6 +838,158 @@ describe("/api/ai", () => {
 
       expect(response.status).toBe(404);
       expect(response.body.error.code).toBe("RUN_NOT_FOUND");
+    });
+
+    it("marks the plan applied, and the chat then shows what it made", async () => {
+      const { runId, chatId } = await planFor(await member("finisher", "officer"));
+
+      const applied = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-finished")] });
+
+      expect(applied.status).toBe(201);
+      const chat = await request(app).get(`/api/ai/chats/${chatId}/messages`);
+      const replyMessage = chat.body.messages.at(-1);
+      expect(replyMessage).toMatchObject({ runId, proposalStatus: "applied" });
+      expect(replyMessage.applied).toEqual({
+        events: [],
+        tasks: [{ id: applied.body.tasks[0].id, title: "test-ai-finished", eventId: null }],
+      });
+    });
+
+    it("refuses a second apply of the same plan and writes nothing more", async () => {
+      const runId = await runFor(await member("double-clicker", "officer"));
+
+      const first = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-once")] });
+      const second = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-twice")] });
+
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(409);
+      expect(second.body.error.code).toBe("PROPOSAL_CLOSED");
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-twice"))).toEqual([]);
+    });
+
+    it("lets only one of two simultaneous applies through", async () => {
+      const runId = await runFor(await member("two-tabs", "officer"));
+      const send = () =>
+        request(app)
+          .post("/api/ai/proposals/apply")
+          .send({ runId, stats, operations: [newTask("test-ai-raced")] });
+
+      const [one, two] = await Promise.all([send(), send()]);
+
+      expect([one.status, two.status].sort()).toEqual([201, 409]);
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-raced"))).toHaveLength(1);
+    });
+
+    it("refuses to apply a run that drafted no plan", async () => {
+      signedInAs(await member("chatter", "officer"));
+      script(reply("Nothing to do."));
+      const plain = await request(app).post("/api/ai/messages").send({ text: "Anything?" });
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId: plain.body.runId, stats, operations: [newTask("test-ai-from-nothing")] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("PROPOSAL_CLOSED");
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-from-nothing"))).toEqual(
+        [],
+      );
+    });
+
+    it("leaves the plan open when the apply is refused, so it can be corrected and retried", async () => {
+      const { runId, chatId } = await planFor(await member("corrector", "officer"));
+
+      // Two task creates is a bulk create, which a tier-0 member may not do.
+      const refused = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-a"), newTask("test-ai-b")] });
+      const chat = await request(app).get(`/api/ai/chats/${chatId}/messages`);
+
+      expect(refused.status).toBe(403);
+      expect(chat.body.messages.at(-1).proposalStatus).toBe("open");
+    });
+  });
+
+  describe("POST /api/ai/proposals/:runId/discard", () => {
+    async function planFor(actor: { authUserId: string }) {
+      signedInAs(actor);
+      script(callTool("proposeCreateTasks", { tasks: [{ title: "test-ai-drafted" }] }), reply());
+      const response = await request(app).post("/api/ai/messages").send({ text: "Plan it" });
+      prompts = [];
+      return { runId: response.body.runId as string, chatId: response.body.chatId as string };
+    }
+    const stats = { proposed: 1, kept: 1, edited: 0 };
+    const oneTask = [
+      {
+        op: "create",
+        entity: "task",
+        data: { title: "test-ai-after-discard", priority: "medium", assigneeIds: [] },
+      },
+    ];
+
+    it("discards an open plan, which then reads as discarded", async () => {
+      const { runId, chatId } = await planFor(await member("decliner", "officer"));
+
+      const response = await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      expect(response.status).toBe(204);
+      const chat = await request(app).get(`/api/ai/chats/${chatId}/messages`);
+      expect(chat.body.messages.at(-1)).toMatchObject({
+        proposalStatus: "discarded",
+        applied: null,
+      });
+    });
+
+    it("409s discarding a plan that is already discarded", async () => {
+      const { runId } = await planFor(await member("twice-no", "officer"));
+      await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      const response = await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("PROPOSAL_CLOSED");
+    });
+
+    it("refuses to apply a discarded plan", async () => {
+      const { runId } = await planFor(await member("changed-mind", "officer"));
+      await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: oneTask });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("PROPOSAL_CLOSED");
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-after-discard"))).toEqual(
+        [],
+      );
+    });
+
+    it("404s someone else's run and leaves their plan open", async () => {
+      const { runId } = await planFor(await member("plan-owner", "officer"));
+      signedInAs(await member("meddler", "secretary"));
+
+      const response = await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("RUN_NOT_FOUND");
+      const [run] = await db.select().from(aiRuns).where(eq(aiRuns.id, runId));
+      expect(run!.proposalStatus).toBe("open");
+    });
+
+    it("discards with the assistant switched off", async () => {
+      const { runId } = await planFor(await member("late-no", "officer"));
+      vi.stubEnv("AI_ENABLED", "");
+
+      const response = await request(app).post(`/api/ai/proposals/${runId}/discard`);
+
+      expect(response.status).toBe(204);
     });
   });
 
