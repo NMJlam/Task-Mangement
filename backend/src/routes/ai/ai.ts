@@ -2,6 +2,7 @@ import {
   aiApplyRequestSchema,
   aiApplyResponseSchema,
   aiChatListResponseSchema,
+  aiChatMessagesResponseSchema,
   aiChatParamsSchema,
   aiChatResponseSchema,
   aiRenameChatSchema,
@@ -37,7 +38,18 @@ import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
 import { assertCanReadChannel, ChannelForbiddenError } from "../threads/service.js";
 import { applyProposal, ApplyError } from "./apply.js";
-import { ChatNotFoundError, deleteChat, listChats, renameChat } from "./chats.js";
+import {
+  chatHistory,
+  chatMessages,
+  ChatNotFoundError,
+  chatTitleFrom,
+  createChat,
+  deleteChat,
+  getChat,
+  listChats,
+  renameChat,
+  requireChat,
+} from "./chats.js";
 import { HandleMap } from "./handles.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { resolveProposal } from "./resolve.js";
@@ -45,7 +57,11 @@ import {
   AiOutputError,
   assertUnderDailyCap,
   BRIEFING_RUN_PROMPT,
+  briefingText,
   budgetMessages,
+  CHAT_HISTORY_CHAR_BUDGET,
+  CHAT_HISTORY_MESSAGES,
+  conversationBlock,
   buildBriefingPrompt,
   clubDayKey,
   findTodaysBriefing,
@@ -54,7 +70,6 @@ import {
   completeJson,
   recordRun,
   type PromptMessage,
-  resolveAiChannel,
   type RunStep,
 } from "./service.js";
 import { listEvents, listMembers, listOverdueTasks, listTasks } from "./tools/read.js";
@@ -105,20 +120,28 @@ async function runToolForModel(
   }
 }
 
-/** A seeded event becomes a line of context — only if the caller could open it themselves. */
+/**
+ * The event a chat is about becomes a line of context — only while the caller
+ * could open it themselves. `eventId` comes back null when they cannot, which
+ * is both what keeps a new chat from storing an event it was not entitled to
+ * and what silently drops one that has since been hidden or cancelled.
+ */
 async function seedContext(
   db: Queryable,
   handles: HandleMap,
   tier: Tier,
-  seed: AiMessageRequest["seed"],
-): Promise<string> {
-  if (!seed || !("eventId" in seed)) return "";
+  eventId: string | null,
+): Promise<{ context: string; eventId: string | null }> {
+  if (!eventId) return { context: "", eventId: null };
   const [event] = await db
     .select({ id: events.id, title: events.title, startsAt: events.startsAt })
     .from(events)
-    .where(and(eq(events.id, seed.eventId), visibleEvents(tier)));
-  if (!event) return "";
-  return `The member is looking at event ${handles.issue("E", event.id)}: "${event.title}", starting ${event.startsAt.toISOString()}.`;
+    .where(and(eq(events.id, eventId), visibleEvents(tier)));
+  if (!event) return { context: "", eventId: null };
+  return {
+    context: `The member is looking at event ${handles.issue("E", event.id)}: "${event.title}", starting ${event.startsAt.toISOString()}.`,
+    eventId: event.id,
+  };
 }
 
 function sendAiError(res: Response, error: unknown): boolean {
@@ -168,6 +191,8 @@ aiRouter.post(
       if (!config.enabled) throw new AiDisabledError();
 
       const db = getDb();
+      // Someone else's chat is a 404 before anything is spent on it.
+      const chat = body.chatId ? await requireChat(db, me.id, body.chatId) : undefined;
       await assertUnderDailyCap(db, me.id, config.dailyRunCap);
 
       const staged: AiProposal = {};
@@ -178,14 +203,38 @@ aiRouter.post(
         handles: new HandleMap(),
         staged,
       };
+      // A new chat takes its event from the seed; an existing chat keeps its own.
+      const seeded = await seedContext(
+        db,
+        ctx.handles,
+        me.tier,
+        chat ? chat.seedEventId : body.seed && "eventId" in body.seed ? body.seed.eventId : null,
+      );
+      // A chat started from the briefing opens with it (spec M14).
+      const briefing =
+        !chat && body.seed && "briefing" in body.seed
+          ? await findTodaysBriefing(db, me.id, clubDayKey(receivedAt, CLUB_TIMEZONE))
+          : undefined;
+      const history: PromptMessage[] = chat
+        ? await chatHistory(db, chat.id, CHAT_HISTORY_MESSAGES)
+        : briefing
+          ? [
+              {
+                id: briefing.runId,
+                author: "ASSISTANT",
+                body: briefingText(briefing.briefing),
+                createdAt: briefing.generatedAt,
+              },
+            ]
+          : [];
+
       let transcript = [
-        buildSystemPrompt(
-          toolsFor(me.tier),
-          await seedContext(db, ctx.handles, me.tier, body.seed),
-        ),
-        "",
+        buildSystemPrompt(toolsFor(me.tier), seeded.context),
+        conversationBlock(history, CHAT_HISTORY_CHAR_BUDGET),
         `MEMBER: ${body.text}`,
-      ].join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
       const steps: RunStep[] = [];
       let replyText: string | undefined;
@@ -221,7 +270,8 @@ aiRouter.post(
             recordRun(tx, {
               userId: me.id,
               kind: "chat",
-              channelId: null,
+              // Its chat, if it has one: a failed FIRST message creates none.
+              channelId: chat?.id ?? null,
               prompt: body.text,
               steps: [...steps, { tool: "failed", ms: 0 }],
             }),
@@ -230,14 +280,35 @@ aiRouter.post(
         throw error;
       }
 
+      // Only now, with a reply in hand, is anything written — so "New chat"
+      // leaves nothing behind when its first turn fails (spec M8).
       const { runId, chatId } = await db.transaction(async (tx) => {
-        const channelId = await resolveAiChannel(tx, me.id);
+        const channelId =
+          chat?.id ??
+          (await createChat(tx, me.id, {
+            title: chatTitleFrom(body.text),
+            seedEventId: seeded.eventId,
+          }));
+        if (!chat && briefing) {
+          await tx.insert(messages).values({
+            id: newId(),
+            channelId,
+            author: null,
+            body: briefingText(briefing.briefing),
+            aiRunId: briefing.runId,
+            // A moment before the member's message, so it reads first.
+            createdAt: new Date(receivedAt.getTime() - 1),
+          });
+        }
         const id = await recordRun(tx, {
           userId: me.id,
           kind: "chat",
           channelId,
           prompt: body.text,
           steps,
+          // The plan stays with the run that drafted it (spec M7).
+          result: proposal,
+          proposalStatus: proposal ? "open" : null,
         });
         // Explicit timestamps: both rows share one transaction, and now() is
         // the transaction's start, so the default would tie them.
@@ -504,6 +575,24 @@ aiRouter.get("/ai/chats", authenticate, authorise(0), async (req, res, next) => 
     if (!sendAiError(res, error)) next(error);
   }
 });
+
+aiRouter.get(
+  "/ai/chats/:id/messages",
+  authenticate,
+  authorise(0),
+  validate(aiChatParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      const me = req.user!;
+      const db = getDb();
+      const chat = await getChat(db, me.id, req.params.id!);
+      const conversation = await chatMessages(db, { tier: me.tier }, chat.id);
+      res.status(200).json(aiChatMessagesResponseSchema.parse({ chat, messages: conversation }));
+    } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
 
 aiRouter.patch(
   "/ai/chats/:id",

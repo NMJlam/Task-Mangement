@@ -8,6 +8,7 @@ import {
   buildBriefingPrompt,
   clubDayKey,
   completeJson,
+  conversationBlock,
   extractJson,
 } from "./service.js";
 
@@ -172,5 +173,33 @@ describe("briefingText", () => {
 
   it("is just the summary when there are no bullets", () => {
     expect(briefingText({ summary: "Nothing on.", bullets: [] })).toBe("Nothing on.");
+  });
+});
+
+describe("conversationBlock", () => {
+  const said = (author: string, body: string) => ({
+    id: body,
+    author,
+    body,
+    createdAt: new Date(0),
+  });
+
+  it("is empty for a chat with no history, so a first message adds nothing to the prompt", () => {
+    expect(conversationBlock([], 1000)).toBe("");
+  });
+
+  it("labels each line by who said it, oldest first", () => {
+    expect(
+      conversationBlock([said("MEMBER", "Plan it"), said("ASSISTANT", "Here is a plan.")], 1000),
+    ).toBe("CONVERSATION SO FAR:\nMEMBER: Plan it\nASSISTANT: Here is a plan.");
+  });
+
+  it("drops the oldest messages once the budget is spent", () => {
+    const block = conversationBlock(
+      [said("MEMBER", "a".repeat(60)), said("ASSISTANT", "b".repeat(60)), said("MEMBER", "latest")],
+      80,
+    );
+    expect(block).not.toContain("a".repeat(60));
+    expect(block).toContain("latest");
   });
 });

@@ -108,6 +108,14 @@ describe("/api/ai", () => {
     return row!;
   }
 
+  /** A chat put straight into the database, owned by `owner`. */
+  async function seedChat(owner: { id: string }, title: string, createdAt = new Date()) {
+    const id = newId();
+    await db.insert(channels).values({ id, kind: "ai", name: title, createdAt });
+    await db.insert(chanMembers).values({ channelId: id, userId: owner.id });
+    return id;
+  }
+
   const ours = sql`"title" LIKE 'test-ai-%'`;
   const ourUsers = sql`(SELECT "id" FROM "app_user" WHERE "auth_user_id" LIKE 'test-ai-%')`;
 
@@ -179,7 +187,7 @@ describe("/api/ai", () => {
       expect(response.body.runId).toMatch(/^[0-9a-f-]{36}$/u);
     });
 
-    it("keeps the member's message and the stamped reply in their ai channel", async () => {
+    it("keeps the member's message and the stamped reply in the chat", async () => {
       const asker = await member("history", "officer");
       signedInAs(asker);
       script(reply("Here you go."));
@@ -189,14 +197,160 @@ describe("/api/ai", () => {
       const rows = await db
         .select({ author: messages.author, body: messages.body, aiRunId: messages.aiRunId })
         .from(messages)
-        .innerJoin(channels, eq(channels.id, messages.channelId))
-        .innerJoin(chanMembers, eq(chanMembers.channelId, channels.id))
-        .where(and(eq(channels.kind, "ai"), eq(chanMembers.userId, asker.id)))
+        .where(eq(messages.channelId, response.body.chatId))
         .orderBy(messages.createdAt);
       expect(rows).toEqual([
         { author: asker.id, body: "Hi there", aiRunId: null },
         { author: null, body: "Here you go.", aiRunId: response.body.runId },
       ]);
+    });
+
+    it("starts a chat with the first message, titled from it", async () => {
+      signedInAs(await member("starter", "officer"));
+      script(reply());
+
+      const response = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "  Plan the\nhack night  " });
+
+      expect(response.status).toBe(200);
+      const list = await request(app).get("/api/ai/chats");
+      expect(list.body.chats).toEqual([
+        expect.objectContaining({ id: response.body.chatId, title: "Plan the hack night" }),
+      ]);
+    });
+
+    it("creates nothing when the first turn fails", async () => {
+      const unlucky = await member("first-fail", "officer");
+      signedInAs(unlucky);
+      script("Sure, in prose.", "Still prose.");
+      const unusable = await request(app).post("/api/ai/messages").send({ text: "Plan it" });
+      complete.mockRejectedValue(new AiUnavailableError());
+      const busy = await request(app).post("/api/ai/messages").send({ text: "Plan it" });
+
+      expect([unusable.status, busy.status]).toEqual([422, 503]);
+      expect((await request(app).get("/api/ai/chats")).body.chats).toEqual([]);
+      expect(await db.select().from(messages).where(eq(messages.author, unlucky.id))).toEqual([]);
+    });
+
+    it("remembers the chat: the second turn is shown the first exchange, in words only", async () => {
+      signedInAs(await member("rememberer", "officer"));
+      await seedTask(null, [], { title: "test-ai-poster" });
+      script(callTool("listTasks"), reply("Two tasks are open."), reply("The poster."));
+
+      const first = await request(app).post("/api/ai/messages").send({ text: "What is open?" });
+      const second = await request(app)
+        .post("/api/ai/messages")
+        .send({ chatId: first.body.chatId, text: "Which is urgent?" });
+
+      expect(second.status).toBe(200);
+      expect(second.body.chatId).toBe(first.body.chatId);
+      const prompt = prompts[2]!;
+      expect(prompt).toContain(
+        "CONVERSATION SO FAR:\nMEMBER: What is open?\nASSISTANT: Two tasks are open.",
+      );
+      expect(prompt).toContain("MEMBER: Which is urgent?");
+      // Memory is words: what a tool returned last turn — handles included — is not carried.
+      expect(prompt).not.toContain("TOOL RESULT");
+      expect(prompt).not.toContain("test-ai-poster");
+    });
+
+    it("404s a chat that belongs to someone else, before the model is called", async () => {
+      const chatId = await seedChat(await member("chat-owner", "officer"), "test-ai-theirs");
+      signedInAs(await member("intruder", "secretary"));
+      script(reply());
+
+      const response = await request(app).post("/api/ai/messages").send({ chatId, text: "Hello" });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("CHAT_NOT_FOUND");
+      expect(complete).not.toHaveBeenCalled();
+      expect(await db.select().from(messages).where(eq(messages.channelId, chatId))).toEqual([]);
+    });
+
+    it("keeps a chat's event in view across turns, until the member can no longer see it", async () => {
+      signedInAs(await member("planner-zero", "officer"));
+      const event = await seedEvent({ title: "test-ai-seeded" });
+      script(reply(), reply(), reply());
+
+      const first = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "Plan it", seed: { eventId: event.id } });
+      const chatId = first.body.chatId as string;
+      await request(app).post("/api/ai/messages").send({ chatId, text: "And then?" });
+      await db.update(events).set({ minTier: 2 }).where(eq(events.id, event.id));
+      const third = await request(app).post("/api/ai/messages").send({ chatId, text: "Still?" });
+
+      const [chat] = (await request(app).get("/api/ai/chats")).body.chats;
+      expect(chat).toMatchObject({ id: chatId, seedEventId: event.id });
+      expect(prompts[0]).toContain("test-ai-seeded");
+      // The second turn named no event at all: the chat supplied it.
+      expect(prompts[1]).toContain("test-ai-seeded");
+      // Hidden now, so it silently leaves the prompt — and the chat keeps working.
+      expect(third.status).toBe(200);
+      expect(prompts[2]).not.toContain("test-ai-seeded");
+    });
+
+    it("ignores a seed event the member cannot see", async () => {
+      signedInAs(await member("peeker", "officer"));
+      const hidden = await seedEvent({ title: "test-ai-secret", minTier: 2 });
+      script(reply());
+
+      await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "Plan it", seed: { eventId: hidden.id } });
+
+      const [chat] = (await request(app).get("/api/ai/chats")).body.chats;
+      expect(chat.seedEventId).toBeNull();
+      expect(prompts[0]).not.toContain("test-ai-secret");
+    });
+
+    it("starts a chat from the briefing, opening with it", async () => {
+      const reader = await member("briefed", "officer");
+      signedInAs(reader);
+      const briefingRun = newId();
+      await db.insert(aiRuns).values({
+        id: briefingRun,
+        userId: reader.id,
+        kind: "briefing",
+        prompt: "Daily briefing",
+        result: { summary: "A quiet day.", bullets: ["Book the room"] },
+      });
+      script(reply("Start with the room."));
+
+      const response = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "What first?", seed: { briefing: true } });
+
+      expect(prompts[0]).toContain(
+        "CONVERSATION SO FAR:\nASSISTANT: A quiet day.\n- Book the room",
+      );
+      const chat = await request(app).get(`/api/ai/chats/${response.body.chatId}/messages`);
+      expect(
+        chat.body.messages.map((message: { role: string; body: string }) => [
+          message.role,
+          message.body,
+        ]),
+      ).toEqual([
+        ["assistant", "A quiet day.\n- Book the room"],
+        ["member", "What first?"],
+        ["assistant", "Start with the room."],
+      ]);
+      // The briefing is not a plan: nothing to confirm under it.
+      expect(chat.body.messages[0]).toMatchObject({ runId: briefingRun, proposal: null });
+    });
+
+    it("starts normally when there is no briefing to seed from", async () => {
+      signedInAs(await member("unbriefed", "officer"));
+      script(reply());
+
+      const response = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "What first?", seed: { briefing: true } });
+
+      const chat = await request(app).get(`/api/ai/chats/${response.body.chatId}/messages`);
+      expect(chat.body.messages).toHaveLength(2);
+      expect(prompts[0]).not.toContain("CONVERSATION SO FAR");
     });
 
     it("feeds a tool's result back to the model before it replies", async () => {
@@ -356,14 +510,6 @@ describe("/api/ai", () => {
     });
   });
 
-  /** A chat put straight into the database, owned by `owner`. */
-  async function seedChat(owner: { id: string }, title: string, createdAt = new Date()) {
-    const id = newId();
-    await db.insert(channels).values({ id, kind: "ai", name: title, createdAt });
-    await db.insert(chanMembers).values({ channelId: id, userId: owner.id });
-    return id;
-  }
-
   describe("chats", () => {
     it("lists only the caller's chats, most recently active first", async () => {
       const me = await member("lister", "officer");
@@ -483,6 +629,60 @@ describe("/api/ai", () => {
           .status,
       ).toBe(200);
       expect((await request(app).delete(`/api/ai/chats/${chatId}`)).status).toBe(204);
+    });
+  });
+
+  describe("GET /api/ai/chats/:id/messages", () => {
+    it("returns the conversation oldest first, with a drafted plan open under its reply", async () => {
+      signedInAs(await member("drafter", "officer"));
+      script(callTool("proposeCreateTasks", { tasks: [{ title: "test-ai-drafted" }] }), reply());
+      const sent = await request(app).post("/api/ai/messages").send({ text: "Draft one task" });
+
+      const response = await request(app).get(`/api/ai/chats/${sent.body.chatId}/messages`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.chat).toMatchObject({ id: sent.body.chatId, title: "Draft one task" });
+      expect(response.body.messages).toEqual([
+        expect.objectContaining({
+          role: "member",
+          body: "Draft one task",
+          runId: null,
+          proposal: null,
+          proposalStatus: null,
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          runId: sent.body.runId,
+          proposalStatus: "open",
+          applied: null,
+          proposal: { createTasks: [expect.objectContaining({ title: "test-ai-drafted" })] },
+        }),
+      ]);
+    });
+
+    it("404s another member's chat", async () => {
+      const chatId = await seedChat(await member("diarist", "officer"), "test-ai-diary");
+      signedInAs(await member("reader-in", "secretary"));
+
+      const response = await request(app).get(`/api/ai/chats/${chatId}/messages`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("CHAT_NOT_FOUND");
+    });
+
+    it("reads a chat with the assistant switched off", async () => {
+      const me = await member("archivist", "officer");
+      const chatId = await seedChat(me, "test-ai-archive");
+      await db
+        .insert(messages)
+        .values({ id: newId(), channelId: chatId, author: me.id, body: "hi" });
+      vi.stubEnv("AI_ENABLED", "");
+      signedInAs(me);
+
+      const response = await request(app).get(`/api/ai/chats/${chatId}/messages`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.messages).toHaveLength(1);
     });
   });
 

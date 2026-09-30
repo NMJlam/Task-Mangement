@@ -1,8 +1,16 @@
-import type { AiChat } from "@ctp/shared";
-import { and, eq, sql } from "drizzle-orm";
+import {
+  aiResolvedProposalSchema,
+  type AiApplied,
+  type AiChat,
+  type AiChatMessage,
+  type Tier,
+} from "@ctp/shared";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { newId } from "../../db/id.js";
-import { chanMembers, channels } from "../../db/schema/index.js";
-import type { Queryable, Tx } from "../events/service.js";
+import { aiRuns, chanMembers, channels, events, messages, tasks } from "../../db/schema/index.js";
+import { visibleEvents, type Queryable, type Tx } from "../events/service.js";
+import type { PromptMessage } from "./service.js";
+import { taskEventVisible } from "./tools/read.js";
 
 /**
  * The rules of an assistant chat. A chat is a `channel` of kind `ai` whose only
@@ -134,4 +142,96 @@ export async function renameChat(
 export async function deleteChat(db: Queryable, userId: string, chatId: string): Promise<void> {
   await requireChat(db, userId, chatId);
   await db.delete(channels).where(eq(channels.id, chatId));
+}
+
+/**
+ * The chat's most recent messages, oldest first, labelled for the prompt.
+ * Only who spoke and what they said — see `conversationBlock`.
+ */
+export async function chatHistory(
+  db: Queryable,
+  chatId: string,
+  limit: number,
+): Promise<PromptMessage[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      author: messages.author,
+      body: messages.body,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .where(eq(messages.channelId, chatId))
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(limit);
+  return rows.reverse().map((row) => ({ ...row, author: row.author ? "MEMBER" : "ASSISTANT" }));
+}
+
+/**
+ * What an applied plan made, read from provenance rather than stored twice:
+ * the rows carrying that run's id — and only those the viewer can see now.
+ */
+async function appliedBy(db: Queryable, tier: Tier, runId: string): Promise<AiApplied> {
+  const [madeEvents, madeTasks] = await Promise.all([
+    db
+      .select({ id: events.id, title: events.title })
+      .from(events)
+      .where(and(eq(events.aiRunId, runId), visibleEvents(tier))),
+    db
+      .select({ id: tasks.id, title: tasks.title, eventId: tasks.eventId })
+      .from(tasks)
+      .where(and(eq(tasks.aiRunId, runId), taskEventVisible(tier))),
+  ]);
+  return { events: madeEvents, tasks: madeTasks };
+}
+
+/**
+ * The conversation as the page shows it, oldest first. An assistant reply
+ * carries the plan its run drafted and where that plan stands, which is what
+ * lets a reopened chat redraw its card (spec M7). Only a CHAT run's result is
+ * a plan: a chat opened from the briefing starts with a message stamped by the
+ * briefing run, whose result is the briefing.
+ */
+export async function chatMessages(
+  db: Queryable,
+  viewer: { tier: Tier },
+  chatId: string,
+): Promise<AiChatMessage[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      author: messages.author,
+      body: messages.body,
+      createdAt: messages.createdAt,
+      runId: messages.aiRunId,
+      runKind: aiRuns.kind,
+      result: aiRuns.result,
+      proposalStatus: aiRuns.proposalStatus,
+    })
+    .from(messages)
+    .leftJoin(aiRuns, eq(aiRuns.id, messages.aiRunId))
+    .where(eq(messages.channelId, chatId))
+    .orderBy(asc(messages.createdAt), asc(messages.id));
+
+  return Promise.all(
+    rows.map(async (row): Promise<AiChatMessage> => {
+      const drafted = row.runKind === "chat" && row.proposalStatus !== null;
+      const plan = drafted ? aiResolvedProposalSchema.safeParse(row.result) : undefined;
+      const proposal = plan?.success ? plan.data : null;
+      const proposalStatus = proposal ? row.proposalStatus : null;
+      return {
+        id: row.id,
+        role: row.author ? "member" : "assistant",
+        body: row.body,
+        createdAt: row.createdAt,
+        runId: row.runId,
+        proposal,
+        proposalStatus,
+        applied:
+          proposalStatus === "applied" && row.runId
+            ? await appliedBy(db, viewer.tier, row.runId)
+            : null,
+      };
+    }),
+  );
 }
