@@ -356,6 +356,136 @@ describe("/api/ai", () => {
     });
   });
 
+  /** A chat put straight into the database, owned by `owner`. */
+  async function seedChat(owner: { id: string }, title: string, createdAt = new Date()) {
+    const id = newId();
+    await db.insert(channels).values({ id, kind: "ai", name: title, createdAt });
+    await db.insert(chanMembers).values({ channelId: id, userId: owner.id });
+    return id;
+  }
+
+  describe("chats", () => {
+    it("lists only the caller's chats, most recently active first", async () => {
+      const me = await member("lister", "officer");
+      const other = await member("neighbour", "officer");
+      const older = await seedChat(me, "test-ai-older", new Date("2026-01-01T00:00:00Z"));
+      const newer = await seedChat(me, "test-ai-newer", new Date("2026-02-01T00:00:00Z"));
+      await seedChat(other, "test-ai-not-mine");
+      // Activity, not creation, decides the order: the older chat was spoken in last.
+      await db.insert(messages).values({
+        id: newId(),
+        channelId: older,
+        author: me.id,
+        body: "still going",
+        createdAt: new Date("2026-03-01T00:00:00Z"),
+      });
+      signedInAs(me);
+
+      const response = await request(app).get("/api/ai/chats");
+
+      expect(response.status).toBe(200);
+      expect(response.body.chats.map((chat: { id: string }) => chat.id)).toEqual([older, newer]);
+      expect(response.body.chats[0]).toMatchObject({
+        title: "test-ai-older",
+        seedEventId: null,
+        lastMessageAt: "2026-03-01T00:00:00.000Z",
+      });
+    });
+
+    it("renames a chat, trimming the title", async () => {
+      const me = await member("renamer", "officer");
+      const chatId = await seedChat(me, "test-ai-before");
+      signedInAs(me);
+
+      const response = await request(app)
+        .patch(`/api/ai/chats/${chatId}`)
+        .send({ title: "  test-ai-after  " });
+
+      expect(response.status).toBe(200);
+      expect(response.body.chat).toMatchObject({ id: chatId, title: "test-ai-after" });
+      const [stored] = await db.select().from(channels).where(eq(channels.id, chatId));
+      expect(stored!.name).toBe("test-ai-after");
+    });
+
+    it("422s a blank or over-long title and leaves the chat as it was", async () => {
+      const me = await member("fussy", "officer");
+      const chatId = await seedChat(me, "test-ai-keep");
+      signedInAs(me);
+
+      for (const title of ["   ", "x".repeat(81)]) {
+        const response = await request(app).patch(`/api/ai/chats/${chatId}`).send({ title });
+        expect(response.status).toBe(422);
+        expect(response.body.error.code).toBe("VALIDATION_ERROR");
+      }
+      const [stored] = await db.select().from(channels).where(eq(channels.id, chatId));
+      expect(stored!.name).toBe("test-ai-keep");
+    });
+
+    it("404s another member's chat on rename and delete, and changes nothing", async () => {
+      const owner = await member("owner", "officer");
+      const chatId = await seedChat(owner, "test-ai-private");
+      // Tier makes no difference: a chat is its owner's alone.
+      signedInAs(await member("nosy", "secretary"));
+
+      const renamed = await request(app).patch(`/api/ai/chats/${chatId}`).send({ title: "mine" });
+      const removed = await request(app).delete(`/api/ai/chats/${chatId}`);
+
+      expect(renamed.status).toBe(404);
+      expect(renamed.body.error.code).toBe("CHAT_NOT_FOUND");
+      expect(removed.status).toBe(404);
+      const [stored] = await db.select().from(channels).where(eq(channels.id, chatId));
+      expect(stored!.name).toBe("test-ai-private");
+    });
+
+    it("404s a chat that does not exist, exactly as it does someone else's", async () => {
+      signedInAs(await member("lost", "officer"));
+
+      const response = await request(app).delete(`/api/ai/chats/${newId()}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("CHAT_NOT_FOUND");
+    });
+
+    it("deletes a chat and its messages but keeps its runs and what they made", async () => {
+      const me = await member("tidy", "officer");
+      const chatId = await seedChat(me, "test-ai-doomed");
+      const runId = newId();
+      await db
+        .insert(aiRuns)
+        .values({ id: runId, channelId: chatId, userId: me.id, prompt: "plan", kind: "chat" });
+      await db.insert(messages).values([
+        { id: newId(), channelId: chatId, author: me.id, body: "plan" },
+        { id: newId(), channelId: chatId, author: null, body: "done", aiRunId: runId },
+      ]);
+      const task = await seedTask(null, [], { title: "test-ai-made-by-chat", aiRunId: runId });
+      signedInAs(me);
+
+      const response = await request(app).delete(`/api/ai/chats/${chatId}`);
+
+      expect(response.status).toBe(204);
+      expect(await db.select().from(channels).where(eq(channels.id, chatId))).toEqual([]);
+      expect(await db.select().from(messages).where(eq(messages.channelId, chatId))).toEqual([]);
+      const [run] = await db.select().from(aiRuns).where(eq(aiRuns.id, runId));
+      expect(run).toMatchObject({ id: runId, channelId: null, userId: me.id });
+      const [kept] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+      expect(kept!.aiRunId).toBe(runId);
+    });
+
+    it("lists, renames and deletes with the assistant switched off", async () => {
+      vi.stubEnv("AI_ENABLED", "");
+      const me = await member("offline", "officer");
+      const chatId = await seedChat(me, "test-ai-readable");
+      signedInAs(me);
+
+      expect((await request(app).get("/api/ai/chats")).status).toBe(200);
+      expect(
+        (await request(app).patch(`/api/ai/chats/${chatId}`).send({ title: "test-ai-renamed" }))
+          .status,
+      ).toBe(200);
+      expect((await request(app).delete(`/api/ai/chats/${chatId}`)).status).toBe(204);
+    });
+  });
+
   describe("POST /api/ai/proposals/apply", () => {
     /** A real run for the caller to apply against — the card always comes from one. */
     async function runFor(actor: { authUserId: string }): Promise<string> {

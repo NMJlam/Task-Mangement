@@ -1,6 +1,10 @@
 import {
   aiApplyRequestSchema,
   aiApplyResponseSchema,
+  aiChatListResponseSchema,
+  aiChatParamsSchema,
+  aiChatResponseSchema,
+  aiRenameChatSchema,
   aiBriefingResponseSchema,
   aiBriefingSchema,
   aiThreadSummaryResponseSchema,
@@ -9,6 +13,7 @@ import {
   aiMessageResponseSchema,
   aiProposalSchema,
   type AiApplyRequest,
+  type AiRenameChat,
   type AiResolvedProposal,
   type AiMessageRequest,
   type AiProposal,
@@ -32,6 +37,7 @@ import { authenticate, authorise, validate } from "../../middleware/index.js";
 import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
 import { assertCanReadChannel, ChannelForbiddenError } from "../threads/service.js";
 import { applyProposal, ApplyError } from "./apply.js";
+import { ChatNotFoundError, deleteChat, listChats, renameChat } from "./chats.js";
 import { HandleMap } from "./handles.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { resolveProposal } from "./resolve.js";
@@ -128,6 +134,8 @@ function sendAiError(res: Response, error: unknown): boolean {
     res.status(422).json({ error: { code: "AI_OUTPUT_INVALID", message: error.message } });
   } else if (error instanceof ChannelForbiddenError) {
     res.status(403).json({ error: { code: "FORBIDDEN", message: error.message } });
+  } else if (error instanceof ChatNotFoundError) {
+    res.status(404).json({ error: { code: "CHAT_NOT_FOUND", message: error.message } });
   } else if (error instanceof ApplyError) {
     res.status(error.status).json({ error: { code: error.code, message: error.message } });
   } else if (error instanceof ValidationError) {
@@ -481,3 +489,50 @@ aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) 
     if (!sendAiError(res, error)) next(error);
   }
 });
+
+// ── Chats: /api/ai/chats ─────────────────────────────────────────────────────
+//
+// None of these calls the model, so none of them needs the assistant enabled:
+// a member can still read, rename and delete their chats on a deployment that
+// has it switched off.
+
+aiRouter.get("/ai/chats", authenticate, authorise(0), async (req, res, next) => {
+  try {
+    const chats = await listChats(getDb(), req.user!.id);
+    res.status(200).json(aiChatListResponseSchema.parse({ chats }));
+  } catch (error) {
+    if (!sendAiError(res, error)) next(error);
+  }
+});
+
+aiRouter.patch(
+  "/ai/chats/:id",
+  authenticate,
+  authorise(0),
+  validate(aiChatParamsSchema, "params"),
+  validate(aiRenameChatSchema),
+  async (req, res, next) => {
+    try {
+      const { title } = res.locals.validated as AiRenameChat;
+      const chat = await renameChat(getDb(), req.user!.id, req.params.id!, title);
+      res.status(200).json(aiChatResponseSchema.parse({ chat }));
+    } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
+
+aiRouter.delete(
+  "/ai/chats/:id",
+  authenticate,
+  authorise(0),
+  validate(aiChatParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      await deleteChat(getDb(), req.user!.id, req.params.id!);
+      res.status(204).end();
+    } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
