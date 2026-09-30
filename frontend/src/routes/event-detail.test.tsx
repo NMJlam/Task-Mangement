@@ -160,7 +160,7 @@ describe("EventDetailPage", () => {
   });
 
   it("shows the event's own tasks only once the Tasks tab is chosen", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent();
     renderDetail();
 
@@ -181,7 +181,7 @@ describe("EventDetailPage", () => {
   });
 
   it("creates a card that belongs to this event from the Tasks tab", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent();
     renderDetail("?tab=tasks");
 
@@ -251,7 +251,7 @@ describe("EventDetailPage", () => {
 
   // The event Tasks tab now wires the same shared dialog mutations as /tasks.
   it("edits an event task's description and priority in place", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent();
     renderDetail("?tab=tasks");
 
@@ -301,7 +301,7 @@ describe("EventDetailPage", () => {
   });
 
   it("names the thread author from the roster", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubEvent({ messages: [message()], members: [roster()] });
     renderDetail();
 
@@ -315,7 +315,7 @@ describe("EventDetailPage", () => {
   });
 
   it("marks the unbuilt tabs as unbuilt rather than empty", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubEvent();
     renderDetail();
 
@@ -331,7 +331,7 @@ describe("EventDetailPage", () => {
   });
 
   it("reschedules the event through the shared visual picker", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent({ role: "president", tier: 2 });
     renderDetail();
 
@@ -401,7 +401,7 @@ describe("EventDetailPage", () => {
   });
 
   it("edits the event's details through the shared PATCH, dates excluded", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent({ role: "director", tier: 1 });
     renderDetail();
 
@@ -443,7 +443,7 @@ describe("EventDetailPage", () => {
   });
 
   it("moves the event along its lifecycle, and reports a blocked wrap in the route's own words", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let wrapBlocked = false;
     // The event page's own stub, wrapped so the status route can be driven. The
     // inner mock is captured ONCE: calling `stubEvent` per request would
@@ -541,7 +541,7 @@ describe("EventDetailPage", () => {
   });
 
   it("confirms before sending the DELETE", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubEvent({ role: "president", tier: 2 });
     renderDetail();
 

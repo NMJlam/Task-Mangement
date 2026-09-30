@@ -74,7 +74,7 @@ describe("EventsPage", () => {
   });
 
   it("keeps Past and All in the default order, which needs no client re-sort", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch({ items: [], nextCursor: null });
     renderPage();
     await waitFor(() => expect(lastEventsRequest(fetchMock)).toBeDefined());
@@ -93,7 +93,7 @@ describe("EventsPage", () => {
   });
 
   it("owns the list in the URL, and clears every filter at once", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url === "/api/me") return Promise.resolve(ok({ user: me({ role: "officer", tier: 0 }) }));
       return Promise.resolve(ok({ items: [], nextCursor: null }));
@@ -162,7 +162,7 @@ describe("EventsPage", () => {
   });
 
   it("swaps from= for to= when the reader asks for past events", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch({ items: [], nextCursor: null });
     renderPage();
 
@@ -177,7 +177,7 @@ describe("EventsPage", () => {
   });
 
   it("passes the chosen status through, cancelled included", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch({ items: [], nextCursor: null });
     renderPage();
 
@@ -191,7 +191,7 @@ describe("EventsPage", () => {
   });
 
   it("appends the next page and hides the button at the end of the list", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     // Routed by URL, not call order — `useMe` also fetches, and the page may
     // reorder its calls.
     const fetchMock = vi.fn().mockImplementation((url: string) => {
