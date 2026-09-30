@@ -401,7 +401,7 @@ Read in `backend/src/config/ai.ts`. Setup steps live in `docs/setup.md`.
 | ------------------ | ------------------ | ---------------------------------------------------------------------- |
 | `AI_ENABLED`       | _(empty = off)_    | `1` turns the AI endpoints on; otherwise they 503.                     |
 | `GEMINI_API_KEY`   | _(empty)_          | Google AI Studio key.                                                  |
-| `GEMINI_MODEL`     | `gemini-3.8-flash` | Free-tier model id — a variable because these names change.            |
+| `GEMINI_MODEL`     | `gemini-3.6-flash` | Free-tier model id — a variable because these names change.            |
 | `AI_DAILY_RUN_CAP` | `50`               | `ai_run` rows per member per rolling 24h, counted off `ai_run` itself. |
 
 ### 8.2 Errors

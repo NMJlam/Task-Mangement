@@ -48,9 +48,9 @@ catch-up panel as the member sees it.
 | M9  | **A chat may be tied to one event** (`seed_event_id`), kept in view for every turn of that chat.              | "Plan with AI" on an event page opens a chat about that event; with memory, the context must outlive the first message.                |
 | M10 | **The threads API never serves an `ai` channel.**                                                             | Enforced server-side, so no page can list, read or post into an AI chat except through the assistant's own endpoints.                  |
 | M11 | **The old single Assistant conversations are deleted** by the migration.                                      | Decided in review: a clean start. Runs are kept (M6), so provenance and evaluation data survive.                                       |
+| M12 | **Two columns like Messages**, with everything the assistant has made behind a **Generated** toggle.          | The page reads as a chat first; the provenance view is one click away rather than a permanent third column.                            |
 | M13 | **The briefing leads the Overview page**: full width, above the stat strip, never silently absent.            | It was a small card in the right rail that vanished on any failure, so a member could go days without knowing it existed.              |
 | M14 | **The briefing is pinned at the top of the chat list**, and asking about it starts a chat that opens with it. | One click from any chat; the new chat begins with the briefing as the assistant's first message, so memory (M2) carries it.            |
-| M12 | **Two columns like Messages**, with everything the assistant has made behind a **Generated** toggle.          | The page reads as a chat first; the provenance view is one click away rather than a permanent third column.                            |
 
 ---
 
