@@ -246,7 +246,7 @@ decides whether it costs anything:
    ```bash
    AI_ENABLED=1
    GEMINI_API_KEY=<the key>
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=gemini-3.8-flash
    AI_DAILY_RUN_CAP=50
    ```
 

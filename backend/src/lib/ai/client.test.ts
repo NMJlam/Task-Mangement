@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AiDisabledError, AiQuotaError, makeGeminiComplete } from "./client.js";
 
-const config = { enabled: true, apiKey: "k", model: "gemini-2.5-flash", dailyRunCap: 50 };
+const config = { enabled: true, apiKey: "k", model: "gemini-3.8-flash", dailyRunCap: 50 };
 
 describe("makeGeminiComplete", () => {
   it("throws AiDisabledError when the deployment has AI switched off", async () => {
@@ -14,7 +14,7 @@ describe("makeGeminiComplete", () => {
     const complete = makeGeminiComplete(config, { models: { generateContent } });
     await expect(complete("hi")).resolves.toBe('{"ok":true}');
     expect(generateContent).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gemini-2.5-flash", contents: "hi" }),
+      expect.objectContaining({ model: "gemini-3.8-flash", contents: "hi" }),
     );
   });
 
