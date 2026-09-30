@@ -9,6 +9,7 @@ import {
   aiMessageResponseSchema,
   aiProposalSchema,
   type AiApplyRequest,
+  type AiResolvedProposal,
   type AiMessageRequest,
   type AiProposal,
   type Tier,
@@ -171,28 +172,44 @@ aiRouter.post(
 
       const steps: RunStep[] = [];
       let replyText: string | undefined;
-      for (let step = 0; step < MAX_TOOL_STEPS && replyText === undefined; step += 1) {
-        const next = await completeJson(geminiComplete, transcript, stepSchema);
-        if ("reply" in next) {
-          replyText = next.reply;
-          break;
+      let proposal: AiResolvedProposal | null;
+      try {
+        for (let step = 0; step < MAX_TOOL_STEPS && replyText === undefined; step += 1) {
+          const next = await completeJson(geminiComplete, transcript, stepSchema);
+          if ("reply" in next) {
+            replyText = next.reply;
+            break;
+          }
+          const started = Date.now();
+          const result = await runToolForModel(ctx, next.tool.name, next.tool.args);
+          steps.push({ tool: next.tool.name, ms: Date.now() - started });
+          transcript += `\nASSISTANT: ${JSON.stringify(next)}\nTOOL RESULT ${next.tool.name}: ${JSON.stringify(result)}`;
         }
-        const started = Date.now();
-        const result = await runToolForModel(ctx, next.tool.name, next.tool.args);
-        steps.push({ tool: next.tool.name, ms: Date.now() - started });
-        transcript += `\nASSISTANT: ${JSON.stringify(next)}\nTOOL RESULT ${next.tool.name}: ${JSON.stringify(result)}`;
+        // Out of steps with no answer: fail closed, the same as unusable output.
+        if (replyText === undefined) {
+          throw new AiOutputError("The assistant took too many steps. Try a narrower question.");
+        }
+        proposal = await resolveProposal(
+          db,
+          ctx.handles,
+          aiProposalSchema.parse(staged),
+          CLUB_TIMEZONE,
+        );
+      } catch (error) {
+        // A failed turn still spent model calls — up to two per step — so it is
+        // recorded like any other run, or retrying a prompt the model keeps
+        // fumbling would spend the club's quota without the daily cap noticing.
+        if (error instanceof AiOutputError) {
+          await db.transaction((tx) =>
+            recordRun(tx, {
+              userId: me.id,
+              prompt: body.text,
+              steps: [...steps, { tool: "failed", ms: 0 }],
+            }),
+          );
+        }
+        throw error;
       }
-      // Out of steps with no answer: fail closed, the same as unusable output.
-      if (replyText === undefined) {
-        throw new AiOutputError("The assistant took too many steps. Try a narrower question.");
-      }
-
-      const proposal = await resolveProposal(
-        db,
-        ctx.handles,
-        aiProposalSchema.parse(staged),
-        CLUB_TIMEZONE,
-      );
 
       const runId = await db.transaction(async (tx) => {
         const id = await recordRun(tx, { userId: me.id, prompt: body.text, steps });
