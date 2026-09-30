@@ -16,7 +16,9 @@ import { teams } from "./team.js";
  * "directors and up" is a 'team' channel with min_tier = 1.
  *
  * The AI assistant needs no tables of its own — it is kind = 'ai', a dedicated
- * PAGE, not a dedicated schema.
+ * PAGE, not a dedicated schema. Each assistant CHAT is one such channel with
+ * its owner as the only member, so a member may have many; `name` is the
+ * chat's title. They are served only by routes/ai, never as threads.
  */
 export const channels = pgTable(
   "channel",
@@ -25,6 +27,12 @@ export const channels = pgTable(
 
     eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+
+    // The event an assistant chat was opened from, kept in view for the whole
+    // chat. Separate from event_id, which means "this channel IS that event's
+    // thread": that one is forbidden on an ai channel and cascades on delete,
+    // which would take the chat with the event.
+    seedEventId: uuid("seed_event_id").references(() => events.id, { onDelete: "set null" }),
 
     kind: text("kind").$type<ChannelKind>().notNull(),
     name: text("name"),
@@ -69,6 +77,13 @@ export const channels = pgTable(
       sql`${table.kind} = 'dm' OR (${table.name} IS NOT NULL AND length(trim(${table.name})) > 0)`,
     ),
 
-    check("channel_uuid_shape_check", uuidShape(table.id, table.eventId, table.teamId)),
+    check(
+      "channel_seed_only_on_ai_check",
+      sql`${table.seedEventId} IS NULL OR ${table.kind} = 'ai'`,
+    ),
+    check(
+      "channel_uuid_shape_check",
+      uuidShape(table.id, table.eventId, table.teamId, table.seedEventId),
+    ),
   ],
 );

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   AI_MAX_PROPOSALS,
   aiApplyRequestSchema,
+  aiChatMessageSchema,
   aiHandleSchema,
+  aiMessageRequestSchema,
   aiProposalSchema,
   aiRefSchema,
+  aiRenameChatSchema,
   aiResolvedProposalSchema,
   aiThreadSummarySchema,
 } from "./ai.js";
@@ -210,5 +213,50 @@ describe("aiThreadSummarySchema", () => {
       actionItems: [{ text: "Chase catering", suggestedAssigneeName: null }],
     });
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe("chat schemas", () => {
+  const uuid = "0192f1a0-0000-7000-8000-000000000001";
+
+  it("accepts a message for an existing chat, a new chat, an event seed and a briefing seed", () => {
+    for (const body of [
+      { text: "hi" },
+      { text: "hi", chatId: uuid },
+      { text: "hi", seed: { eventId: uuid } },
+      { text: "hi", seed: { briefing: true } },
+    ]) {
+      expect(aiMessageRequestSchema.safeParse(body).success).toBe(true);
+    }
+  });
+
+  it("rejects a chat id that is not a uuid, and a seed that is neither kind", () => {
+    expect(aiMessageRequestSchema.safeParse({ text: "hi", chatId: "T1" }).success).toBe(false);
+    expect(
+      aiMessageRequestSchema.safeParse({ text: "hi", seed: { briefing: false } }).success,
+    ).toBe(false);
+  });
+
+  it("trims a rename and refuses blank or over-long titles", () => {
+    expect(aiRenameChatSchema.parse({ title: "  Hack plan  " })).toEqual({ title: "Hack plan" });
+    expect(aiRenameChatSchema.safeParse({ title: "   " }).success).toBe(false);
+    expect(aiRenameChatSchema.safeParse({ title: "x".repeat(81) }).success).toBe(false);
+  });
+
+  it("reads a chat message with its plan and status", () => {
+    const parsed = aiChatMessageSchema.parse({
+      id: uuid,
+      role: "assistant",
+      body: "Here is a plan.",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      runId: uuid,
+      proposal: {
+        createTasks: [{ title: "Book", priority: "medium", dueAt: null, assignees: [] }],
+      },
+      proposalStatus: "open",
+      applied: null,
+    });
+    expect(parsed.createdAt).toBeInstanceOf(Date);
+    expect(parsed.proposalStatus).toBe("open");
   });
 });

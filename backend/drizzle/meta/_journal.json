@@ -78,6 +78,13 @@
       "when": 1790726695228,
       "tag": "0010_perfect_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790777983025,
+      "tag": "0011_cynical_shocker",
+      "breakpoints": true
     }
   ]
 }

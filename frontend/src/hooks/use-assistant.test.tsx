@@ -12,6 +12,7 @@ function respond(status: number, body: unknown) {
 }
 
 const planReply = {
+  chatId: "018f3a4b-0000-7000-8000-0000000000c1",
   runId: RUN_ID,
   reply: "Here is a plan.",
   proposal: {

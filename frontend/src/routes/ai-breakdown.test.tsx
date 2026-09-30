@@ -55,6 +55,7 @@ it("sends a message with the page's event seed and shows the plan it drafts", as
   const fetchMock = stubApi({
     status: 200,
     body: {
+      chatId: "018f3a4b-0000-7000-8000-0000000000c1",
       runId,
       reply: "Here is a plan.",
       proposal: {
@@ -91,7 +92,15 @@ it("shows the assistant thinking while a reply is on its way, then the reply", a
   expect(await screen.findByText("Plan it")).toBeInTheDocument();
   expect(screen.getByRole("status", { name: "MAC Assistant is thinking" })).toBeInTheDocument();
 
-  answer({ status: 200, body: { runId, reply: "All planned.", proposal: null } });
+  answer({
+    status: 200,
+    body: {
+      chatId: "018f3a4b-0000-7000-8000-0000000000c1",
+      runId,
+      reply: "All planned.",
+      proposal: null,
+    },
+  });
 
   expect(await screen.findByText("All planned.")).toBeInTheDocument();
   expect(

@@ -81,6 +81,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.route("**/api/ai/messages", (route) =>
       route.fulfill({
         json: {
+          chatId: "0192f1a0-0000-7000-8000-0000000000c1",
           runId: "0192f1a0-0000-7000-8000-000000000001",
           reply: "Here is a plan for Hack Night.",
           proposal: {

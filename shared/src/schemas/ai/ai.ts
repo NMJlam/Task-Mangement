@@ -153,14 +153,24 @@ export type AiResolvedProposal = z.infer<typeof aiResolvedProposalSchema>;
 
 // ── POST /api/ai/messages ────────────────────────────────────────────────────
 
+/** No `chatId` means "start a chat with this message" (spec M8). */
 export const aiMessageRequestSchema = z.object({
+  chatId: z.uuid().optional(),
   text: z.string().trim().min(1, "Say something").max(4000),
-  /** Optional starting context from whichever surface opened the chat. */
-  seed: z.object({ eventId: z.uuid().optional() }).optional(),
+  /**
+   * Starting context from whichever surface opened the chat: an event's "Plan
+   * with AI" button, or today's briefing. Honoured only when the message starts
+   * a chat — an existing chat already has its own.
+   */
+  seed: z
+    .union([z.object({ eventId: z.uuid() }), z.object({ briefing: z.literal(true) })])
+    .optional(),
 });
 export type AiMessageRequest = z.infer<typeof aiMessageRequestSchema>;
 
 export const aiMessageResponseSchema = z.object({
+  /** The chat the exchange landed in — new, if the request named none. */
+  chatId: z.uuid(),
   runId: z.uuid(),
   reply: z.string(),
   /** Resolved, not raw: the client never sees a handle. */
@@ -292,3 +302,62 @@ export const aiThreadSummaryResponseSchema = z.object({
   asOfMessageId: z.uuid(),
 });
 export type AiThreadSummaryResponse = z.infer<typeof aiThreadSummaryResponseSchema>;
+
+// ── Chats (/api/ai/chats) ────────────────────────────────────────────────────
+
+export const aiRunKindSchema = z.enum(["chat", "briefing", "summary"]);
+export type AiRunKind = z.infer<typeof aiRunKindSchema>;
+
+/** A drafted plan's life: open until the member applies or discards it. */
+export const aiProposalStatusSchema = z.enum(["open", "applied", "discarded"]);
+export type AiProposalStatus = z.infer<typeof aiProposalStatusSchema>;
+
+export const aiChatParamsSchema = z.object({ id: z.uuid() });
+export const aiRunParamsSchema = z.object({ runId: z.uuid() });
+
+export const aiChatSchema = z.object({
+  id: z.uuid(),
+  title: z.string().min(1),
+  /** The event the chat was opened from, if any; kept in view on every turn. */
+  seedEventId: z.uuid().nullable(),
+  lastMessageAt: z.coerce.date(),
+  createdAt: z.coerce.date(),
+});
+export type AiChat = z.infer<typeof aiChatSchema>;
+
+export const aiChatListResponseSchema = z.object({ chats: z.array(aiChatSchema) });
+export type AiChatListResponse = z.infer<typeof aiChatListResponseSchema>;
+
+export const aiChatResponseSchema = z.object({ chat: aiChatSchema });
+
+export const aiChatTitleSchema = z.string().trim().min(1, "Title is required").max(80);
+export const aiRenameChatSchema = z.object({ title: aiChatTitleSchema });
+export type AiRenameChat = z.infer<typeof aiRenameChatSchema>;
+
+/** What an applied plan made, read back from `ai_run_id` provenance. */
+export const aiAppliedSchema = z.object({
+  events: z.array(z.object({ id: z.uuid(), title: z.string() })),
+  tasks: z.array(z.object({ id: z.uuid(), title: z.string(), eventId: z.uuid().nullable() })),
+});
+export type AiApplied = z.infer<typeof aiAppliedSchema>;
+
+export const aiChatMessageSchema = z.object({
+  id: z.uuid(),
+  role: z.enum(["member", "assistant"]),
+  body: z.string(),
+  createdAt: z.coerce.date(),
+  /** Assistant replies only. */
+  runId: z.uuid().nullable(),
+  /** The plan that reply drafted, with where it stands. */
+  proposal: aiResolvedProposalSchema.nullable(),
+  proposalStatus: aiProposalStatusSchema.nullable(),
+  /** Set once the plan is applied. */
+  applied: aiAppliedSchema.nullable(),
+});
+export type AiChatMessage = z.infer<typeof aiChatMessageSchema>;
+
+export const aiChatMessagesResponseSchema = z.object({
+  chat: aiChatSchema,
+  messages: z.array(aiChatMessageSchema),
+});
+export type AiChatMessagesResponse = z.infer<typeof aiChatMessagesResponseSchema>;
