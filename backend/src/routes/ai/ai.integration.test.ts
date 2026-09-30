@@ -7,6 +7,7 @@ import { CLUB_TIMEZONE } from "../../config/club.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
 import {
+  aiRuns,
   appUsers,
   channels,
   chanMembers,
@@ -292,6 +293,157 @@ describe("/api/ai", () => {
       expect(second.status).toBe(429);
       expect(second.body.error.code).toBe("AI_QUOTA_EXCEEDED");
       expect(prompts).toHaveLength(1);
+    });
+  });
+
+  describe("POST /api/ai/proposals/apply", () => {
+    /** A real run for the caller to apply against — the card always comes from one. */
+    async function runFor(actor: { authUserId: string }): Promise<string> {
+      signedInAs(actor);
+      script(reply());
+      const response = await request(app).post("/api/ai/messages").send({ text: "Plan it" });
+      prompts = [];
+      return response.body.runId as string;
+    }
+
+    const newTask = (title: string, extra: Record<string, unknown> = {}) => ({
+      op: "create",
+      entity: "task",
+      data: { title, priority: "medium", assigneeIds: [], ...extra },
+    });
+    const stats = { proposed: 8, kept: 7, edited: 1 };
+
+    it("creates a staged event and its tasks, every row stamped with the run", async () => {
+      const director = await member("planner", "director");
+      const runId = await runFor(director);
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({
+          runId,
+          stats,
+          operations: [
+            ...Array.from({ length: 7 }, (_, index) =>
+              newTask(`test-ai-step-${index}`, { eventRef: "$event1" }),
+            ),
+            {
+              op: "create",
+              entity: "event",
+              ref: "$event1",
+              data: { title: "test-ai-applied", startsAt: "2026-12-01T09:00:00.000Z" },
+            },
+          ],
+        });
+
+      expect(response.status).toBe(201);
+      const [event] = await db.select().from(events).where(eq(events.title, "test-ai-applied"));
+      expect(event).toMatchObject({ aiRunId: runId, owner: director.id });
+      const created = await db.select().from(tasks).where(eq(tasks.eventId, event!.id));
+      expect(created).toHaveLength(7);
+      expect(created.every((task) => task.aiRunId === runId)).toBe(true);
+      expect(response.body.events).toEqual([{ id: event!.id, title: "test-ai-applied" }]);
+      expect(response.body.tasks).toHaveLength(7);
+    });
+
+    it("refuses a tier-0 member an event create and writes nothing", async () => {
+      const runId = await runFor(await member("hopeful", "officer"));
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({
+          runId,
+          stats,
+          operations: [
+            newTask("test-ai-hopeful-task"),
+            {
+              op: "create",
+              entity: "event",
+              ref: "$event1",
+              data: { title: "test-ai-not-allowed", startsAt: "2026-12-01T09:00:00.000Z" },
+            },
+          ],
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe("FORBIDDEN");
+      expect(await db.select().from(events).where(eq(events.title, "test-ai-not-allowed"))).toEqual(
+        [],
+      );
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-hopeful-task"))).toEqual(
+        [],
+      );
+    });
+
+    it("lets a tier-0 member create one task, as POST /api/tasks does", async () => {
+      const officer = await member("single", "officer");
+      const runId = await runFor(officer);
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-just-one")] });
+
+      expect(response.status).toBe(201);
+      const [task] = await db.select().from(tasks).where(eq(tasks.title, "test-ai-just-one"));
+      expect(task).toMatchObject({ creator: officer.id, aiRunId: runId });
+    });
+
+    it("refuses a tier-0 member two task creates, as POST /api/tasks/bulk does", async () => {
+      const runId = await runFor(await member("greedy", "officer"));
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({
+          runId,
+          stats,
+          operations: [newTask("test-ai-first"), newTask("test-ai-second")],
+        });
+
+      expect(response.status).toBe(403);
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-first"))).toEqual([]);
+    });
+
+    it("rolls the whole batch back when one operation names a task that does not exist", async () => {
+      const runId = await runFor(await member("unlucky", "director"));
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({
+          runId,
+          stats,
+          operations: [
+            newTask("test-ai-should-vanish"),
+            { op: "update", entity: "task", id: newId(), data: { priority: "high" } },
+          ],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("TASK_NOT_FOUND");
+      expect(await db.select().from(tasks).where(eq(tasks.title, "test-ai-should-vanish"))).toEqual(
+        [],
+      );
+    });
+
+    it("records how much of the card the member kept on the run", async () => {
+      const runId = await runFor(await member("scorer", "officer"));
+
+      await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-kept")] });
+
+      const [run] = await db.select().from(aiRuns).where(eq(aiRuns.id, runId));
+      expect(run).toMatchObject({ proposedCount: 8, keptCount: 7, editedCount: 1 });
+    });
+
+    it("404s a run that belongs to someone else, so nobody scores another's card", async () => {
+      const runId = await runFor(await member("author", "officer"));
+      signedInAs(await member("stranger", "director"));
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({ runId, stats, operations: [newTask("test-ai-borrowed")] });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("RUN_NOT_FOUND");
     });
   });
 

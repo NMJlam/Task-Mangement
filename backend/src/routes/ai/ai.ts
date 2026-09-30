@@ -1,7 +1,10 @@
 import {
+  aiApplyRequestSchema,
+  aiApplyResponseSchema,
   aiMessageRequestSchema,
   aiMessageResponseSchema,
   aiProposalSchema,
+  type AiApplyRequest,
   type AiMessageRequest,
   type AiProposal,
   type Tier,
@@ -16,8 +19,9 @@ import { newId } from "../../db/id.js";
 import { events, messages } from "../../db/schema/index.js";
 import { AiDisabledError, AiQuotaError, geminiComplete } from "../../lib/ai/client.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
-import { visibleEvents, type Queryable } from "../events/service.js";
+import { ValidationError, visibleEvents, type Queryable } from "../events/service.js";
 import { ChannelForbiddenError } from "../threads/service.js";
+import { applyProposal, ApplyError } from "./apply.js";
 import { HandleMap } from "./handles.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { resolveProposal } from "./resolve.js";
@@ -99,6 +103,16 @@ function sendAiError(res: Response, error: unknown): boolean {
     res.status(429).json({ error: { code: "AI_QUOTA_EXCEEDED", message: error.message } });
   } else if (error instanceof AiOutputError) {
     res.status(422).json({ error: { code: "AI_OUTPUT_INVALID", message: error.message } });
+  } else if (error instanceof ApplyError) {
+    res.status(error.status).json({ error: { code: error.code, message: error.message } });
+  } else if (error instanceof ValidationError) {
+    res.status(422).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+        fields: error.fields,
+      },
+    });
   } else {
     return false;
   }
@@ -185,6 +199,25 @@ aiRouter.post(
       });
 
       res.status(200).json(aiMessageResponseSchema.parse({ runId, reply: replyText, proposal }));
+    } catch (error) {
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
+
+// ── POST /api/ai/proposals/apply ─────────────────────────────────────────────
+
+aiRouter.post(
+  "/ai/proposals/apply",
+  authenticate,
+  authorise(0),
+  validate(aiApplyRequestSchema),
+  async (req, res, next) => {
+    try {
+      if (!aiConfig().enabled) throw new AiDisabledError();
+      const body = res.locals.validated as AiApplyRequest;
+      const applied = await getDb().transaction((tx) => applyProposal(tx, req.user!, body));
+      res.status(201).json(aiApplyResponseSchema.parse(applied));
     } catch (error) {
       if (!sendAiError(res, error)) next(error);
     }
