@@ -578,15 +578,20 @@ message is a different thing — that's `parentId`, below.
 
 Who sees a thread depends on its `kind`:
 
-| Kind          | Opened by                 | You see it when                                                     |
-| ------------- | ------------------------- | ------------------------------------------------------------------- |
-| `team`        | `POST /api/teams`         | its `minTier` ≤ yours                                               |
-| `event`       | `POST /api/events`        | its `minTier` ≤ yours **and** you can see the event (not cancelled) |
-| `group`, `dm` | `POST /api/threads`       | you're a member                                                     |
-| `ai`          | the assistant (not built) | you're a member                                                     |
+| Kind          | Opened by           | You see it when                                                     |
+| ------------- | ------------------- | ------------------------------------------------------------------- |
+| `team`        | `POST /api/teams`   | its `minTier` ≤ yours                                               |
+| `event`       | `POST /api/events`  | its `minTier` ≤ yours **and** you can see the event (not cancelled) |
+| `group`, `dm` | `POST /api/threads` | you're a member                                                     |
+| `ai`          | the assistant       | never — see below                                                   |
 
 A thread you can't see is `404 THREAD_NOT_FOUND` on every route below — never
 `403`, which would confirm it exists.
+
+**`ai` channels are never served here**, not even to their owner: they are
+missing from the list, and reading, posting to or marking one read is `404
+THREAD_NOT_FOUND`. They are assistant chats, read and written only through
+[`/api/ai/chats`](#chats-apiaichats).
 
 A thread object:
 
@@ -606,7 +611,7 @@ A thread object:
 }
 ```
 
-- **`memberIds` is only filled on `group`, `dm` and `ai` threads.** It is always
+- **`memberIds` is only filled on `group` and `dm` threads.** It is always
   `[]` on `team` and `event` threads, because `minTier` decides who is in them.
 - **`unreadCount` counts messages after your `lastReadAt`, never your own.** On a
   team or event thread you've never marked read, `lastReadAt` is `null` and every
@@ -683,7 +688,7 @@ that isn't itself a reply, or it's a `422` on field `parentId`.
 job, not this route's; the API takes whatever text the client sends and looks
 for the pattern itself. Anyone tokened in who can also see this thread gets a
 `mention` notification; anyone tokened in who cannot (wrong tier, not a member
-of a `group`/`dm`/`ai` channel, or not a real user at all) is silently
+of a `group`/`dm` channel, or not a real user at all) is silently
 dropped — no error, no partial-failure response, since a mention notifying
 someone into a thread they cannot open would itself be the access leak.
 Mentioning yourself never notifies. The same rule applies to
@@ -815,18 +820,28 @@ budget context. A second or out-of-order decision is
 
 ## AI
 
-Every endpoint here returns `503 AI_DISABLED` unless `AI_ENABLED=1` and
-`GEMINI_API_KEY` are both set, which is **off by default**. Request and response
-shapes are the zod schemas in `shared/src/schemas/ai/ai.ts` — those are the
-source of truth, and this page follows them. Design and the full tool inventory:
-[`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md).
+Every endpoint that calls the model, or writes work, returns `503 AI_DISABLED`
+unless `AI_ENABLED=1` and `GEMINI_API_KEY` are both set, which is **off by
+default**. The chat endpoints and discard (marked ‡) call neither, so they answer
+either way: a member can still read, rename and delete their chats on a
+deployment with the assistant switched off. Request and response shapes are the
+zod schemas in `shared/src/schemas/ai/ai.ts` — those are the source of truth,
+and this page follows them. Design and the full tool inventory:
+[`superpowers/specs/2026-09-23-ai-assistant-design.md`](superpowers/specs/2026-09-23-ai-assistant-design.md),
+with chats as amended by
+[`superpowers/specs/2026-09-30-ai-multi-chat-design.md`](superpowers/specs/2026-09-30-ai-multi-chat-design.md).
 
-| Endpoint                           | Who      | Input                                     | Success                                                    |
-| ---------------------------------- | -------- | ----------------------------------------- | ---------------------------------------------------------- |
-| `POST /api/ai/messages`            | tier 0   | `{ "text": "…", "seed"?: { "eventId" } }` | `200 { runId, reply, proposal }`                           |
-| `POST /api/ai/proposals/apply`     | tier 0 † | `{ runId, operations, stats }`            | `201 { events: [{ id, title }], tasks: [{ id, title }] }`  |
-| `POST /api/ai/threads/:id/summary` | tier 0   | —                                         | `200 { summary: { summary, actionItems }, asOfMessageId }` |
-| `GET /api/ai/briefing`             | tier 0   | —                                         | `200 { briefing: { summary, bullets }, generatedAt }`      |
+| Endpoint                                | Who      | Input                                 | Success                                                    |
+| --------------------------------------- | -------- | ------------------------------------- | ---------------------------------------------------------- |
+| `POST /api/ai/messages`                 | tier 0   | `{ "chatId"?, "text": "…", "seed"? }` | `200 { chatId, runId, reply, proposal }`                   |
+| `POST /api/ai/proposals/apply`          | tier 0 † | `{ runId, operations, stats }`        | `201 { events: [{ id, title }], tasks: [{ id, title }] }`  |
+| `POST /api/ai/proposals/:runId/discard` | tier 0 ‡ | —                                     | `204`                                                      |
+| `GET /api/ai/chats`                     | tier 0 ‡ | —                                     | `200 { chats: AiChat[] }`                                  |
+| `GET /api/ai/chats/:id/messages`        | tier 0 ‡ | —                                     | `200 { chat: AiChat, messages: AiChatMessage[] }`          |
+| `PATCH /api/ai/chats/:id`               | tier 0 ‡ | `{ "title": "…" }` (1–80 characters)  | `200 { chat: AiChat }`                                     |
+| `DELETE /api/ai/chats/:id`              | tier 0 ‡ | —                                     | `204`                                                      |
+| `POST /api/ai/threads/:id/summary`      | tier 0   | —                                     | `200 { summary: { summary, actionItems }, asOfMessageId }` |
+| `GET /api/ai/briefing`                  | tier 0   | —                                     | `200 { briefing: { summary, bullets }, generatedAt }`      |
 
 † Tier 0 gets you in the door. **Each operation inside `operations` is gated
 separately**, against the same check its equivalent route uses:
@@ -843,9 +858,19 @@ separately**, against the same check its equivalent route uses:
 ### `POST /api/ai/messages`
 
 Runs the model through up to eight tool steps as the caller, then answers. The
-member's message and the reply are both appended to the caller's `ai` channel —
-created on first use, named `"Assistant"` — the reply stamped with `ai_run_id`.
-**This call writes no tasks and no events.**
+member's message and the reply are both appended to the chat — the reply stamped
+with `ai_run_id` — and `chatId` says which chat that was. **This call writes no
+tasks and no events.**
+
+- **Without `chatId` it starts a chat**, but only once the turn succeeds: the
+  chat, its title (the first message, cut to 60 characters) and both messages
+  are written together, so a first message that fails leaves nothing behind.
+- **With `chatId` it continues one** of the caller's own chats; any other id is
+  `404 CHAT_NOT_FOUND`, checked before the daily cap is spent.
+- **The assistant remembers the chat.** Its newest 40 messages, trimmed from the
+  oldest end to 6,000 characters, go to the model ahead of the new one. Only
+  words travel: the short handles a previous turn's tools issued (`T1`, `E2`)
+  are not carried over, so the model re-reads anything it needs to act on.
 
 `proposal` is `null` when the turn staged nothing. Otherwise it is the
 **resolved** card (`aiResolvedProposalSchema`): every handle the model used has
@@ -855,10 +880,23 @@ already become an id, a task's `dueOffsetDays` has become an absolute `dueAt`
 `diffs` list of `{ field, before, after }` — plus `assigneeIds` when it moves
 assignees. Handles never reach the client.
 
-`seed` is optional starting context from whichever surface opened the chat —
-`{ "eventId": "<uuid>" }` from an event's "Plan with AI" button, for instance.
-It only pre-loads what the assistant reads first; it grants no access the caller
-does not already have, and a seed naming something they cannot see is ignored.
+`seed` is optional starting context from whichever surface opened the chat, and
+is honoured only when the message starts one:
+
+- `{ "eventId": "<uuid>" }` from an event's "Plan with AI" button. The chat
+  keeps it as `seedEventId`, and every later turn in that chat pre-loads the
+  event again.
+- `{ "briefing": true }` from today's briefing. The new chat opens with the
+  briefing as its first message, so "what should I do first?" has something to
+  refer to.
+
+A seed only pre-loads what the assistant reads first; it grants no access the
+caller does not already have, and a seed naming something they cannot see is
+ignored.
+
+`proposal` is also kept on the run that drafted it, with a status — `open`,
+then `applied` or `discarded` — so a plan survives a reload and shows where it
+stands when the chat is read back.
 
 ### `POST /api/ai/proposals/apply`
 
@@ -895,9 +933,59 @@ The payload is the card **as the member edited it**:
 | 403    | `FORBIDDEN`                              | an operation's gate (table above) refuses the caller         |
 | 404    | `RUN_NOT_FOUND`                          | `runId` is not a run the caller made                         |
 | 404    | `TASK_NOT_FOUND` / `EVENT_NOT_FOUND`     | an update names a row that does not exist                    |
+| 409    | `PROPOSAL_CLOSED`                        | the run has no open plan — already applied or discarded      |
 | 409    | `INVALID_TRANSITION` / `WRAP_BLOCKED`    | an event status change the status route would refuse         |
 | 422    | `EVENT_NOT_FOUND` / `ASSIGNEE_NOT_FOUND` | a task names an event the caller cannot see, or a non-member |
 | 422    | `VALIDATION_ERROR`                       | an event would end before it starts                          |
+
+A plan applies **once**. The first apply claims it (`open` → `applied`) in the
+same transaction that writes the work, so two clicks, two tabs or a retry after
+a lost response get exactly one set of rows; the loser is `409
+PROPOSAL_CLOSED`. A refusal rolls the claim back with everything else, leaving
+the plan open to edit and try again.
+
+### `POST /api/ai/proposals/:runId/discard`
+
+Marks the run's open plan `discarded` and returns `204`. Writes no work. `404
+RUN_NOT_FOUND` for someone else's run, `409 PROPOSAL_CLOSED` for a plan that is
+already applied or discarded.
+
+### Chats: `/api/ai/chats`
+
+A chat is a channel of kind `ai` whose only member is its owner. **Only the
+owner ever sees it**: another member's chat id is `404 CHAT_NOT_FOUND`, never
+`403`, and the threads API (`/api/threads`) never serves an `ai` channel — not
+in a list, not by id, not to post in — so assistant chats do not appear in
+Messages.
+
+```ts
+type AiChat = {
+  id: string;
+  title: string;
+  seedEventId: string | null; // the event it was opened from, if any
+  lastMessageAt: string; // the list is newest first by this
+  createdAt: string;
+};
+
+type AiChatMessage = {
+  id: string;
+  role: "member" | "assistant";
+  body: string;
+  createdAt: string;
+  runId: string | null; // assistant replies only
+  proposal: AiResolvedProposal | null; // the plan that reply drafted
+  proposalStatus: "open" | "applied" | "discarded" | null;
+  applied: {
+    // what an applied plan made, read back from ai_run_id
+    events: { id: string; title: string }[];
+    tasks: { id: string; title: string; eventId: string | null }[];
+  } | null;
+};
+```
+
+`applied` lists only the rows the caller can still see. `DELETE` removes the
+chat and its messages; the work its plans created stays, and so do its runs —
+they still count towards the daily cap.
 
 ### `POST /api/ai/threads/:id/summary`
 
@@ -912,8 +1000,10 @@ the quota.
 
 Today's briefing for the caller, one per club day: generated from what their
 dashboard already shows, read through the assistant's own tools (so it sees only
-what they can), then stored as a message in their `ai` channel and re-served
-from there. A page refresh is not a model call.
+what they can), then stored on its own `ai_run` (`kind: "briefing"`) — in no
+chat — and re-served from there. A page refresh is not a model call, and a
+second visit reports the same `generatedAt`. Asking about it starts a chat (the
+`{ "briefing": true }` seed above).
 
 ### Things worth knowing before you test
 

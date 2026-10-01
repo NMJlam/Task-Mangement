@@ -4,6 +4,7 @@
 **Branch:** `gkur0003/ai-assistant` (not yet cut)
 **Status:** approved, not yet implemented
 **Implementation plan:** [`../plans/2026-09-23-ai-assistant.md`](../plans/2026-09-23-ai-assistant.md)
+**Superseded in part by:** [2026-09-30-ai-multi-chat-design.md](2026-09-30-ai-multi-chat-design.md) (§9 there lists what changed).
 
 ---
 
