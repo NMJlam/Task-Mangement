@@ -138,18 +138,26 @@ export function useAiChat(chatId: string | undefined, options: Options = {}) {
           return false;
         }
         const body = aiMessageResponseSchema.parse(await response.json());
-        const reply: AiChatMessage = {
-          ...localMessage("assistant", body.reply),
-          runId: body.runId,
-          proposal: body.proposal,
-          proposalStatus: body.proposal ? "open" : null,
-        };
-        loadedFor.current = body.chatId;
-        setState((current) =>
-          current.status === "ok"
-            ? { ...current, messages: [...current.messages, reply] }
-            : current,
-        );
+        const seed = latest.current.seed;
+        if (!chatId && seed && "briefing" in seed) {
+          // A chat started from the briefing opens with it, and that first
+          // message was written on the server — so this one chat is read back
+          // rather than pieced together from what this browser saw.
+          await load(body.chatId);
+        } else {
+          const reply: AiChatMessage = {
+            ...localMessage("assistant", body.reply),
+            runId: body.runId,
+            proposal: body.proposal,
+            proposalStatus: body.proposal ? "open" : null,
+          };
+          loadedFor.current = body.chatId;
+          setState((current) =>
+            current.status === "ok"
+              ? { ...current, messages: [...current.messages, reply] }
+              : current,
+          );
+        }
         if (!chatId) latest.current.onChatCreated?.(body.chatId);
         latest.current.onChanged?.();
         return true;
@@ -161,7 +169,7 @@ export function useAiChat(chatId: string | undefined, options: Options = {}) {
         setWaiting(undefined);
       }
     },
-    [chatId],
+    [chatId, load],
   );
 
   /** Apply and discard both change a plan's status; the chat is re-read to show it. */

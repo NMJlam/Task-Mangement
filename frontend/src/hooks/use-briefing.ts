@@ -1,20 +1,27 @@
 import { aiBriefingResponseSchema, type AiBriefing } from "@ctp/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { readAiError } from "@/lib/ai-errors";
 
-/** `disabled` is `AI_DISABLED`: the deployment has no assistant, which the dashboard shows by showing nothing. */
-type BriefingState =
+/**
+ * `disabled` is `AI_DISABLED`: the deployment has no assistant, and the
+ * briefing is not shown anywhere. Every other failure — a busy provider
+ * included — is an `error` the member can retry.
+ */
+export type BriefingState =
   | { status: "loading" }
   | { status: "ok"; briefing: AiBriefing; generatedAt: Date }
   | { status: "error"; message: string }
   | { status: "disabled" };
 
 /**
- * ViewModel for the dashboard's daily briefing. The server makes at most one a
- * club day and re-serves it after that, so reading on every mount is cheap.
+ * ViewModel for the member's daily briefing, shared by the Overview card and
+ * the briefing in AI Breakdown so the two never disagree. The server makes at
+ * most one a club day and re-serves it after that, so reading on every mount —
+ * and on every retry — is cheap.
  */
-export function useBriefing(): BriefingState {
+export function useBriefing() {
   const [state, setState] = useState<BriefingState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -55,7 +62,12 @@ export function useBriefing(): BriefingState {
     return () => {
       active = false;
     };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setState({ status: "loading" });
+    setAttempt((count) => count + 1);
   }, []);
 
-  return state;
+  return { state, retry };
 }
