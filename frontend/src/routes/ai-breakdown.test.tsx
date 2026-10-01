@@ -190,6 +190,45 @@ it("starts a chat with the first message and moves to it", async () => {
   expect(requests(fetchMock, "GET", `/api/ai/chats/${NEW_CHAT}/messages`)).toHaveLength(0);
 });
 
+it("keeps a follow-up typed while the first reply is on its way", async () => {
+  let answer!: (value: Answer) => void;
+  stubApi({
+    // The new chat is listed from the start, so the list can show when the
+    // page has moved to it — the router's own state moves ahead of the render.
+    chats: [chat(CHAT_A, "Hack night plan"), chat(NEW_CHAT, "Plan a poker night")],
+    send: new Promise<Answer>((resolve) => (answer = resolve)),
+  });
+  const { router, user } = renderAt("/ai");
+  await chatLink("Hack night plan");
+
+  await user.type(composer(), "Plan a poker night");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  await screen.findByRole("status", { name: "MAC Assistant is thinking" });
+  await user.type(composer(), "And a budget?");
+  answer({
+    status: 200,
+    body: { chatId: NEW_CHAT, runId: RUN_ID, reply: "Here is a plan.", proposal: null },
+  });
+
+  // Saving the chat moves the address, but it is the same conversation.
+  await waitFor(() => expect(router.state.location.pathname).toBe(`/ai/${NEW_CHAT}`));
+  const created = screen.getByRole("link", { name: /Plan a poker night/u });
+  await waitFor(() => expect(created).toHaveAttribute("aria-current", "page"));
+  expect(screen.getByText("Here is a plan.")).toBeInTheDocument();
+  expect(composer()).toHaveValue("And a budget?");
+});
+
+it("does not carry a half-typed message into another chat", async () => {
+  stubApi({ conversations: { [CHAT_A]: [message("assistant", "All planned.")] } });
+  const { user } = renderAt("/ai");
+
+  await user.type(composer(), "Half a thought");
+  await user.click(await chatLink("Hack night plan"));
+
+  expect(await screen.findByText("All planned.")).toBeInTheDocument();
+  expect(composer()).toHaveValue("");
+});
+
 it("carries the event from the address into a new chat", async () => {
   const fetchMock = stubApi({
     send: {

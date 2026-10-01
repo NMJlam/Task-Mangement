@@ -30,8 +30,8 @@ export function ChatThread({
   headerActions,
   children,
 }: {
-  /** Changes when a different chat is opened, so a half-typed message never follows the member across. */
-  chatKey: string | undefined;
+  /** Changes when a different conversation is opened, so a half-typed message never follows the member across. */
+  chatKey: number;
   title: string;
   seedEventId: string | null;
   messages: AiChatMessage[];

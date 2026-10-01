@@ -126,7 +126,7 @@ export function AiBreakdownPage({ view }: { view?: "briefing" }) {
           />
         ) : (
           <ChatThread
-            chatKey={chatId}
+            chatKey={chat.conversation}
             title={open?.title ?? "New chat"}
             seedEventId={open?.seedEventId ?? null}
             messages={chat.state.status === "ok" ? chat.state.messages : []}
