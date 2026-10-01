@@ -145,6 +145,15 @@ const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
+  // Static before dynamic, so "briefing" is never read as a chat id.
+  {
+    path: "/ai/briefing",
+    element: (
+      <RequireAuth>
+        <AiBreakdownPage view="briefing" />
+      </RequireAuth>
+    ),
+  },
   {
     path: "/ai/:chatId",
     element: (

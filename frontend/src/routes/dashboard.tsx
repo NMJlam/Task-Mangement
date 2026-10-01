@@ -184,6 +184,10 @@ export function DashboardPage() {
         }
       />
 
+      {/* The briefing leads the page (spec M13) and loads on its own, so it is
+          outside the dashboard's skeleton: it shows the moment it is ready. */}
+      <BriefingCard className="mt-6" />
+
       {loading ? (
         <DashboardSkeleton />
       ) : (
@@ -309,7 +313,6 @@ export function DashboardPage() {
               aria-label="Overview details"
               className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"
             >
-              <BriefingCard />
               <Card className="gap-0 py-0 shadow-none">
                 <SectionHeading title="Today" to="/calendar" action="Calendar" compact />
                 <CardContent className="px-5 pb-5">

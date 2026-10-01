@@ -150,6 +150,27 @@ it("marks an overdue task in words as well as in colour", async () => {
   expect(within(stats).getByText("1 overdue")).toBeInTheDocument();
 });
 
+it("leads the page with today's briefing, above the statistics", async () => {
+  stubFetch({
+    briefing: {
+      briefing: { summary: "A quiet day.", bullets: ["Book the room"] },
+      generatedAt: "2026-10-14T22:30:00.000Z",
+    },
+  });
+
+  renderPage();
+
+  const heading = await screen.findByRole("heading", { name: "Your Briefing" });
+  expect(await screen.findByText("A quiet day.")).toBeInTheDocument();
+  // The briefing loads on its own, so it can be ready before the rest of the page.
+  const stats = await screen.findByRole("region", { name: "Overview statistics" });
+  // DOCUMENT_POSITION_FOLLOWING: the statistics come after the briefing.
+  expect(heading.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // It is no longer one of the right-rail cards.
+  const rail = screen.getByRole("complementary", { name: "Overview details" });
+  expect(within(rail).queryByRole("heading", { name: "Your Briefing" })).toBeNull();
+});
+
 /**
  * The notification feed is owned by the shell and consumed through context, so
  * a page that reads it has to be mounted under a provider — the same wiring
@@ -189,6 +210,7 @@ function stubFetch(
     notifications: unknown;
     members: unknown;
     me: unknown;
+    briefing: unknown;
   }>,
 ) {
   // One task body answers both reads unless a test says otherwise; the
@@ -209,14 +231,16 @@ function stubFetch(
       return resolve(stubs.notifications ?? { notifications: [], unreadCount: 0 });
     }
     if (url === "/api/members") return resolve(stubs.members ?? { members: [] });
-    // The assistant is off here, so the briefing card renders nothing and every
-    // other assertion reads the dashboard exactly as it was.
+    // Unless a test says otherwise the assistant is off here, so the briefing
+    // card renders nothing and every other assertion reads the dashboard as it was.
     if (url === "/api/ai/briefing") {
-      return resolve({
-        ok: false,
-        status: 503,
-        json: async () => ({ error: { code: "AI_DISABLED" } }),
-      });
+      return resolve(
+        stubs.briefing ?? {
+          ok: false,
+          status: 503,
+          json: async () => ({ error: { code: "AI_DISABLED" } }),
+        },
+      );
     }
     throw new Error(`Unexpected request: ${url}`);
   });
