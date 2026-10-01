@@ -41,11 +41,15 @@ export function ChatList({
   const [title, setTitle] = useState("");
   const [removing, setRemoving] = useState<AiChat>();
   const titleInput = useRef<HTMLInputElement>(null);
+  const renameButtons = useRef(new Map<string, HTMLButtonElement>());
 
   // Focus the field when a rename starts — what a member expects after
   // pressing Rename, and what lets Escape and Enter work without a click.
   useEffect(() => {
-    if (renaming) titleInput.current?.select();
+    if (!renaming) return;
+    // select() alone does not necessarily move focus.
+    titleInput.current?.focus();
+    titleInput.current?.select();
   }, [renaming]);
 
   function commit(chat: AiChat) {
@@ -82,8 +86,15 @@ export function ChatList({
                 onChange={(event) => setTitle(event.target.value)}
                 onBlur={() => setRenaming(undefined)}
                 onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== "Escape") return;
+                  // Or this same Enter press would go on to click the Rename
+                  // button focused below, and reopen the field.
+                  event.preventDefault();
                   if (event.key === "Enter") commit(chat);
-                  if (event.key === "Escape") setRenaming(undefined);
+                  else setRenaming(undefined);
+                  // The field is going away; without this, focus would fall
+                  // to the top of the page. Rename is where the member came from.
+                  renameButtons.current.get(chat.id)?.focus();
                 }}
                 className="m-1 h-8 flex-1"
               />
@@ -100,6 +111,10 @@ export function ChatList({
               </Link>
             )}
             <Button
+              ref={(node) => {
+                if (node) renameButtons.current.set(chat.id, node);
+                else renameButtons.current.delete(chat.id);
+              }}
               variant="ghost"
               size="icon-xs"
               aria-label={`Rename ${chat.title}`}

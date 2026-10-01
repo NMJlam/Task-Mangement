@@ -300,6 +300,23 @@ it("renames a chat in place, and cancels on Escape without asking the server", a
   expect(requests(fetchMock, "PATCH", /\/api\/ai\/chats\//u)).toHaveLength(1);
 });
 
+it("hands focus back to Rename when a rename is saved or cancelled", async () => {
+  stubApi();
+  const { user } = renderAt("/ai");
+  await chatLink("Hack night plan");
+
+  await user.click(screen.getByRole("button", { name: "Rename Hack night plan" }));
+  await user.keyboard("{Escape}");
+
+  // The field goes away; a keyboard user is left where they were, not at the top of the page.
+  expect(screen.getByRole("button", { name: "Rename Hack night plan" })).toHaveFocus();
+
+  await user.keyboard("{Enter}");
+  await user.keyboard("Poker night{Enter}");
+
+  expect(await screen.findByRole("button", { name: "Rename Poker night" })).toHaveFocus();
+});
+
 it("deletes the open chat only after confirming, then returns to a blank chat", async () => {
   const fetchMock = stubApi({ conversations: { [CHAT_A]: [message("member", "Plan it")] } });
   const { router, user } = renderAt(`/ai/${CHAT_A}`);
