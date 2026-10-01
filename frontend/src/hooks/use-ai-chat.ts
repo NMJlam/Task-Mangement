@@ -71,6 +71,11 @@ export function useAiChat(chatId: string | undefined, options: Options = {}) {
   // does not re-run the effect below.
   const latest = useRef(options);
   latest.current = options;
+  // Which conversation is on screen. It moves when the member opens another
+  // chat or starts a new one — not when a first message turns the blank chat
+  // into a saved one. That is the same conversation, and a follow-up typed
+  // while its first reply was on the way belongs to it.
+  const [conversation, setConversation] = useState(0);
 
   const load = useCallback(async (id: string) => {
     try {
@@ -95,9 +100,11 @@ export function useAiChat(chatId: string | undefined, options: Options = {}) {
     if (!chatId) {
       loadedFor.current = undefined;
       setState({ status: "blank" });
+      setConversation((current) => current + 1);
       return;
     }
     if (loadedFor.current === chatId) return;
+    setConversation((current) => current + 1);
     setState({ status: "loading" });
     void load(chatId);
   }, [chatId, load]);
@@ -227,6 +234,7 @@ export function useAiChat(chatId: string | undefined, options: Options = {}) {
 
   return {
     state,
+    conversation,
     send,
     apply,
     discard,
