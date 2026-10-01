@@ -9,8 +9,8 @@ import { vi } from "vitest";
 // that click a link or navigate never move. Restore Node's natives (taken here,
 // since jsdom has already replaced the globals) so `new Request(url, { signal })`
 // accepts them as it does on Node 20.
-const NativeAbortController = transferableAbortController().constructor;
-globalThis.AbortController = NativeAbortController as typeof AbortController;
+const NativeAbortController = transferableAbortController().constructor as typeof AbortController;
+globalThis.AbortController = NativeAbortController;
 globalThis.AbortSignal = new NativeAbortController().signal.constructor as typeof AbortSignal;
 
 // jsdom implements neither of these, and `@dnd-kit/dom` builds a ResizeObserver
