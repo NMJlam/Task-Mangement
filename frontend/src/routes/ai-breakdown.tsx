@@ -70,8 +70,12 @@ export function AiBreakdownPage({ view }: { view?: "briefing" }) {
         description="Ask about the club's work, or have the assistant draft a plan for you to check and confirm."
       />
 
-      <div className="mt-8 grid min-h-[36rem] overflow-hidden rounded-xl border bg-card lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col">
+      {/* Stacked on a phone, the chat strip keeps its own height and the open
+          chat takes the rest of the minimum, rather than the two sharing it. */}
+      <div className="mt-8 grid min-h-[36rem] grid-rows-[auto_1fr] overflow-hidden rounded-xl border bg-card lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-none">
+        {/* The column, not the list, carries the divider: the list is only as
+            tall as its chats, and the divider should run the full height. */}
+        <div className="flex min-w-0 flex-col border-b lg:border-r lg:border-b-0">
           <ChatList
             chats={items}
             activeId={onBriefing ? undefined : chatId}
