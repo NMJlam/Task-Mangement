@@ -3,6 +3,7 @@ import {
   messageResponseSchema,
   threadListResponseSchema,
   threadResponseSchema,
+  type CreateThread,
   type Message,
   type Thread,
 } from "@ctp/shared";
@@ -13,6 +14,8 @@ type ThreadsState =
 
 export function useThreads() {
   const [state, setState] = useState<ThreadsState>({ status: "loading" });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string>();
 
   useEffect(() => {
     let active = true;
@@ -55,7 +58,38 @@ export function useThreads() {
     );
   }, []);
 
-  return { state, markRead };
+  /**
+   * Starts a dm or group. A dm that already exists comes back `200`, not
+   * `201`, but either way the thread returned is the one to switch to — the
+   * caller does not need to tell the two apart.
+   */
+  const create = useCallback(async (input: CreateThread) => {
+    setCreating(true);
+    setCreateError(undefined);
+    try {
+      const response = await fetch("/api/threads", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) throw new Error("Failed to start the conversation");
+      const thread = threadResponseSchema.parse(await response.json()).thread;
+      setState((current) =>
+        current.status === "ok" && !current.items.some((item) => item.id === thread.id)
+          ? { ...current, items: [thread, ...current.items] }
+          : current,
+      );
+      return thread;
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "Failed to start the conversation");
+      return undefined;
+    } finally {
+      setCreating(false);
+    }
+  }, []);
+
+  return { state, markRead, create, creating, createError };
 }
 
 type MessagesState =
@@ -63,7 +97,14 @@ type MessagesState =
   | { status: "ok"; items: Message[] }
   | { status: "error"; message: string };
 
-export function useThreadMessages(threadId: string | undefined) {
+/**
+ * `query` is the caller's job to debounce — this hook just refetches
+ * whenever it changes, the same way it already refetches on `threadId`.
+ * Keyword search is server-side (`?q=`), not a client-side filter: the page
+ * only ever holds the one loaded page of messages, and a thread can hold far
+ * more than that.
+ */
+export function useThreadMessages(threadId: string | undefined, query = "") {
   const [state, setState] = useState<MessagesState>({ status: "idle" });
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
@@ -72,7 +113,8 @@ export function useThreadMessages(threadId: string | undefined) {
     if (!threadId) return setState({ status: "idle" });
     let active = true;
     setState({ status: "loading" });
-    fetch(`/api/threads/${threadId}/messages`, { credentials: "include" })
+    const params = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+    fetch(`/api/threads/${threadId}/messages${params}`, { credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load messages");
         return messageListResponseSchema.parse(await response.json()).messages;
@@ -91,7 +133,7 @@ export function useThreadMessages(threadId: string | undefined) {
     return () => {
       active = false;
     };
-  }, [threadId]);
+  }, [threadId, query]);
 
   const send = useCallback(
     async (body: string) => {
