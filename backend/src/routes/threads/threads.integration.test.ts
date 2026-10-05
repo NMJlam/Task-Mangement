@@ -293,6 +293,27 @@ describe("/api/threads (integration)", () => {
       expect(ids(search.body.messages)).toEqual([alpha]);
     });
 
+    it("searches message text case-insensitively, keyword-only", async () => {
+      const officer = await member("officer", "officer");
+      const { thread } = await teamThread("search");
+      signIn(officer);
+      for (const body of ["Book the VENUE", "venue deposit paid", "unrelated note"]) {
+        expect(
+          (await request(app).post(`/api/threads/${thread.id}/messages`).send({ body })).status,
+        ).toBe(201);
+      }
+
+      const response = await request(app).get(`/api/threads/${thread.id}/messages?q=venue`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.messages).toHaveLength(2);
+      expect(
+        (response.body.messages as { body: string }[]).every((message) =>
+          message.body.toLowerCase().includes("venue"),
+        ),
+      ).toBe(true);
+    });
+
     it("404s a thread above your tier, and 422s a cursor from another thread", async () => {
       const officer = await member("officer", "officer");
       const exec = await teamThread("exec", 1);
