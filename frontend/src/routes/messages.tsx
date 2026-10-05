@@ -1,11 +1,14 @@
 import type { Message, RosterMember, Thread } from "@ctp/shared";
 import { splitMentions } from "@ctp/shared";
-import { Hash, MessageCircle, Paperclip, Send } from "lucide-react";
+import { Hash, MessageCircle, Paperclip, Plus, Search, Send, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { MentionTextarea } from "@/components/messages/mention-textarea";
+import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useThreadMessages, useThreads } from "@/hooks/use-threads";
@@ -22,11 +25,28 @@ export function MessagesPage() {
   const members = useMembers();
   const [selectedId, setSelectedId] = useState<string>();
   const [draft, setDraft] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const active = threadItems.find((thread) => thread.id === selectedId) ?? threadItems[0];
-  const messages = useThreadMessages(active?.id);
+  const messages = useThreadMessages(active?.id, searchQuery);
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const markThreadRead = threads.markRead;
+  const selfId = me.status === "ok" ? me.user.id : undefined;
+
+  // Debounced so every keystroke doesn't fire a request — the search is
+  // server-side (the thread can hold far more than one loaded page).
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // A search belongs to the thread it was typed in, same as the draft.
+  useEffect(() => {
+    setSearchInput("");
+    setSearchQuery("");
+  }, [active?.id]);
 
   useEffect(() => {
     if (active) void markThreadRead(active);
@@ -49,7 +69,35 @@ export function MessagesPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-      <PageHeader title="Messages" description="Event threads and committee conversations." />
+      <PageHeader
+        title="Messages"
+        description="Event threads and committee conversations."
+        actions={
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus aria-hidden="true" />
+            New message
+          </Button>
+        }
+      />
+
+      <NewConversationDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        members={memberItems}
+        selfId={selfId}
+        busy={threads.creating}
+        error={threads.createError}
+        onCreateDm={async (memberId) => {
+          const thread = await threads.create({ kind: "dm", memberId });
+          if (thread) setSelectedId(thread.id);
+          return Boolean(thread);
+        }}
+        onCreateGroup={async (name, memberIds) => {
+          const thread = await threads.create({ kind: "group", name, memberIds });
+          if (thread) setSelectedId(thread.id);
+          return Boolean(thread);
+        }}
+      />
 
       {threads.state.status === "loading" && (
         <p className="mt-8 text-sm text-muted-foreground" role="status">
@@ -87,9 +135,7 @@ export function MessagesPage() {
                 ) : (
                   <Hash aria-hidden="true" className="size-4 shrink-0" />
                 )}
-                <span className="truncate">
-                  {threadName(thread, memberItems, me.status === "ok" ? me.user.id : undefined)}
-                </span>
+                <span className="truncate">{threadName(thread, memberItems, selfId)}</span>
                 {thread.unreadCount > 0 && (
                   <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] text-primary-foreground tabular-nums">
                     {thread.unreadCount}
@@ -100,11 +146,44 @@ export function MessagesPage() {
           </nav>
 
           <section aria-labelledby="active-thread-heading" className="flex min-w-0 flex-col">
-            <header className="border-b px-4 py-4 sm:px-6">
-              <h2 id="active-thread-heading" className="font-semibold tracking-tight">
-                {threadName(active, memberItems, me.status === "ok" ? me.user.id : undefined)}
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground capitalize">{active.kind} thread</p>
+            <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-4 sm:px-6">
+              <div className="min-w-0">
+                <h2 id="active-thread-heading" className="font-semibold tracking-tight">
+                  {threadName(active, memberItems, selfId)}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground capitalize">
+                  {active.kind} thread
+                </p>
+              </div>
+              <div className="relative w-full max-w-56">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                />
+                <Label htmlFor="message-search" className="sr-only">
+                  Search this conversation
+                </Label>
+                <Input
+                  id="message-search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search messages"
+                  autoComplete="off"
+                  className="h-9 pl-8"
+                />
+                {searchInput && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setSearchInput("")}
+                    aria-label="Clear search"
+                    className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                )}
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite">
@@ -120,7 +199,9 @@ export function MessagesPage() {
               )}
               {messages.state.status === "ok" && messages.state.items.length === 0 && (
                 <p className="py-12 text-center text-sm text-muted-foreground">
-                  No messages yet. Start the conversation below.
+                  {searchQuery
+                    ? `No messages match "${searchQuery}".`
+                    : "No messages yet. Start the conversation below."}
                 </p>
               )}
               {messages.state.status === "ok" && (
@@ -139,8 +220,7 @@ export function MessagesPage() {
                 </p>
               )}
               <label htmlFor="message" className="sr-only">
-                Message{" "}
-                {threadName(active, memberItems, me.status === "ok" ? me.user.id : undefined)}
+                Message {threadName(active, memberItems, selfId)}
               </label>
               <MentionTextarea
                 id="message"
@@ -153,7 +233,7 @@ export function MessagesPage() {
                 value={draft}
                 onChange={setDraft}
                 candidates={memberItems}
-                selfId={me.status === "ok" ? me.user.id : undefined}
+                selfId={selfId}
               />
               <div className="mt-2 flex justify-end">
                 <Button disabled={messages.sending}>
