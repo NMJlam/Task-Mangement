@@ -8,14 +8,7 @@ const eventId = "018f3a4b-0000-7000-8000-000000000002";
 afterEach(() => vi.unstubAllGlobals());
 
 it("creates an event and opens its detail page", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    status: 201,
-    json: async () => ({
-      event: detail({ startsAt: "2026-10-10T08:00:00.000Z" }),
-    }),
-  });
-  vi.stubGlobal("fetch", fetchMock);
+  const fetchMock = stubApi("director");
 
   renderPage();
 
@@ -34,13 +27,37 @@ it("creates an event and opens its detail page", async () => {
     expect.objectContaining({ method: "POST", credentials: "include" }),
   );
 
-  const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-  expect(JSON.parse(String(init.body))).toMatchObject({
+  expect(postedBody(fetchMock)).toMatchObject({
     title: "Semester Hackathon",
     venue: "Great Hall",
     // Local wall clock on the date typed, as an instant.
     startsAt: new Date(2026, 9, 10, 19, 0).toISOString(),
   });
+});
+
+it("lets only a budget manager allocate, and sends no allocation for anyone else", async () => {
+  const asDirector = stubApi("director");
+  const director = renderPage();
+  const field = screen.getByLabelText("Budget Allocation (AUD)");
+  // The capability arrives with /api/me, so the field starts out locked.
+  expect(field).toBeDisabled();
+  expect(field).toHaveAccessibleDescription(/president or treasurer/i);
+  fillRequired();
+  fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
+  await waitFor(() => expect(screen.getByText("Created Event")).toBeInTheDocument());
+  expect(postedBody(asDirector)).not.toHaveProperty("allocationCents");
+  director.unmount();
+
+  const asTreasurer = stubApi("treasurer");
+  renderPage();
+  await waitFor(() => expect(screen.getByLabelText("Budget Allocation (AUD)")).toBeEnabled());
+  fillRequired();
+  fireEvent.change(screen.getByLabelText("Budget Allocation (AUD)"), {
+    target: { value: "250" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
+  await waitFor(() => expect(screen.getByText("Created Event")).toBeInTheDocument());
+  expect(postedBody(asTreasurer)).toMatchObject({ allocationCents: 25000 });
 });
 
 it("seeds the start date from the calendar's day link, and ignores a date that is not one", async () => {
@@ -60,6 +77,48 @@ it("seeds the start date from the calendar's day link, and ignores a date that i
   renderPage("/events/new?date=2026-02-30");
   expect(screen.getByLabelText("Starts")).toHaveValue("");
 });
+
+/** `/api/me` as `role`; every other call is the create answering 201. */
+function stubApi(role: "director" | "treasurer") {
+  const fetchMock = vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(
+      url === "/api/me"
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              user: {
+                id: "018f3a4b-0000-7000-8000-00000000000f",
+                email: `${role}@example.com`,
+                role,
+                tier: role === "treasurer" ? 2 : 1,
+              },
+            }),
+          }
+        : {
+            ok: true,
+            status: 201,
+            json: async () => ({ event: detail({ startsAt: "2026-10-10T08:00:00.000Z" }) }),
+          },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** The body of the one `POST /api/events` the form sent. */
+function postedBody(fetchMock: ReturnType<typeof vi.fn>): object {
+  const call = fetchMock.mock.calls.find(
+    ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+  );
+  return JSON.parse(String((call as [string, RequestInit])[1].body)) as object;
+}
+
+function fillRequired() {
+  fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Semester Hackathon" } });
+  fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-10-10" } });
+  fireEvent.change(screen.getByLabelText("Start time"), { target: { value: "19:00" } });
+}
 
 function renderPage(initialPath = "/events/new") {
   return render(

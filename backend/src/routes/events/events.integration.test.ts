@@ -8,6 +8,7 @@ import { newId } from "../../db/id.js";
 import {
   aiRuns,
   appUsers,
+  channels,
   events,
   expenses,
   notifications,
@@ -650,6 +651,254 @@ describe("/api/events", () => {
       expect(ids).toContain(straddling.id);
       expect(ids).not.toContain(finished.id);
       expect(ids).not.toContain(point.id);
+    });
+  });
+
+  /**
+   * The writes answer an event above your tier the way the reads do — a 404,
+   * never a 403 or an event body — or the reads' hiding is decoration.
+   */
+  describe("writes to an event above your tier", () => {
+    it("404s an edit, whether it would read the event back or expose it, and changes nothing", async () => {
+      const director = await member("director", "director");
+      const hidden = await seedEvent({ title: "test-event-hidden-edit", minTier: 2 });
+      signedInAs(director);
+
+      const readBack = await request(app).patch(`/api/events/${hidden.id}`).send({ minTier: 2 });
+      const exposed = await request(app).patch(`/api/events/${hidden.id}`).send({ minTier: 1 });
+
+      expect(readBack.status).toBe(404);
+      expect(readBack.body.event).toBeUndefined();
+      expect(exposed.status).toBe(404);
+      const [row] = await db
+        .select({ minTier: events.minTier })
+        .from(events)
+        .where(sql`id = ${hidden.id}`);
+      expect(row?.minTier).toBe(2);
+    });
+
+    it("404s a tier-0 non-owner rather than 403ing, which would confirm the event exists", async () => {
+      const officer = await member("officer", "officer");
+      const hidden = await seedEvent({ title: "test-event-hidden-403", minTier: 1 });
+      signedInAs(officer);
+
+      const response = await request(app)
+        .patch(`/api/events/${hidden.id}`)
+        .send({ title: "test-event-hijack" });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("EVENT_NOT_FOUND");
+    });
+
+    it("404s a status change without describing the event's blockers", async () => {
+      const director = await member("director", "director");
+      const hidden = await seedEvent({
+        title: "test-event-hidden-status",
+        minTier: 2,
+        status: "live",
+      });
+      await db.insert(expenses).values({
+        id: newId(),
+        eventId: hidden.id,
+        amountCents: 100,
+        description: "x",
+        category: "other",
+      });
+      signedInAs(director);
+
+      const wrap = await request(app)
+        .patch(`/api/events/${hidden.id}/status`)
+        .send({ status: "wrapped" });
+      const back = await request(app)
+        .patch(`/api/events/${hidden.id}/status`)
+        .send({ status: "planning" });
+
+      expect(wrap.status).toBe(404);
+      expect(wrap.body.blockers).toBeUndefined();
+      expect(back.status).toBe(404);
+      const [row] = await db
+        .select({ status: events.status })
+        .from(events)
+        .where(sql`id = ${hidden.id}`);
+      expect(row?.status).toBe("live");
+    });
+
+    it("404s a cancel before the cancel permission is considered", async () => {
+      const director = await member("director", "director");
+      const hidden = await seedEvent({ title: "test-event-hidden-cancel", minTier: 2 });
+      signedInAs(director);
+
+      const response = await request(app).delete(`/api/events/${hidden.id}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("EVENT_NOT_FOUND");
+    });
+  });
+
+  /**
+   * Moving club money is `budget:manage` (president, treasurer) on every route
+   * that carries it, not only `PUT /api/budget/allocations/:eventId`.
+   */
+  describe("budget allocation authority", () => {
+    async function allocationOf(eventId: string) {
+      const [row] = await db
+        .select({ allocationCents: events.allocationCents })
+        .from(events)
+        .where(sql`id = ${eventId}`);
+      return row?.allocationCents;
+    }
+
+    it("403s a director who changes an event's allocation, and moves no money", async () => {
+      const director = await member("director", "director");
+      const event = await seedEvent({ title: "test-event-alloc-director", allocationCents: 500 });
+      signedInAs(director);
+
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ allocationCents: 1000 });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe("FORBIDDEN");
+      expect(await allocationOf(event.id)).toBe(500);
+    });
+
+    it("403s a tier-0 owner who changes their own event's allocation", async () => {
+      const owner = await member("owner", "officer");
+      const event = await seedEvent({ title: "test-event-alloc-owner", owner: owner.id });
+      signedInAs(owner);
+
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ allocationCents: 1000 });
+
+      expect(response.status).toBe(403);
+      expect(await allocationOf(event.id)).toBe(0);
+    });
+
+    it("lets a director save an edit that sends the stored allocation back unchanged", async () => {
+      const director = await member("director", "director");
+      const event = await seedEvent({ title: "test-event-alloc-same", allocationCents: 500 });
+      signedInAs(director);
+
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ title: "test-event-alloc-renamed", allocationCents: 500 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.event.title).toBe("test-event-alloc-renamed");
+      expect(await allocationOf(event.id)).toBe(500);
+    });
+
+    it("lets the treasurer change an allocation through an event edit", async () => {
+      const treasurer = await member("treasurer", "treasurer");
+      const event = await seedEvent({ title: "test-event-alloc-treasurer", allocationCents: 500 });
+      signedInAs(treasurer);
+
+      // Down, not up: a release can never trip the club budget, whatever the
+      // local settings row holds.
+      const response = await request(app)
+        .patch(`/api/events/${event.id}`)
+        .send({ allocationCents: 0 });
+
+      expect(response.status).toBe(200);
+      expect(await allocationOf(event.id)).toBe(0);
+    });
+
+    it("403s a director who creates an event with an allocation, and creates nothing", async () => {
+      const director = await member("director", "director");
+      signedInAs(director);
+      const startsAt = new Date(Date.now() + HOUR).toISOString();
+
+      const refused = await request(app)
+        .post("/api/events")
+        .send({ title: "test-event-alloc-create", startsAt, allocationCents: 1000 });
+      const plain = await request(app)
+        .post("/api/events")
+        .send({ title: "test-event-alloc-create-plain", startsAt });
+
+      expect(refused.status).toBe(403);
+      const created = await db
+        .select({ id: events.id })
+        .from(events)
+        .where(sql`"title" = 'test-event-alloc-create'`);
+      expect(created).toHaveLength(0);
+      expect(plain.status).toBe(201);
+    });
+  });
+
+  describe("the event's thread", () => {
+    it("follows the event's title and tier, so newly eligible members can see it and comment", async () => {
+      const president = await member("president", "president");
+      const officer = await member("officer", "officer");
+      signedInAs(president);
+      // Through the real route, which copies the event's tier onto its thread.
+      const created = await request(app)
+        .post("/api/events")
+        .send({
+          title: "test-event-thread-sync",
+          startsAt: new Date(Date.now() + HOUR).toISOString(),
+          minTier: 2,
+        });
+      expect(created.status).toBe(201);
+      const eventId: string = created.body.event.id;
+      const task = await seedTask(eventId, [officer.id]);
+
+      const patched = await request(app)
+        .patch(`/api/events/${eventId}`)
+        .send({ title: "test-event-thread-renamed", minTier: 0 });
+      expect(patched.status).toBe(200);
+
+      const [thread] = await db
+        .select({ name: channels.name, minTier: channels.minTier })
+        .from(channels)
+        .where(sql`"event_id" = ${eventId}`);
+      expect(thread).toEqual({ name: "test-event-thread-renamed", minTier: 0 });
+
+      signedInAs(officer);
+      const threads = await request(app).get("/api/threads").query({ kind: "event" });
+      expect(threads.body.threads).toContainEqual(
+        expect.objectContaining({ eventId, name: "test-event-thread-renamed" }),
+      );
+      const comment = await request(app)
+        .post(`/api/tasks/${task.id}/comments`)
+        .send({ body: "On it" });
+      expect(comment.status).toBe(201);
+    });
+  });
+
+  describe("GET /api/events/:id?include=channel", () => {
+    it("links the event's oldest thread, the one its tasks' comments land in", async () => {
+      const officer = await member("officer", "officer");
+      const event = await seedEvent({ title: "test-event-two-threads" });
+      const older = newId();
+      const newer = newId();
+      // The newer one is written first, so storage order alone would pick it.
+      await db.insert(channels).values({
+        id: newer,
+        eventId: event.id,
+        kind: "event",
+        name: "newer",
+        createdAt: new Date(Date.now() - HOUR),
+      });
+      await db.insert(channels).values({
+        id: older,
+        eventId: event.id,
+        kind: "event",
+        name: "older",
+        createdAt: new Date(Date.now() - 2 * HOUR),
+      });
+      const task = await seedTask(event.id, [officer.id]);
+      signedInAs(officer);
+
+      const detail = await request(app)
+        .get(`/api/events/${event.id}`)
+        .query({ include: "channel" });
+      const comment = await request(app)
+        .post(`/api/tasks/${task.id}/comments`)
+        .send({ body: "Which thread?" });
+
+      expect(detail.body.event.channelId).toBe(older);
+      expect(comment.body.message.channelId).toBe(older);
     });
   });
 });

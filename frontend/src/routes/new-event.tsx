@@ -1,4 +1,4 @@
-import { createEventSchema } from "@ctp/shared";
+import { can, createEventSchema } from "@ctp/shared";
 import { ArrowLeft, CalendarPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -8,11 +8,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateEvent } from "@/hooks/use-create-event";
+import { useMe } from "@/hooks/use-me";
 import { parseLocalDate, toIsoDate } from "@/lib/dates";
 
 export function NewEventPage() {
   const navigate = useNavigate();
   const creation = useCreateEvent();
+  const me = useMe();
+  // An allocation is club money — `budget:manage`. Anyone else creates the
+  // event unfunded and the president or treasurer allocates it afterwards; the
+  // route refuses an allocation from them.
+  const canAllocate = me.status === "ok" && can(me.user.role, "budget:manage");
   const [searchParams] = useSearchParams();
   // The calendar's day cells and its "New Event" action link here with the day
   // they were showing. Anything that is not a real date is ignored, so a
@@ -31,7 +37,8 @@ export function NewEventPage() {
     const startsAt = startDate && startTime ? new Date(`${startDate}T${startTime}`) : undefined;
     const endsAt = String(form.get("endsAt"));
     const attendance = String(form.get("attendanceEstimate"));
-    const allocation = String(form.get("allocation"));
+    // A disabled field is left out of the form data altogether.
+    const allocation = canAllocate ? String(form.get("allocation") ?? "") : "";
     const parsed = createEventSchema.safeParse({
       title: form.get("title"),
       description: form.get("description") || undefined,
@@ -166,7 +173,14 @@ export function NewEventPage() {
                   min="0"
                   step="0.01"
                   placeholder="0.00…"
+                  disabled={!canAllocate}
+                  aria-describedby={canAllocate ? undefined : "event-allocation-note"}
                 />
+                {!canAllocate && (
+                  <p id="event-allocation-note" className="text-xs text-muted-foreground">
+                    Only the president or treasurer can allocate budget.
+                  </p>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="event-visibility">Visibility</Label>
