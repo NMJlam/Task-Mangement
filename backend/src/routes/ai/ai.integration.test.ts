@@ -30,7 +30,7 @@ vi.mock("../../lib/ai/client.js", async (importOriginal) => ({
   geminiComplete: complete,
 }));
 
-type Step = string | ((prompt: string) => string);
+type Step = string | ((prompt: string) => string | Promise<string>);
 
 /** Every prompt the model was sent this test, in order. */
 let prompts: string[] = [];
@@ -1213,7 +1213,7 @@ describe("/api/ai", () => {
         author: busy.id,
         body: "test-ai-hidden-message",
       });
-      return { busy };
+      return { busy, hidden };
     }
 
     /** The tools that list, with no handle to aim them — all five, then a reply. */
@@ -1232,12 +1232,16 @@ describe("/api/ai", () => {
     }
 
     /**
-     * The tools addressed by handle, each aimed at the hidden event. The budget
-     * page lists every live event's allocation to every member (GET /api/budget
-     * is tier 0), so this is how a model comes to hold a hidden event's handle
-     * — and why every handle-addressed tool has to re-check.
+     * The tools addressed by handle, each aimed at the hidden event. No read
+     * names an event above your tier — the budget included — so the model can
+     * only hold a hidden event's handle from before it was hidden. That is the
+     * case played here: the handle is issued while the event is visible to
+     * everyone, and the event is raised back out of reach before the first tool
+     * uses it — which is why every handle-addressed tool has to re-check rather
+     * than trust a handle it was given.
      */
-    async function driveHandleReads() {
+    async function driveHandleReads(hiddenId: string) {
+      await db.update(events).set({ minTier: 0 }).where(eq(events.id, hiddenId));
       const hidden = (prompt: string) =>
         (
           toolResult(prompt, "readBudget") as {
@@ -1246,7 +1250,10 @@ describe("/api/ai", () => {
         ).allocations.find((row) => row.eventTitle === "test-ai-hidden")!.eventHandle;
       script(
         callTool("readBudget"),
-        (prompt) => callTool("getEventProgress", { eventHandle: hidden(prompt) }),
+        async (prompt) => {
+          await db.update(events).set({ minTier: 2 }).where(eq(events.id, hiddenId));
+          return callTool("getEventProgress", { eventHandle: hidden(prompt) });
+        },
         (prompt) => callTool("readThread", { eventHandle: hidden(prompt) }),
         (prompt) => callTool("listTasks", { eventHandle: hidden(prompt) }),
         reply(),
@@ -1263,6 +1270,18 @@ describe("/api/ai", () => {
       )!.openTaskCount;
     const LISTS = ["listEvents", "pastEventPlans", "listTasks", "listOverdueTasks"];
 
+    it("leaves a tier-2 event out of the budget a tier-0 member reads", async () => {
+      await seedWorld();
+      signedInAs(await member("officer", "officer"));
+      script(callTool("readBudget"), reply());
+
+      const response = await request(app).post("/api/ai/messages").send({ text: "Money?" });
+
+      expect(response.status).toBe(200);
+      expect(shown(prompts.at(-1)!, "readBudget")).toContain("test-ai-visible");
+      expect(shown(prompts.at(-1)!, "readBudget")).not.toContain("test-ai-hidden");
+    });
+
     it("keeps a tier-2 event and a cancelled one out of every list a tier-0 member reads", async () => {
       await seedWorld();
       signedInAs(await member("officer", "officer"));
@@ -1278,10 +1297,10 @@ describe("/api/ai", () => {
     });
 
     it("refuses a tier-0 member every read addressed to the hidden event", async () => {
-      await seedWorld();
+      const { hidden } = await seedWorld();
       signedInAs(await member("prober", "officer"));
 
-      const last = await driveHandleReads();
+      const last = await driveHandleReads(hidden.id);
 
       expect(toolResult(last, "getEventProgress")).toHaveProperty("error");
       expect(toolResult(last, "readThread")).toHaveProperty("error");
@@ -1304,10 +1323,10 @@ describe("/api/ai", () => {
     });
 
     it("answers a tier-2 member every read addressed to the hidden event", async () => {
-      await seedWorld();
+      const { hidden } = await seedWorld();
       signedInAs(await member("treasurer", "treasurer"));
 
-      const last = await driveHandleReads();
+      const last = await driveHandleReads(hidden.id);
 
       expect(toolResult(last, "getEventProgress")).not.toHaveProperty("error");
       expect(shown(last, "readThread")).toContain("test-ai-hidden-message");

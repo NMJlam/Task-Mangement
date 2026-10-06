@@ -20,9 +20,11 @@ function exceeded(res: Response, error: Error): void {
   res.status(409).json({ error: { code: "BUDGET_EXCEEDED", message: error.message } });
 }
 
-budgetRouter.get("/budget", authenticate, authorise(0), async (_req, res, next) => {
+budgetRouter.get("/budget", authenticate, authorise(0), async (req, res, next) => {
   try {
-    res.status(200).json({ budget: await getBudgetSummary(getDb()) } satisfies BudgetResponse);
+    res
+      .status(200)
+      .json({ budget: await getBudgetSummary(getDb(), req.user!.tier) } satisfies BudgetResponse);
   } catch (error) {
     next(error);
   }
@@ -33,7 +35,7 @@ budgetRouter.patch(
   authenticate,
   authoriseCapability("budget:manage"),
   validate(updateBudgetSchema),
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
       const { budgetCents } = res.locals.validated as UpdateBudget;
       const db = getDb();
@@ -43,7 +45,9 @@ budgetRouter.patch(
         if (error instanceof BudgetExceededError) return exceeded(res, error);
         throw error;
       }
-      res.status(200).json({ budget: await getBudgetSummary(db) } satisfies BudgetResponse);
+      res
+        .status(200)
+        .json({ budget: await getBudgetSummary(db, req.user!.tier) } satisfies BudgetResponse);
     } catch (error) {
       next(error);
     }
@@ -79,7 +83,9 @@ budgetRouter.put(
         if (error instanceof BudgetExceededError) return exceeded(res, error);
         throw error;
       }
-      res.status(200).json({ budget: await getBudgetSummary(db) } satisfies BudgetResponse);
+      res
+        .status(200)
+        .json({ budget: await getBudgetSummary(db, req.user!.tier) } satisfies BudgetResponse);
     } catch (error) {
       next(error);
     }

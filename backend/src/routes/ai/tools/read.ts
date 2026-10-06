@@ -454,7 +454,7 @@ export const readBudget: Tool = {
   describe:
     "The club's overall budget: allocated, committed, spent and available, per event and by expense category.",
   async run(ctx: ToolContext): Promise<unknown> {
-    const summary = await getBudgetSummary(ctx.db);
+    const summary = await getBudgetSummary(ctx.db, ctx.tier as Tier);
     return {
       budgetCents: summary.budgetCents,
       allocationCents: summary.allocationCents,
