@@ -4,20 +4,17 @@ import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useMe } from "@/hooks/use-me";
+import { applyTheme, saveTheme, storedTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-
-type Theme = "light" | "dark";
 
 export function SettingsPage() {
   const me = useMe();
-  const [theme, setTheme] = useState<Theme>(() =>
-    localStorage.getItem("theme") === "dark" ? "dark" : "light",
-  );
+  const [theme, setTheme] = useState<Theme>(storedTheme);
 
   function chooseTheme(next: Theme) {
     setTheme(next);
-    localStorage.setItem("theme", next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+    saveTheme(next);
+    applyTheme(next);
   }
 
   return (

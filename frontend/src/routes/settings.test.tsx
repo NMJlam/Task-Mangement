@@ -27,3 +27,22 @@ it("persists and applies the selected theme", () => {
   expect(document.documentElement).toHaveClass("dark");
   expect(localStorage.getItem("theme")).toBe("dark");
 });
+
+it("still opens and switches theme when the browser blocks storage", () => {
+  const denied = () => {
+    throw new DOMException("The operation is insecure.", "SecurityError");
+  };
+  const reads = vi.spyOn(Storage.prototype, "getItem").mockImplementation(denied);
+  const writes = vi.spyOn(Storage.prototype, "setItem").mockImplementation(denied);
+
+  try {
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /dark: comfortable at night/i }));
+
+    // Not remembered, but shown for this visit.
+    expect(document.documentElement).toHaveClass("dark");
+  } finally {
+    reads.mockRestore();
+    writes.mockRestore();
+  }
+});
