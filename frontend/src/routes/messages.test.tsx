@@ -430,6 +430,152 @@ describe("MessagesPage", () => {
     });
   });
 
+  describe("starting a conversation while a list read is in flight", () => {
+    const self = "018f3a4b-0000-7000-8000-000000000001";
+    const other = "018f3a4b-0000-7000-8000-000000000008";
+    const winter = thread("018f3a4b-0000-7000-8000-0000000000a1", "Winter Showcase");
+    const dm = {
+      ...thread("018f3a4b-0000-7000-8000-0000000000d4", "unused"),
+      kind: "dm",
+      name: null,
+      eventId: null,
+      memberIds: [self, other],
+    };
+    const jamie = {
+      id: other,
+      role: "officer",
+      tier: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      name: "Jamie Lee",
+      email: "jamie@example.com",
+      teamIds: [],
+      portfolio: null,
+    };
+
+    /**
+     * The first list read answers at once; the second (a refresh) is held until
+     * the test lets it land; every later one is the fresh read the start asks for.
+     */
+    function stub({
+      initial,
+      created,
+      fresh,
+    }: {
+      initial: unknown[];
+      created: { thread: unknown; status: number };
+      fresh: "listed" | "fails";
+    }) {
+      let held: (value: unknown) => void = () => undefined;
+      const stale = new Promise((resolve) => {
+        held = resolve;
+      });
+      const reads: string[] = [];
+      let listReads = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string, init?: RequestInit) => {
+          if (input === "/api/threads" && init?.method === "POST") {
+            return response({ thread: created.thread }, created.status);
+          }
+          if (input === "/api/threads") {
+            listReads += 1;
+            if (listReads === 1) return response({ threads: initial });
+            if (listReads === 2) return stale;
+            return fresh === "listed"
+              ? response({ threads: [dm, winter] })
+              : { ok: false, status: 500, json: async () => ({}) };
+          }
+          if (input.endsWith("/read")) {
+            reads.push(input);
+            return response({ thread: winter });
+          }
+          if (input === "/api/members") return response({ members: [jamie] });
+          return response({ messages: [], nextCursor: null });
+        }),
+      );
+      return {
+        land: (threads: unknown[]) => held(response({ threads })),
+        reads,
+        listReads: () => listReads,
+      };
+    }
+
+    const listed = () =>
+      within(screen.getByRole("navigation", { name: "Conversations" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent);
+
+    async function startWithJamieDuringARefresh(api: ReturnType<typeof stub>) {
+      render(<MessagesPage />);
+      await screen.findByRole("heading", { name: "Winter Showcase" });
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitFor(() => expect(api.listReads()).toBe(2));
+      fireEvent.click(screen.getByRole("button", { name: /new message/i }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByText("Jamie Lee"));
+      expect(await screen.findByRole("heading", { name: "Jamie Lee" })).toBeInTheDocument();
+    }
+
+    it("keeps the new conversation, its draft and its search when the older read lands", async () => {
+      const api = stub({
+        initial: [winter],
+        created: { thread: dm, status: 201 },
+        fresh: "listed",
+      });
+      await startWithJamieDuringARefresh(api);
+      fireEvent.change(screen.getByLabelText(/message jamie lee/i), {
+        target: { value: "Hello Jamie" },
+      });
+      fireEvent.change(screen.getByLabelText(/search this conversation/i), {
+        target: { value: "plans" },
+      });
+
+      // The read that began before the start: no dm in it, and Winter unread.
+      await act(async () => {
+        api.land([{ ...winter, unreadCount: 3 }]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.getByRole("heading", { name: "Jamie Lee" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/message jamie lee/i)).toHaveValue("Hello Jamie");
+      expect(screen.getByLabelText(/search this conversation/i)).toHaveValue("plans");
+      expect(api.reads.filter((url) => url.includes(winter.id))).toEqual([]);
+      // The fresh read lists the dm once, beside Winter.
+      expect(listed()).toEqual(["Jamie Lee", "Winter Showcase"]);
+    });
+
+    it("keeps the new conversation when the fresh read fails", async () => {
+      const api = stub({ initial: [winter], created: { thread: dm, status: 201 }, fresh: "fails" });
+      await startWithJamieDuringARefresh(api);
+
+      await act(async () => {
+        api.land([winter]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.getByRole("heading", { name: "Jamie Lee" })).toBeInTheDocument();
+      expect(listed()).toEqual(["Jamie Lee", "Winter Showcase"]);
+    });
+
+    it("opens a dm that already exists without listing it twice", async () => {
+      const api = stub({
+        initial: [winter, dm],
+        created: { thread: dm, status: 200 },
+        fresh: "listed",
+      });
+      await startWithJamieDuringARefresh(api);
+
+      await act(async () => {
+        api.land([winter, dm]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.getByRole("heading", { name: "Jamie Lee" })).toBeInTheDocument();
+      expect([...listed()].sort()).toEqual(["Jamie Lee", "Winter Showcase"]);
+    });
+  });
+
   it("forgets a failed start when the dialog is closed and reopened", async () => {
     const other = "018f3a4b-0000-7000-8000-000000000008";
     vi.stubGlobal(
