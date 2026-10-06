@@ -314,8 +314,14 @@ describe("catching up after time away", () => {
 describe("loading older pages", () => {
   /** Two threads of sixty: each opens on fifty with a cursor to ten more. */
   function twoThreads() {
-    const threads = { [THREAD_A]: history(THREAD_A, 0, 60), [THREAD_B]: history(THREAD_B, 0, 60) };
-    const older = { [THREAD_A]: deferred<Answer>(), [THREAD_B]: deferred<Answer>() };
+    const threads: Record<string, Fixture[]> = {
+      [THREAD_A]: history(THREAD_A, 0, 60),
+      [THREAD_B]: history(THREAD_B, 0, 60),
+    };
+    const older: Record<string, ReturnType<typeof deferred<Answer>>> = {
+      [THREAD_A]: deferred<Answer>(),
+      [THREAD_B]: deferred<Answer>(),
+    };
     stubFetch((url) => {
       const id = url.includes(THREAD_A) ? THREAD_A : THREAD_B;
       return url.includes("before=") ? older[id]!.promise : paged(threads[id]!, url);
