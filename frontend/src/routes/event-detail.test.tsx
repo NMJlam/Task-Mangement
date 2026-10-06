@@ -477,20 +477,55 @@ describe("EventDetailPage", () => {
         ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
       );
       expect(call).toBeDefined();
-      expect(JSON.parse(String((call as [string, RequestInit])[1].body))).toMatchObject({
+      const body = JSON.parse(String((call as [string, RequestInit])[1].body)) as object;
+      expect(body).toMatchObject({
         title: "Winter Showcase",
         venue: "Macquarie Theatre",
         // Trimmed by the shared schema before it is sent, not by the dialog.
         description: "Doors at 6.",
         attendanceEstimate: 120,
-        allocationCents: 50000,
         minTier: 1,
       });
+      // A director cannot allocate, and an unchanged allocation is not sent at
+      // all — the route reads any allocation it receives as a budget decision.
+      expect(body).not.toHaveProperty("allocationCents");
     });
 
     // And the page shows what the server returned, not the draft.
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(await screen.findByText("Macquarie Theatre")).toBeInTheDocument();
+  });
+
+  it("lets only a budget manager change the allocation", async () => {
+    const user = userEvent.setup({ delay: null });
+    stubEvent({ role: "director", tier: 1 });
+    const director = renderDetail();
+    await user.click(await screen.findByRole("button", { name: "Edit Details" }));
+    const readOnly = within(await screen.findByRole("dialog")).getByLabelText(
+      "Budget Allocation (AUD)",
+    );
+    expect(readOnly).toBeDisabled();
+    expect(readOnly).toHaveAccessibleDescription(/president or treasurer/i);
+    director.unmount();
+
+    const fetchMock = stubEvent({ role: "treasurer", tier: 2 });
+    renderDetail();
+    await user.click(await screen.findByRole("button", { name: "Edit Details" }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Budget Allocation (AUD)");
+    expect(field).toBeEnabled();
+    fireEvent.change(field, { target: { value: "650" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save details" }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(String((call as [string, RequestInit])[1].body))).toMatchObject({
+        allocationCents: 65000,
+      });
+    });
   });
 
   it("moves the event along its lifecycle, and reports a blocked wrap in the route's own words", async () => {

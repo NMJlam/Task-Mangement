@@ -41,7 +41,7 @@ import {
   workstreams,
 } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
-import { assembleTasks } from "../tasks/service.js";
+import { assembleTasks, visibleTasks } from "../tasks/service.js";
 import {
   allowedFromStatuses,
   allocateToEvent,
@@ -69,6 +69,21 @@ function notFound(res: Response): void {
   // Deliberately the same body for "doesn't exist" and "exists but your tier
   // can't see it" — a 403 here would confirm the event exists (plan watch-out).
   res.status(404).json({ error: { code: "EVENT_NOT_FOUND", message: "Event not found." } });
+}
+
+/**
+ * Moving club money is `budget:manage`, whichever route carries it. The
+ * dedicated `PUT /api/budget/allocations/:eventId` is gated on that capability,
+ * so an event create or edit that sets an allocation must be too, or it is a
+ * side door around the president and treasurer.
+ */
+function allocationForbidden(res: Response): void {
+  res.status(403).json({
+    error: {
+      code: "FORBIDDEN",
+      message: "Only the president or treasurer can change an event's budget allocation.",
+    },
+  });
 }
 
 // ── The shared per-event row: owner name + task/expense aggregates ─────────
@@ -359,10 +374,13 @@ eventsRouter.get(
         );
       }
       if (include?.includes("channel")) {
+        // The oldest, as `findThread` picks for task comments, so the event
+        // page links the thread its tasks' comments land in.
         const [channel] = await db
           .select({ id: channels.id })
           .from(channels)
           .where(and(eq(channels.kind, "event"), eq(channels.eventId, id)))
+          .orderBy(asc(channels.createdAt), asc(channels.id))
           .limit(1);
         if (channel) detail.channelId = channel.id;
       }
@@ -434,7 +452,7 @@ eventsRouter.get(
         // team), so a teamId filter deliberately excludes standing tasks —
         // eq() against NULL never matches.
         const filters = [
-          lte(tasks.minTier, userTier),
+          visibleTasks(userTier),
           gte(tasks.dueAt, query.from),
           lte(tasks.dueAt, query.to),
         ];
@@ -491,6 +509,10 @@ eventsRouter.post(
   async (req, res, next) => {
     try {
       const input = res.locals.validated as CreateEvent;
+      if (input.allocationCents && !can(req.user!.role, "budget:manage")) {
+        allocationForbidden(res);
+        return;
+      }
       try {
         assertEventDates({ startsAt: input.startsAt, endsAt: input.endsAt ?? null });
       } catch (error) {
@@ -572,7 +594,10 @@ eventsRouter.patch(
       const db = getDb();
 
       const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
-      if (!event) {
+      // Visibility before ownership: an event above your tier is a 404 here as
+      // it is on every read, so neither the 403 below nor the response body can
+      // confirm that it exists.
+      if (!event || event.minTier > req.user!.tier) {
         notFound(res);
         return;
       }
@@ -583,6 +608,18 @@ eventsRouter.patch(
         res.status(403).json({
           error: { code: "FORBIDDEN", message: "Only the owner or lead+ can edit this event." },
         });
+        return;
+      }
+
+      // Only a CHANGE moves money. The edit form sends the stored allocation
+      // back with every save, and that must not lock non-finance editors out
+      // of fixing a typo in the title.
+      if (
+        input.allocationCents !== undefined &&
+        input.allocationCents !== event.allocationCents &&
+        !can(req.user!.role, "budget:manage")
+      ) {
+        allocationForbidden(res);
         return;
       }
 
@@ -622,6 +659,20 @@ eventsRouter.patch(
             .update(events)
             .set({ ...columnPatch, updatedAt: new Date() })
             .where(eq(events.id, id));
+
+          // The event's thread holds its own copy of the title and min_tier
+          // (`POST /api/events` copies both), so it moves with them. A lowered
+          // tier left behind on the thread would show members the event but
+          // not its discussion, and 404 their comments on its tasks.
+          if (input.title !== undefined || input.minTier !== undefined) {
+            await tx
+              .update(channels)
+              .set({
+                ...(input.title !== undefined ? { name: input.title } : {}),
+                ...(input.minTier !== undefined ? { minTier: input.minTier } : {}),
+              })
+              .where(and(eq(channels.kind, "event"), eq(channels.eventId, id)));
+          }
 
           if (datesTouched) {
             const boundary = mergedEndsAt ?? mergedStartsAt;
@@ -674,21 +725,24 @@ eventsRouter.patch(
       const { status: target } = res.locals.validated as ChangeEventStatus;
       const db = getDb();
 
+      // Before the blocker check, whose message would otherwise describe a
+      // hidden event's expenses.
+      const [event] = await db
+        .select({ status: events.status, minTier: events.minTier })
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+      if (!event || event.minTier > req.user!.tier) {
+        notFound(res);
+        return;
+      }
+
       if (target === "wrapped") {
         const blockers = await wrapBlockers(db, id);
         if (blockers.length > 0) {
-          const [current] = await db
-            .select({ status: events.status })
-            .from(events)
-            .where(eq(events.id, id))
-            .limit(1);
-          if (!current) {
-            notFound(res);
-            return;
-          }
           res
             .status(409)
-            .json({ id, status: current.status, blockers } satisfies ChangeEventStatusResponse);
+            .json({ id, status: event.status, blockers } satisfies ChangeEventStatusResponse);
           return;
         }
       }
@@ -766,7 +820,7 @@ eventsRouter.delete(
       const db = getDb();
 
       const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
-      if (!event) {
+      if (!event || event.minTier > req.user!.tier) {
         notFound(res);
         return;
       }

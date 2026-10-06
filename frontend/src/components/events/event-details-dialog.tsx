@@ -32,15 +32,21 @@ const AUD_TO_CENTS = 100;
  *
  * `onSave` is the caller's transport (`useEvent.updateEvent`), so this component
  * never fetches; it must not throw, and a refusal comes back as `{ ok: false }`.
+ *
+ * The allocation is club money, so it is `budget:manage`'s alone: anyone else
+ * sees it read-only, and it is only ever sent when it changed — the route
+ * refuses a changed allocation from anyone without that capability.
  */
 export function EventDetailsDialog({
   event,
+  canAllocate,
   onClose,
   onSave,
   onSaved,
 }: {
   /** `undefined` closes the dialog — the same contract as `EventDatesDialog`. */
   event: EventDetail | undefined;
+  canAllocate: boolean;
   onClose: () => void;
   onSave: (patch: UpdateEvent) => Promise<EventDatesSave>;
   onSaved: (warnings: string[]) => void;
@@ -53,6 +59,7 @@ export function EventDetailsDialog({
         <EventDetailsForm
           key={event.id}
           event={event}
+          canAllocate={canAllocate}
           onClose={onClose}
           onSave={onSave}
           onSaved={onSaved}
@@ -64,11 +71,13 @@ export function EventDetailsDialog({
 
 function EventDetailsForm({
   event,
+  canAllocate,
   onClose,
   onSave,
   onSaved,
 }: {
   event: EventDetail;
+  canAllocate: boolean;
   onClose: () => void;
   onSave: (patch: UpdateEvent) => Promise<EventDatesSave>;
   onSaved: (warnings: string[]) => void;
@@ -89,6 +98,8 @@ function EventDetailsForm({
   const [error, setError] = useState<string>();
 
   async function submit() {
+    const allocationCents =
+      allocation.trim() === "" ? 0 : Math.round(Number(allocation) * AUD_TO_CENTS);
     // A cleared text box means "no venue/description", which is `null` on the
     // wire — sending `""` would store an empty string and leave the row with two
     // ways to say the same nothing.
@@ -97,7 +108,9 @@ function EventDetailsForm({
       description: description.trim() === "" ? null : description,
       venue: venue.trim() === "" ? null : venue,
       attendanceEstimate: attendance.trim() === "" ? null : Number(attendance),
-      allocationCents: allocation.trim() === "" ? 0 : Math.round(Number(allocation) * AUD_TO_CENTS),
+      // Only a change is sent: an unchanged allocation moves no money, and the
+      // route reads any change as a budget decision.
+      ...(allocationCents === event.budget.allocationCents ? {} : { allocationCents }),
       minTier: Number(minTier),
     });
     if (!parsed.success) {
@@ -212,8 +225,14 @@ function EventDetailsForm({
               value={allocation}
               onChange={(change) => setAllocation(change.target.value)}
               placeholder="0.00…"
-              disabled={saving}
+              disabled={saving || !canAllocate}
+              aria-describedby={canAllocate ? undefined : "edit-event-allocation-note"}
             />
+            {!canAllocate && (
+              <p id="edit-event-allocation-note" className="text-xs text-muted-foreground">
+                Only the president or treasurer can change the allocation.
+              </p>
+            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="edit-event-visibility">Visibility</Label>

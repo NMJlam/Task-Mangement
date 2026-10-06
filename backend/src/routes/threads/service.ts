@@ -51,8 +51,9 @@ export function hasMember(userId: string): SQL {
  *   group, dm, ai -> you have a chan_member row
  *
  * An event thread also needs its event to be visible. Its `min_tier` is copied
- * from the event when `POST /api/events` opens it and nothing keeps the two in
- * step afterwards, and a cancelled event's thread should go with the event.
+ * from the event when `POST /api/events` opens it and `PATCH /api/events/:id`
+ * keeps the two in step, but the event stays the authority — and a cancelled
+ * event's thread should go with the event.
  */
 export function visibleThreads(viewer: Viewer): SQL {
   return or(

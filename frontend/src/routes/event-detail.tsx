@@ -88,6 +88,9 @@ export function EventDetailPage() {
   // `event:cancel` is the president's alone — tier 2 also holds the VP, treasurer
   // and secretary, so a tier check cannot express this.
   const canCancel = me.status === "ok" && can(me.user.role, "event:cancel");
+  // An allocation is club money — `budget:manage`, the same capability the
+  // budget page's allocation control needs.
+  const canAllocate = me.status === "ok" && can(me.user.role, "budget:manage");
   // Rescheduling is the route's owner-or-lead rule, not a capability — see
   // `lib/permissions.ts`.
   const canEdit = canEditEvent(
@@ -445,6 +448,7 @@ export function EventDetailPage() {
 
       <EventDetailsDialog
         event={editingDetails ? event : undefined}
+        canAllocate={canAllocate}
         onClose={() => setEditingDetails(false)}
         onSave={detail.updateEvent}
         onSaved={setDateWarnings}
