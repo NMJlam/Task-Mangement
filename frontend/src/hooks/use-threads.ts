@@ -239,6 +239,8 @@ export function useThreadMessages(threadId: string | undefined, query = "") {
   // held, but others may have arrived just before them unseen, so a refresh
   // cannot treat reaching one of them as having joined up with the history.
   const unsynced = useRef(new Set<string>());
+  // The history a catch-up is running for, if one is.
+  const catchingUp = useRef<number | undefined>(undefined);
   const latest = useRef(state);
 
   useEffect(() => {
@@ -301,76 +303,102 @@ export function useThreadMessages(threadId: string | undefined, query = "") {
    * any older pages that were held come back the same way.
    */
   const refresh = useCallback(async () => {
-    const id = shown.current.threadId;
-    const term = searched.current;
     const start = epoch.current;
-    if (!id) return;
-    const held = latest.current;
-    const synced = new Set(
-      held.status === "ok"
-        ? held.items.filter((item) => !unsynced.current.has(item.id)).map((item) => item.id)
-        : [],
-    );
+    // One catch-up per history at a time: a focus and a poll firing together
+    // would otherwise both fetch, and the later to land could overwrite the
+    // other's result with an older read.
+    if (catchingUp.current === start) return;
+    catchingUp.current = start;
+    try {
+      await catchUp();
+    } finally {
+      if (catchingUp.current === start) catchingUp.current = undefined;
+    }
 
-    const fetched: Message[] = [];
-    let before: string | undefined;
-    let nextCursor: string | null = null;
-    let joined = false;
-    for (let page = 0; page < MAX_REFRESH_PAGES; page += 1) {
-      let result: { messages: Message[]; nextCursor: string | null };
-      try {
-        const response = await fetch(messagesUrl(id, term, before), { credentials: "include" });
-        if (!response.ok) throw new Error("Failed to refresh messages");
-        result = messageListResponseSchema.parse(await response.json());
-      } catch {
-        // Nothing new yet: what is on screen stands until the next try.
-        if (fetched.length === 0) return;
-        // Part of the way: "Load older" retries the page that failed.
-        nextCursor = before ?? null;
-        break;
+    async function catchUp(): Promise<void> {
+      const id = shown.current.threadId;
+      const term = searched.current;
+      if (!id) return;
+      const held = latest.current;
+      const synced = new Set(
+        held.status === "ok"
+          ? held.items.filter((item) => !unsynced.current.has(item.id)).map((item) => item.id)
+          : [],
+      );
+
+      const fetched: Message[] = [];
+      let before: string | undefined;
+      let nextCursor: string | null = null;
+      let joined = false;
+      for (let page = 0; page < MAX_REFRESH_PAGES; page += 1) {
+        let result: { messages: Message[]; nextCursor: string | null };
+        try {
+          const response = await fetch(messagesUrl(id, term, before), { credentials: "include" });
+          if (!response.ok) throw new Error("Failed to refresh messages");
+          result = messageListResponseSchema.parse(await response.json());
+        } catch {
+          // Nothing new yet: what is on screen stands until the next try.
+          if (fetched.length === 0) return;
+          // Part of the way: "Load older" retries the page that failed.
+          nextCursor = before ?? null;
+          break;
+        }
+        if (epoch.current !== start) return;
+        fetched.push(...result.messages);
+        nextCursor = result.nextCursor;
+        if (result.messages.some((message) => synced.has(message.id))) {
+          joined = true;
+          break;
+        }
+        if (result.nextCursor === null) break;
+        before = result.nextCursor;
       }
       if (epoch.current !== start) return;
-      fetched.push(...result.messages);
-      nextCursor = result.nextCursor;
-      if (result.messages.some((message) => synced.has(message.id))) {
-        joined = true;
-        break;
-      }
-      if (result.nextCursor === null) break;
-      before = result.nextCursor;
-    }
-    if (epoch.current !== start) return;
 
-    if (joined || nextCursor === null) {
-      // Joined up with what is held, or read the whole thread: either way the
-      // held messages and the new ones are one stretch.
-      setState((current) => {
-        if (current.status === "ok") {
-          return {
-            status: "ok",
-            items: merge(current.items, fetched),
-            nextCursor: joined ? current.nextCursor : null,
-          };
-        }
-        // A refresh is also how a failed load recovers on its own.
-        if (current.status === "error") {
-          return { status: "ok", items: merge([], fetched), nextCursor };
-        }
-        return current;
-      });
-    } else {
-      // Replacing the history: a "Load older" in flight belongs to the old one.
-      epoch.current += 1;
-      setLoadingOlder(false);
-      setOlderError(undefined);
-      setState((current) =>
-        current.status === "ok" || current.status === "error"
-          ? { status: "ok", items: merge([], fetched), nextCursor }
-          : current,
-      );
+      if (joined || nextCursor === null) {
+        // Joined up with what is held, or read the whole thread: either way the
+        // held messages and the new ones are one stretch.
+        setState((current) => {
+          if (current.status === "ok") {
+            return {
+              status: "ok",
+              items: merge(current.items, fetched),
+              nextCursor: joined ? current.nextCursor : null,
+            };
+          }
+          // A refresh is also how a failed load recovers on its own.
+          if (current.status === "error") {
+            return { status: "ok", items: merge([], fetched), nextCursor };
+          }
+          return current;
+        });
+      } else {
+        // Replacing the history: a "Load older" in flight belongs to the old one.
+        epoch.current += 1;
+        setLoadingOlder(false);
+        setOlderError(undefined);
+        setState((current) =>
+          current.status === "ok" || current.status === "error"
+            ? {
+                status: "ok",
+                // Except what this browser sent that no read has seen yet — a
+                // send that landed while this ran. The server has it, so it must
+                // not vanish; and it stays unsynced, so the next catch-up still
+                // reads down past it rather than taking it as joined up.
+                items: merge(
+                  current.status === "ok"
+                    ? current.items.filter((item) => unsynced.current.has(item.id))
+                    : [],
+                  fetched,
+                ),
+                nextCursor,
+              }
+            : current,
+        );
+      }
+      // Only what this read saw: a message sent while it ran is still unsynced.
+      for (const message of fetched) unsynced.current.delete(message.id);
     }
-    // Only what this read saw: a message sent while it ran is still unsynced.
-    for (const message of fetched) unsynced.current.delete(message.id);
   }, []);
 
   const revalidate = useCallback(() => void refresh(), [refresh]);

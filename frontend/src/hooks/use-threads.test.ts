@@ -311,6 +311,115 @@ describe("catching up after time away", () => {
   });
 });
 
+describe("a send that lands while a catch-up is pending", () => {
+  /**
+   * One message on screen, then `arrivals` more on the server. The catch-up's
+   * first older page (the one that would close the gap) waits for the test; a
+   * POST appends the sent message to the server's thread, as the route does.
+   */
+  function staged(arrivals: number) {
+    let all = history(THREAD_A, 0, 1);
+    const held = deferred<Answer>();
+    let holding = false;
+    let heldUrl = "";
+    stubFetch((url, method) => {
+      if (method === "POST") {
+        const sent = message(THREAD_A, "m-sent");
+        all = [...all, sent];
+        return respond({ message: sent }, 201);
+      }
+      if (!url.includes(THREAD_A)) return undefined;
+      if (holding && url.includes("before=")) {
+        holding = false;
+        heldUrl = url;
+        return held.promise;
+      }
+      return paged(all, url);
+    });
+    return {
+      arrive: () => {
+        all = [...all, ...history(THREAD_A, 1, arrivals)];
+        holding = true;
+      },
+      held,
+      /** What the held page holds now, after the send reached the server. */
+      heldPageNow: () => paged(all, heldUrl),
+      all: () => all,
+    };
+  }
+
+  async function catchUpThenSend(stage: ReturnType<typeof staged>) {
+    const hook = renderHook(({ id }) => useThreadMessages(id, "m"), {
+      initialProps: { id: THREAD_A },
+    });
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["m0"]));
+    stage.arrive();
+    returnToTab();
+    await settle();
+    await act(async () => {
+      await hook.result.current.send("m-sent");
+    });
+    expect(bodies(hook.result.current.state)).toContain("m-sent");
+    return hook;
+  }
+
+  it("keeps the sent message when the gap page fails, and a retry still reaches it all", async () => {
+    const stage = staged(60);
+    const hook = await catchUpThenSend(stage);
+
+    stage.held.resolve(respond({}, 500));
+    await settle();
+
+    expect(bodies(hook.result.current.state)).toContain("m-sent");
+    await act(async () => {
+      await hook.result.current.loadOlder();
+    });
+    const seen = bodies(hook.result.current.state);
+    expect(seen).toHaveLength(stage.all().length);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("keeps it when the catch-up runs out of pages", async () => {
+    const stage = staged(600);
+    const hook = await catchUpThenSend(stage);
+
+    stage.held.resolve(stage.heldPageNow());
+    await settle();
+
+    // Ten pages could not reach the one message held, so the newest stretch
+    // stands alone — with the sent message still in it.
+    expect(bodies(hook.result.current.state)).toContain("m-sent");
+    expect(cursorOf(hook.result.current.state)).not.toBeNull();
+  });
+
+  it("keeps it when the gap closes", async () => {
+    const stage = staged(60);
+    const hook = await catchUpThenSend(stage);
+
+    stage.held.resolve(stage.heldPageNow());
+    await settle();
+
+    const seen = bodies(hook.result.current.state);
+    expect(seen).toContain("m-sent");
+    expect(seen).toHaveLength(stage.all().length);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("leaves the next thread alone when the reader switches before it lands", async () => {
+    const stage = staged(60);
+    const hook = await catchUpThenSend(stage);
+
+    hook.rerender({ id: THREAD_B });
+    await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+    stage.held.resolve(respond({}, 500));
+    await settle();
+
+    expect(bodies(hook.result.current.state)).toEqual([]);
+    expect(hook.result.current.loadingOlder).toBe(false);
+    expect(cursorOf(hook.result.current.state)).toBeNull();
+  });
+});
+
 describe("loading older pages", () => {
   /** Two threads of sixty: each opens on fifty with a cursor to ten more. */
   function twoThreads() {
