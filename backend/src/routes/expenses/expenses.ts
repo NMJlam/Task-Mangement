@@ -13,11 +13,11 @@ import {
   type ListExpensesQuery,
   type UpdateExpense,
 } from "@ctp/shared";
-import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, expenses, notifications } from "../../db/schema/index.js";
+import { appUsers, events, expenses, notifications } from "../../db/schema/index.js";
 import { authenticate, authorise, authoriseCapability, validate } from "../../middleware/index.js";
 import { getBudgetSummary } from "../budget/service.js";
 import {
@@ -65,6 +65,14 @@ expensesRouter.get(
       if (!can(req.user!.role, "expense:approve")) {
         conditions.push(
           or(eq(expenses.submitter, req.user!.id), inArray(expenses.status, ["approved", "paid"]))!,
+          // An expense names its event, and an event above your tier is one
+          // `GET /api/events/:id` answers 404 for — so its expenses are hidden
+          // too, your own included, as the event routes hide it by tier alone.
+          // The same condition feeds `total`, so the count matches the rows.
+          or(
+            isNull(expenses.eventId),
+            sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${expenses.eventId} AND ${lte(events.minTier, req.user!.tier)})`,
+          )!,
         );
       }
       if (query.eventId) conditions.push(eq(expenses.eventId, query.eventId));
