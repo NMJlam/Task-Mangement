@@ -187,11 +187,24 @@ membersRouter.patch(
  *   2. reassign open tasks, or refuse (rule 7)
  *   3. delete `app_user`, THEN the auth user (rule 15)
  *
- * No transaction: the Neon HTTP driver has none, so this is a fixed sequence of
- * single statements, same reasoning as the bulk insert in `tasks.ts`. If it
- * fails between the last two steps the account survives without a membership
- * row, which `authenticate` answers with 403 — the fail-closed direction.
+ * All of it is one transaction: the guards, the handover and both deletes land
+ * together or not at all, so a failure part-way never leaves tasks handed over
+ * from a member who is still here.
+ *
+ * The rule-6 count locks every holder of the role with `FOR UPDATE`, the same
+ * rows the role-change CTE above locks. That is what serialises two removals of
+ * the last two treasurers, or a removal racing a demotion: the second waits for
+ * the first, then counts what is left. A transaction alone would not — both
+ * would read two holders and both would pass.
  */
+type Offboarding =
+  | { kind: "not_found" }
+  | { kind: "role_changed" }
+  | { kind: "vacancy" }
+  | { kind: "open_tasks"; count: number }
+  | { kind: "bad_successor"; exists: boolean }
+  | { kind: "removed" };
+
 membersRouter.delete(
   "/members/:id",
   authenticate,
@@ -201,75 +214,46 @@ membersRouter.delete(
   async (req, res, next) => {
     try {
       const { reassignTo } = res.locals.validated as RemoveMemberQuery;
-      const db = getDb();
       const targetId = req.params.id!;
-      const [target] = await db.select().from(appUsers).where(eq(appUsers.id, targetId)).limit(1);
 
-      if (!target) {
-        res.status(404).json({ error: { code: "MEMBER_NOT_FOUND", message: "Member not found." } });
-        return;
-      }
+      const outcome = await getDb().transaction(async (tx): Promise<Offboarding> => {
+        const [target] = await tx.select().from(appUsers).where(eq(appUsers.id, targetId)).limit(1);
+        if (!target) return { kind: "not_found" };
 
-      // Rule 6. Removing the only treasurer vacates the office just as surely
-      // as demoting them, so it answers to the same guard as the role change.
-      if (target.role !== "officer") {
-        const holders = await db
-          .select({ id: appUsers.id })
-          .from(appUsers)
-          .where(eq(appUsers.role, target.role));
-        if (holders.length <= 1) {
-          res.status(409).json({
-            error: {
-              code: "ROLE_VACANCY",
-              message: "Promote a successor before removing the last holder of this role.",
-            },
-          });
-          return;
+        // Rule 6. Removing the only treasurer vacates the office just as surely
+        // as demoting them, so it answers to the same guard as the role change.
+        if (target.role !== "officer") {
+          const holders = await tx.execute<{ id: string }>(sql`
+            SELECT "id" FROM "app_user" WHERE "role" = ${target.role} FOR UPDATE
+          `);
+          // A concurrent role change moved the target out of the role between
+          // the read above and the lock: the count would be for the wrong role.
+          if (!holders.rows.some((row) => row.id === targetId)) return { kind: "role_changed" };
+          if (holders.rows.length <= 1) return { kind: "vacancy" };
         }
-      }
 
-      // Rule 7. Open is "not done" — a task the club is still waiting on. Any
-      // unfinished assignment counts, co-assignees included: the member is
-      // leaving either way, and the club should say who holds the work now.
-      const openLinks = await db
-        .select({ taskId: taskAssignees.taskId })
-        .from(taskAssignees)
-        .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
-        .where(and(eq(taskAssignees.userId, targetId), ne(tasks.status, "done")));
+        // Rule 7. Open is "not done" — a task the club is still waiting on. Any
+        // unfinished assignment counts, co-assignees included: the member is
+        // leaving either way, and the club should say who holds the work now.
+        const openLinks = await tx
+          .select({ taskId: taskAssignees.taskId })
+          .from(taskAssignees)
+          .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+          .where(and(eq(taskAssignees.userId, targetId), ne(tasks.status, "done")));
 
-      if (openLinks.length > 0) {
-        if (!reassignTo) {
-          res.status(409).json({
-            error: {
-              code: "OPEN_TASKS",
-              message: `This member has ${openLinks.length} open task(s). Pass ?reassignTo=<memberId> to hand them over.`,
-            },
-          });
-          return;
-        }
-        const [successor] = await db
-          .select({ id: appUsers.id })
-          .from(appUsers)
-          .where(eq(appUsers.id, reassignTo))
-          .limit(1);
-        if (!successor || reassignTo === targetId) {
-          res.status(422).json({
-            error: {
-              code: "VALIDATION_ERROR",
-              message: "Request validation failed",
-              fields: {
-                reassignTo: [
-                  successor ? "Cannot hand over to the departing member" : "No member with that id",
-                ],
-              },
-            },
-          });
-          return;
-        }
-        // The successor replaces the departing slot on those tasks. DO NOTHING
-        // on the composite key covers the case where the successor already
-        // holds one of them — a duplicate link would be rejected, not merged.
-        await db.transaction(async (tx) => {
+        if (openLinks.length > 0) {
+          if (!reassignTo) return { kind: "open_tasks", count: openLinks.length };
+          const [successor] = await tx
+            .select({ id: appUsers.id })
+            .from(appUsers)
+            .where(eq(appUsers.id, reassignTo))
+            .limit(1);
+          if (!successor || reassignTo === targetId) {
+            return { kind: "bad_successor", exists: Boolean(successor) };
+          }
+          // The successor replaces the departing slot on those tasks. DO NOTHING
+          // on the composite key covers the case where the successor already
+          // holds one of them — a duplicate link would be rejected, not merged.
           await tx.execute(sql`
             INSERT INTO "task_assignee" ("task_id", "user_id")
             SELECT "task_id", ${reassignTo}
@@ -283,15 +267,61 @@ membersRouter.delete(
             WHERE "user_id" = ${targetId}
               AND "task_id" IN (SELECT "id" FROM "task" WHERE "status" <> 'done')
           `);
-        });
+        }
+
+        // Rule 15, in order. The RESTRICT on app_user.auth_user_id is what makes
+        // it an order rather than a suggestion: the auth user cannot go first.
+        await tx.delete(appUsers).where(eq(appUsers.id, targetId));
+        await tx.delete(authUser).where(eq(authUser.id, target.authUserId));
+        return { kind: "removed" };
+      });
+
+      switch (outcome.kind) {
+        case "not_found":
+          res
+            .status(404)
+            .json({ error: { code: "MEMBER_NOT_FOUND", message: "Member not found." } });
+          return;
+        case "role_changed":
+          res
+            .status(409)
+            .json({ error: { code: "ROLE_CHANGED", message: "Member role changed; retry." } });
+          return;
+        case "vacancy":
+          res.status(409).json({
+            error: {
+              code: "ROLE_VACANCY",
+              message: "Promote a successor before removing the last holder of this role.",
+            },
+          });
+          return;
+        case "open_tasks":
+          res.status(409).json({
+            error: {
+              code: "OPEN_TASKS",
+              message: `This member has ${outcome.count} open task(s). Pass ?reassignTo=<memberId> to hand them over.`,
+            },
+          });
+          return;
+        case "bad_successor":
+          res.status(422).json({
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Request validation failed",
+              fields: {
+                reassignTo: [
+                  outcome.exists
+                    ? "Cannot hand over to the departing member"
+                    : "No member with that id",
+                ],
+              },
+            },
+          });
+          return;
+        case "removed":
+          res.status(204).end();
+          return;
       }
-
-      // Rule 15, in order. The RESTRICT on app_user.auth_user_id is what makes
-      // it an order rather than a suggestion: the auth user cannot go first.
-      await db.delete(appUsers).where(eq(appUsers.id, targetId));
-      await db.delete(authUser).where(eq(authUser.id, target.authUserId));
-
-      res.status(204).end();
     } catch (error) {
       next(error);
     }

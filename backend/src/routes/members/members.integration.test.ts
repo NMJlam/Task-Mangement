@@ -1,7 +1,7 @@
 import type { Role } from "@ctp/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, notLike, sql } from "drizzle-orm";
 import request from "supertest";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
@@ -250,6 +250,115 @@ describe("/api/members (integration)", () => {
 
     expect(response.status).toBe(204);
     expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(0);
+  });
+
+  /**
+   * Two vice-presidents and nobody else, so removing both would empty the
+   * office. Whoever else holds the role (the seed's) is moved aside for each
+   * test and put back after, so nothing leaks into the seeded roster.
+   */
+  describe("offboarding races and failures", () => {
+    let movedAside: string[] = [];
+
+    beforeEach(async () => {
+      const others = await db
+        .update(appUsers)
+        .set({ role: "officer" })
+        .where(
+          and(eq(appUsers.role, "vice_president"), notLike(appUsers.authUserId, "test-role-%")),
+        )
+        .returning({ id: appUsers.id });
+      movedAside = others.map((row) => row.id);
+    });
+
+    afterEach(async () => {
+      if (movedAside.length > 0) {
+        await db
+          .update(appUsers)
+          .set({ role: "vice_president" })
+          .where(inArray(appUsers.id, movedAside));
+      }
+      movedAside = [];
+    });
+
+    async function vicePresidents() {
+      return db.select().from(appUsers).where(eq(appUsers.role, "vice_president"));
+    }
+
+    it("lets only one of two concurrent removals of the last two holders through", async () => {
+      const actor = await member("actor", "president");
+      const first = await member("vp-one", "vice_president");
+      const second = await member("vp-two", "vice_president");
+      getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+      const responses = await Promise.all(
+        [first, second].map((target) => request(app).delete(`/api/members/${target.id}`)),
+      );
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([204, 409]);
+      expect(responses.find(({ status }) => status === 409)?.body.error.code).toBe("ROLE_VACANCY");
+      expect(await vicePresidents()).toHaveLength(1);
+    });
+
+    it("serialises a removal against a demotion of the other holder", async () => {
+      const actor = await member("actor", "president");
+      const leaving = await member("vp-leaving", "vice_president");
+      const demoted = await member("vp-demoted", "vice_president");
+      getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+      const [removal, demotion] = await Promise.all([
+        request(app).delete(`/api/members/${leaving.id}`),
+        request(app).patch(`/api/members/${demoted.id}/role`).send({ role: "officer" }),
+      ]);
+
+      const succeeded = [removal.status === 204, demotion.status === 200].filter(Boolean);
+      expect(succeeded).toHaveLength(1);
+      expect(await vicePresidents()).toHaveLength(1);
+    });
+
+    it("rolls the whole offboarding back when its last step fails", async () => {
+      const actor = await member("actor", "president");
+      const leaving = await member("leaving", "officer");
+      const successor = await member("successor", "officer");
+      const [open] = await db
+        .insert(tasks)
+        .values({ id: newId(), title: "test-role-rollback", creator: actor.id })
+        .returning();
+      await db.insert(taskAssignees).values({ taskId: open!.id, userId: leaving.id });
+      getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+      // The auth user is deleted last, so failing it proves everything before
+      // it — the handover and the membership delete — rolls back with it.
+      await db.execute(sql`
+        CREATE OR REPLACE FUNCTION test_role_refuse_delete() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$
+      `);
+      await db.execute(
+        sql.raw(`
+          CREATE TRIGGER test_role_refuse_delete BEFORE DELETE ON auth."user"
+          FOR EACH ROW WHEN (OLD.id = '${leaving.authUserId}')
+          EXECUTE FUNCTION test_role_refuse_delete()
+        `),
+      );
+      const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      try {
+        const response = await request(app).delete(
+          `/api/members/${leaving.id}?reassignTo=${successor.id}`,
+        );
+        expect(response.status).toBe(500);
+      } finally {
+        quiet.mockRestore();
+        await db.execute(sql`DROP TRIGGER IF EXISTS test_role_refuse_delete ON auth."user"`);
+        await db.execute(sql`DROP FUNCTION IF EXISTS test_role_refuse_delete()`);
+      }
+
+      expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(1);
+      const links = await db
+        .select({ userId: taskAssignees.userId })
+        .from(taskAssignees)
+        .where(eq(taskAssignees.taskId, open!.id));
+      expect(links.map((link) => link.userId)).toEqual([leaving.id]);
+    });
   });
 
   it("refuses member removal below tier 2", async () => {
