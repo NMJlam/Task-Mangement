@@ -62,31 +62,32 @@ tier threshold, so `authoriseCapability("event:cancel")` expresses it instead.
 signed-in account with club membership: 401 without a session, 403
 `NO_MEMBERSHIP` without membership.
 
-| Endpoint                                                                                           | Minimum    | Also requires                                                            |
-| -------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
-| `GET /api/health`                                                                                  | public     | —                                                                        |
-| `GET /api/me`, `GET /api/members`, `GET /api/teams`                                                | tier 0     | —                                                                        |
-| `GET /api/tasks`, `/api/tasks/overdue`, `/api/tasks/:id`                                           | tier 0     | —                                                                        |
-| `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`                                   | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                              |
-| `GET /api/calendar`                                                                                | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                 |
-| `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all` | tier 0     | Always scoped to the caller's own feed — no admin view                   |
-| `GET /api/budget`, `GET /api/expenses`                                                             | tier 0     | Expense list is own + approved/paid; finance roles see all               |
-| `PATCH /api/budget`, `PUT /api/budget/allocations/:eventId`                                        | membership | `budget:manage`                                                          |
-| `POST`, `PATCH`, `DELETE /api/expenses…`, `POST /api/expenses/:id/decision`                        | membership | `expense:approve`; decisions cannot approve/reject your own claim        |
-| `PATCH /api/events/:id`                                                                            | tier 0     | You own the event, **or** tier 1. Rule 8 caps `minTier`.                 |
-| `POST /api/events`, `PATCH /api/events/:id/status`                                                 | tier 1     | Wrapping needs no pending expenses: 409 — rule 7                         |
-| `DELETE /api/events/:id` (cancel)                                                                  | tier 1     | `event:cancel`, **or** lead of the Events team on that event — rule 7    |
-| `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status`                           | tier 0     | —                                                                        |
-| `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                                                    | tier 1     | —                                                                        |
-| `GET`, `POST /api/threads`                                                                         | tier 0     | Lists only threads you can see — rule 9                                  |
-| `GET`, `POST /api/threads/:id/messages`, `POST /api/threads/:id/read`                              | tier 0     | The thread must be visible to you, else 404 — rule 9                     |
-| `POST /api/tasks/:id/comments`, `POST /api/tasks/:id/attachments`                                  | tier 0     | The task's thread must be visible to you, else 404 — rule 9              |
-| `PUT`, `DELETE /api/teams/:teamId/members/:userId`                                                 | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                         |
-| `POST /api/invites`                                                                                | tier 1     | `invite:create`; the invited role's tier ≤ yours                         |
-| `PATCH /api/members/:id/role`                                                                      | tier 1     | `member:role-change`; new role and target both ≤ your tier; rule 3 below |
-| `POST /api/teams`, `PATCH`, `DELETE /api/teams/:id`                                                | tier 2     | —                                                                        |
-| `DELETE /api/members/:id`                                                                          | tier 2     | Rules 3 and 4 below                                                      |
-| Cron routes (`routes/cron/cron.ts`)                                                                | no session | `Authorization: Bearer <CRON_SECRET>`                                    |
+| Endpoint                                                                                           | Minimum    | Also requires                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                                                                                  | public     | —                                                                                                                                     |
+| `GET /api/me`, `GET /api/members`, `GET /api/teams`                                                | tier 0     | —                                                                                                                                     |
+| `GET /api/tasks`, `/api/tasks/overdue`, `/api/tasks/:id`                                           | tier 0     | Task and event `min_tier` ≤ yours, else hidden or 404 — rule 10                                                                       |
+| `GET /api/events`, `/api/events/:id`, `/api/events/:id/progress`                                   | tier 0     | Event `min_tier` ≤ yours, else 404 — rule 6                                                                                           |
+| `GET /api/calendar`                                                                                | tier 0     | Same `min_tier` filter on both events and tasks — rule 6                                                                              |
+| `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all` | tier 0     | Always scoped to the caller's own feed — no admin view                                                                                |
+| `GET /api/budget`, `GET /api/expenses`                                                             | tier 0     | Budget names only events you can see — rule 11. Expenses: own + approved/paid; finance roles see all                                  |
+| `PATCH /api/budget`, `PUT /api/budget/allocations/:eventId`                                        | membership | `budget:manage`                                                                                                                       |
+| `POST`, `PATCH`, `DELETE /api/expenses…`, `POST /api/expenses/:id/decision`                        | membership | `expense:approve`; decisions cannot approve/reject your own claim                                                                     |
+| `PATCH /api/events/:id`                                                                            | tier 0     | Visible to you (rule 6); you own it, **or** tier 1. Rule 8 caps `minTier`. Changing `allocationCents` needs `budget:manage` — rule 12 |
+| `POST /api/events`                                                                                 | tier 1     | A non-zero `allocationCents` needs `budget:manage` — rule 12                                                                          |
+| `PATCH /api/events/:id/status`                                                                     | tier 1     | Visible to you (rule 6). Wrapping needs no pending expenses: 409 — rule 7                                                             |
+| `DELETE /api/events/:id` (cancel)                                                                  | tier 1     | Visible to you (rule 6); `event:cancel`, **or** lead of the Events team on that event — rule 7                                        |
+| `POST /api/tasks`, `PATCH /api/tasks/:id`, `PATCH /api/tasks/:id/status`                           | tier 0     | An existing task must be visible to you, else 404 — rule 10                                                                           |
+| `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                                                    | tier 1     | As above                                                                                                                              |
+| `GET`, `POST /api/threads`                                                                         | tier 0     | Lists only threads you can see — rule 9                                                                                               |
+| `GET`, `POST /api/threads/:id/messages`, `POST /api/threads/:id/read`                              | tier 0     | The thread must be visible to you, else 404 — rule 9                                                                                  |
+| `POST /api/tasks/:id/comments`, `POST /api/tasks/:id/attachments`                                  | tier 0     | The task (rule 10) and its thread (rule 9) must be visible, else 404                                                                  |
+| `PUT`, `DELETE /api/teams/:teamId/members/:userId`                                                 | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                                                                                      |
+| `POST /api/invites`                                                                                | tier 1     | `invite:create`; the invited role's tier ≤ yours                                                                                      |
+| `PATCH /api/members/:id/role`                                                                      | tier 1     | `member:role-change`; new role and target both ≤ your tier; rule 3 below                                                              |
+| `POST /api/teams`, `PATCH`, `DELETE /api/teams/:id`                                                | tier 2     | —                                                                                                                                     |
+| `DELETE /api/members/:id`                                                                          | tier 2     | Rules 3 and 4 below                                                                                                                   |
+| Cron routes (`routes/cron/cron.ts`)                                                                | no session | `Authorization: Bearer <CRON_SECRET>`                                                                                                 |
 
 ## Rules
 
@@ -107,8 +108,10 @@ signed-in account with club membership: 401 without a session, 403
    authority comes from their tier. A director's portfolio ("Marketing
    Director") is derived from the team they lead, never stored.
 6. **`min_tier` hides, it doesn't forbid.** An event above your tier answers
-   404 `EVENT_NOT_FOUND`, never 403 — a 403 would confirm it exists. The same
-   filter runs on `GET /api/calendar` and on the tasks embedded in
+   404 `EVENT_NOT_FOUND`, never 403 — a 403 would confirm it exists. That holds
+   for the writes too: editing, moving or cancelling a hidden event is a 404
+   before any owner, tier or capability check, so no answer can describe it.
+   The same filter runs on `GET /api/calendar` and on the tasks embedded in
    `GET /api/events/:id?include=tasks`. (Spec §8 rules 3–5.)
 7. **Cancelling is the president's, and it releases money.** `DELETE
 /api/events/:id` is the _only_ door into `cancelled` — `PATCH
@@ -125,7 +128,25 @@ signed-in account with club membership: 401 without a session, 403
    its `min_tier`, and an event's thread also needs the event to be visible to
    you. A `group` or `dm` needs you to be a member. Anything else is a 404
    `THREAD_NOT_FOUND` — or `TASK_NOT_FOUND` when you reach the thread through a
-   task — never a 403.
+   task — never a 403. An event's thread copies the event's title and
+   `min_tier`, and `PATCH /api/events/:id` keeps the copy in step.
+10. **A task is visible when you could see it and its event.** Its own
+    `min_tier` must be at or below yours, and so must its event's, if it has one.
+    Every task route filters on this (`visibleTasks` in
+    `routes/tasks/service.ts`): lists leave hidden tasks out, and reading,
+    editing, unlinking, moving, commenting on or deleting one is a 404
+    `TASK_NOT_FOUND`. A cancelled event does **not** hide its tasks, matching
+    the event routes, which still serve a cancelled event by id.
+11. **The budget names only events you can see.** `GET /api/budget`'s
+    `allocations` leaves out events above your tier. The totals, `risk` and
+    `byCategory` stay club-wide, so a hidden allocation still counts against
+    the pool and never shows as money available.
+12. **Allocating is `budget:manage`, on every route.** Creating an event with
+    an allocation, or changing one through `PATCH /api/events/:id`, is 403
+    `FORBIDDEN` without `budget:manage` — the same capability
+    `PUT /api/budget/allocations/:eventId` checks. Sending the stored value back
+    unchanged is not a change, so the edit form keeps working for everyone
+    else.
 
 ## Deliberate, but easy to trip over
 
@@ -143,13 +164,6 @@ signed-in account with club membership: 401 without a session, 403
 - The Events-team exception is matched on `team.name = 'Events'`, the same
   name-based convention as a director's portfolio. **Renaming that team
   silently removes the exception** and leaves cancelling president-only.
-
-## Not built yet
-
-- **Hiding tasks by tier.** `event` filters on `min_tier` everywhere (rule 6),
-  and so do the tasks reached _through_ an event or the calendar. But
-  `GET /api/tasks` itself still doesn't, so a task read directly is visible to
-  every member regardless of its `min_tier`. Spec §8 rules 3–5.
 
 ## Open question
 

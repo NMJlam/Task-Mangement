@@ -245,7 +245,15 @@ A task object:
 
 `limit` is 1–100 (default 50), `offset` defaults to 0. Both `422` if out of
 range. `assignee` stays singular and filters by membership: it returns every
-task whose `assigneeIds` contains that member, once each.
+task whose `assigneeIds` contains that member, once each. Ties on `createdAt`
+(a bulk insert shares one) and on `dueAt` break on `id`, so offset pages never
+repeat or skip a task.
+
+**Every task route hides what you can't see.** A task is visible when its own
+`minTier` is at or below your tier, and so is its event's, if it has one
+([rule 10](roles-and-permissions.md#rules)). Lists leave the rest out; reading,
+editing, unlinking, moving, commenting on or deleting one answers
+`404 TASK_NOT_FOUND`, the same as an unknown id.
 
 Create body — only `title` is required:
 
@@ -436,6 +444,7 @@ transaction.
 | Response               | When                                                               |
 | ---------------------- | ------------------------------------------------------------------ |
 | `201 { "event": … }`   | Created.                                                           |
+| `403 FORBIDDEN`        | A non-zero `allocationCents` without `budget:manage`.              |
 | `409 BUDGET_EXCEEDED`  | `allocationCents` would push club-wide allocation past the budget. |
 | `422 TEAM_NOT_FOUND`   | Unknown `teamId`.                                                  |
 | `422 VALIDATION_ERROR` | Blank title, or `endsAt` before `startsAt`.                        |
@@ -452,9 +461,13 @@ field** — `{}` is a `422`.
 { "event": {}, "warnings": ["2 tasks now fall after the event date"] }
 ```
 
-| Response             | When                                                 |
-| -------------------- | ---------------------------------------------------- |
-| `200 { "event": … }` | Updated. `warnings` present only for the case below. |
+| Response               | When                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `200 { "event": … }`   | Updated. `warnings` present only for the case below.                                       |
+| `403 FORBIDDEN`        | Tier 0 and not the owner, or a **changed** `allocationCents` without `budget:manage`.      |
+| `404 EVENT_NOT_FOUND`  | No such event, or above your tier — checked before anything else, the owner rule included. |
+| `409 BUDGET_EXCEEDED`  | New `allocationCents` breaks the club budget.                                              |
+| `422 VALIDATION_ERROR` | `endsAt` before `startsAt`, or the `minTier` rule below.                                   |
 
 Because `warnings` matter to the person who moved the dates (they say how many
 tasks now fall after the event), both reschedule surfaces show them: the event
@@ -465,13 +478,13 @@ omitted — not empty — on every other response.
 both ends shifted by the same number of whole local days (the time of day is
 kept); the Edit-dates form sends the two instants the user picked, and moves the
 end only when the start would otherwise overtake it.
-| `403 FORBIDDEN` | Tier 0 and not the owner. |
-| `404 EVENT_NOT_FOUND` | No such event, or above your tier. |
-| `409 BUDGET_EXCEEDED` | New `allocationCents` breaks the club budget. |
-| `422 VALIDATION_ERROR` | `endsAt` before `startsAt`, or the `minTier` rule below. |
 
 - **Dates are validated merged, not per-body.** `PATCH { startsAt }` is checked
   against the event's _stored_ `endsAt`.
+- **An unchanged allocation is not a change.** Sending the stored
+  `allocationCents` back, as the edit form may, needs no capability.
+- **The event's thread moves with it.** A new `title` or `minTier` is copied to
+  the event's thread in the same transaction.
 - **Moving a date notifies, it doesn't reschedule.** Tasks left due after the
   new date come back in `warnings`; every distinct assignee of the event's
   unfinished tasks gets an `event_date_changed` notification. The route never
@@ -497,7 +510,7 @@ Legal moves: `planning → live`, `live → wrapped`, `wrapped → live`, and
 | `200 { id, status, blockers: [] }`    | Moved. Setting the status it already has is a no-op `200`.                      |
 | `409 { id, status, blockers: [ … ] }` | Wrapping with pending expenses — note this 409 is **not** the `ApiError` shape. |
 | `409 INVALID_TRANSITION`              | Illegal hop, e.g. `planning → wrapped`.                                         |
-| `404 EVENT_NOT_FOUND`                 | No such event.                                                                  |
+| `404 EVENT_NOT_FOUND`                 | No such event, or above your tier — checked before the blockers are described.  |
 
 ### `DELETE /api/events/:id` · president, or the Events-team lead
 
@@ -509,7 +522,7 @@ every distinct assignee of the event's unfinished tasks.
 | ------------------------------- | --------------------------------------------------------------- |
 | `204`                           | Cancelled. Cancelling an already-cancelled event is also `204`. |
 | `403 FORBIDDEN`                 | Tier 1+ but neither the president nor the Events-team lead.     |
-| `404 EVENT_NOT_FOUND`           | No such event.                                                  |
+| `404 EVENT_NOT_FOUND`           | No such event, or above your tier.                              |
 | `409 APPROVED_EXPENSES_PENDING` | Approved-but-unpaid expenses — pay or reject them first.        |
 
 The Events-team exception is matched on `team.name = 'Events'` and requires the
@@ -761,6 +774,11 @@ allocation), and committed/spent totals by category:
 Club risk is `critical` when committed spend exceeds the pool or an event is
 over its allocation. Otherwise it reuses the event progress rule: `at_risk`
 when an event's spend is ahead of its planning runway, and `on_track` otherwise.
+
+`allocations` lists only events at or below your tier. The totals, `risk` and
+`byCategory` stay club-wide — a hidden event's allocation still counts against
+the pool, so it never shows as available. The budget routes below and
+`POST /api/expenses/:id/decision` return the summary filtered the same way.
 
 ### `PATCH /api/budget` · `budget:manage`
 
