@@ -35,6 +35,17 @@ export function MessagesPage() {
   const markThreadRead = threads.markRead;
   const selfId = me.status === "ok" ? me.user.id : undefined;
 
+  // The conversation on screen is pinned by id. The list re-sorts by activity
+  // on every refresh, so "whichever is first" would move the reader to another
+  // conversation — wiping their draft and search — without a click. A new one
+  // is chosen only when there is none yet, or the pinned one has gone.
+  useEffect(() => {
+    if (threads.state.status !== "ok") return;
+    const items = threads.state.items;
+    if (selectedId !== undefined && items.some((thread) => thread.id === selectedId)) return;
+    setSelectedId(items[0]?.id);
+  }, [threads.state, selectedId]);
+
   // Debounced so every keystroke doesn't fire a request — the search is
   // server-side (the thread can hold far more than one loaded page).
   useEffect(() => {
