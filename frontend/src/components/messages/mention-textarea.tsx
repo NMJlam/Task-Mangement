@@ -1,5 +1,13 @@
 import { mentionToken } from "@ctp/shared";
-import { useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
+import {
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type TextareaHTMLAttributes,
+} from "react";
+import { cn } from "@/lib/utils";
 
 interface MentionCandidate {
   id: string;
@@ -14,6 +22,11 @@ interface OpenQuery {
   text: string;
 }
 
+/** The roster stores a name that may be blank, so email is the fallback. */
+function label(candidate: MentionCandidate): string {
+  return candidate.name || candidate.email;
+}
+
 /**
  * A plain `<textarea>` with an @mention popup layered on top. Typing `@`
  * opens it; picking someone splices `@[user-id]` in over the partial name —
@@ -21,12 +34,19 @@ interface OpenQuery {
  * on why: names aren't stored, only ids, so there is nothing prettier to show
  * yet). `MessageRow`'s `splitMentions` render is what turns it into a name
  * once the message is actually sent.
+ *
+ * Focus never leaves the textarea, so the list is driven from it the way a
+ * combobox is: ↑/↓ move the highlight, Enter or Tab picks it, Escape closes
+ * the list, and `aria-activedescendant` tells a screen reader which option is
+ * highlighted. The options are still buttons, for a pointer.
  */
 export function MentionTextarea({
   value,
   onChange,
   candidates,
   selfId,
+  onKeyDown,
+  onBlur,
   ...props
 }: {
   value: string;
@@ -35,16 +55,24 @@ export function MentionTextarea({
   selfId: string | undefined;
 } & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const listId = useId();
   const [query, setQuery] = useState<OpenQuery | null>(null);
+  const [highlighted, setHighlighted] = useState(0);
 
+  const needle = query?.text.toLowerCase() ?? "";
   const matches = query
     ? candidates
         .filter((candidate) => candidate.id !== selfId)
         .filter((candidate) =>
-          (candidate.name ?? candidate.email).toLowerCase().includes(query.text.toLowerCase()),
+          [candidate.name ?? "", candidate.email].some((field) =>
+            field.toLowerCase().includes(needle),
+          ),
         )
         .slice(0, 6)
     : [];
+  const open = matches.length > 0;
+  const active = Math.min(highlighted, matches.length - 1);
+  const optionId = (index: number) => `${listId}-option-${index}`;
 
   function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const next = event.target.value;
@@ -56,6 +84,31 @@ export function MentionTextarea({
     // say) never opens this, because there is no word boundary before it.
     const match = /(?:^|\s)@([^\s@]*)$/.exec(upToCaret);
     setQuery(match ? { start: caret - match[1]!.length - 1, text: match[1]! } : null);
+    setHighlighted(0);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    onKeyDown?.(event);
+    if (!open || event.defaultPrevented) return;
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        setHighlighted((active + 1) % matches.length);
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        setHighlighted((active - 1 + matches.length) % matches.length);
+        break;
+      case "Enter":
+      case "Tab":
+        event.preventDefault();
+        pick(matches[active]!);
+        break;
+      case "Escape":
+        event.preventDefault();
+        setQuery(null);
+        break;
+    }
   }
 
   function pick(candidate: MentionCandidate) {
@@ -81,28 +134,42 @@ export function MentionTextarea({
         ref={ref}
         value={value}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
         // A pick's onClick fires after this blur unless the mousedown that
         // starts it is prevented from moving focus in the first place.
-        onBlur={() => setQuery(null)}
+        onBlur={(event) => {
+          onBlur?.(event);
+          setQuery(null);
+        }}
+        aria-autocomplete="list"
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? optionId(active) : undefined}
         {...props}
       />
-      {matches.length > 0 && (
+      {open && (
         <ul
+          id={listId}
           role="listbox"
           aria-label="Mention someone"
           className="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-64 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
-          {matches.map((candidate) => (
-            <li key={candidate.id}>
+          {matches.map((candidate, index) => (
+            <li key={candidate.id} role="presentation">
               <button
+                id={optionId(index)}
                 type="button"
                 role="option"
-                aria-selected={false}
+                aria-selected={index === active}
+                // Reached from the textarea's arrow keys, not the tab order.
+                tabIndex={-1}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => pick(candidate)}
-                className="w-full cursor-pointer rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                className={cn(
+                  "w-full cursor-pointer rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                  index === active && "bg-accent text-accent-foreground",
+                )}
               >
-                {candidate.name ?? candidate.email}
+                {label(candidate)}
               </button>
             </li>
           ))}
