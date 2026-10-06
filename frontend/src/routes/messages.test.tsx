@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessagesPage } from "./messages";
 
@@ -351,6 +351,83 @@ describe("MessagesPage", () => {
 
     expect(screen.getByLabelText(/message logistics/i)).toHaveValue("Half-typed for B");
     expect(screen.queryByText("Doors at six")).not.toBeInTheDocument();
+  });
+
+  describe("when a refresh reorders the list", () => {
+    const threadA = "018f3a4b-0000-7000-8000-0000000000a1";
+    const threadB = "018f3a4b-0000-7000-8000-0000000000b2";
+    const winter = thread(threadA, "Winter Showcase");
+    // Logistics has had a message since, so the next read puts it first.
+    const busier = { ...thread(threadB, "Logistics"), lastMessageAt: "2026-10-01T00:00:00.000Z" };
+    let list: unknown[] = [];
+
+    function stubThreads() {
+      list = [winter, thread(threadB, "Logistics")];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string) => {
+          if (input === "/api/threads") return response({ threads: list });
+          if (input === "/api/members") return response({ members: [] });
+          return response({ messages: [], nextCursor: null });
+        }),
+      );
+    }
+
+    const listedFirst = () =>
+      within(screen.getByRole("navigation", { name: "Conversations" })).getAllByRole("button")[0];
+
+    it("keeps the conversation on screen, with its draft and search, on a focus refresh", async () => {
+      stubThreads();
+      render(<MessagesPage />);
+      fireEvent.change(await screen.findByLabelText(/message winter showcase/i), {
+        target: { value: "Half a thought" },
+      });
+      fireEvent.change(screen.getByLabelText(/search this conversation/i), {
+        target: { value: "venue" },
+      });
+
+      list = [busier, winter];
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitFor(() => expect(listedFirst()).toHaveTextContent("Logistics"));
+
+      expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/message winter showcase/i)).toHaveValue("Half a thought");
+      expect(screen.getByLabelText(/search this conversation/i)).toHaveValue("venue");
+    });
+
+    it("keeps it across a timed poll, and moves only on a pick or when it is gone", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        stubThreads();
+        render(<MessagesPage />);
+        fireEvent.change(await screen.findByLabelText(/message winter showcase/i), {
+          target: { value: "Half a thought" },
+        });
+
+        list = [busier, winter];
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(15_000);
+        });
+        await waitFor(() => expect(listedFirst()).toHaveTextContent("Logistics"));
+        expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument();
+        expect(screen.getByLabelText(/message winter showcase/i)).toHaveValue("Half a thought");
+
+        // Picking another conversation still moves, as it always has…
+        fireEvent.click(listedFirst()!);
+        expect(await screen.findByRole("heading", { name: "Logistics" })).toBeInTheDocument();
+
+        // …and one that disappears hands over to what is left.
+        list = [winter];
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(15_000);
+        });
+        expect(await screen.findByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("forgets a failed start when the dialog is closed and reopened", async () => {
