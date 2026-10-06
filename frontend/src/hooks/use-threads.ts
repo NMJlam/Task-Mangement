@@ -30,18 +30,25 @@ export function useThreads() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string>();
   const [generation, setGeneration] = useState(0);
+  // Moves on every local change to the list (a conversation started here). A
+  // read that began before the change is a snapshot from before it: it would
+  // drop the new conversation, and the page would take that as the
+  // conversation being gone — switching away and wiping its draft. So a read
+  // only lands if no change happened while it was in flight.
+  const listVersion = useRef(0);
 
   const reload = useCallback(() => setGeneration((current) => current + 1), []);
 
   useEffect(() => {
     let active = true;
+    const started = listVersion.current;
     fetch("/api/threads", { credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Failed to load threads");
         return threadListResponseSchema.parse(await response.json()).threads;
       })
       .then((items) => {
-        if (active) setState({ status: "ok", items });
+        if (active && listVersion.current === started) setState({ status: "ok", items });
       })
       .catch((cause: unknown) => {
         if (active) {
@@ -110,31 +117,40 @@ export function useThreads() {
    * `201`, but either way the thread returned is the one to switch to — the
    * caller does not need to tell the two apart.
    */
-  const create = useCallback(async (input: CreateThread) => {
-    setCreating(true);
-    setCreateError(undefined);
-    try {
-      const response = await fetch("/api/threads", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) throw new Error("Failed to start the conversation");
-      const thread = threadResponseSchema.parse(await response.json()).thread;
-      setState((current) =>
-        current.status === "ok" && !current.items.some((item) => item.id === thread.id)
-          ? { ...current, items: [thread, ...current.items] }
-          : current,
-      );
-      return thread;
-    } catch (cause) {
-      setCreateError(cause instanceof Error ? cause.message : "Failed to start the conversation");
-      return undefined;
-    } finally {
-      setCreating(false);
-    }
-  }, []);
+  const create = useCallback(
+    async (input: CreateThread) => {
+      setCreating(true);
+      setCreateError(undefined);
+      try {
+        const response = await fetch("/api/threads", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        if (!response.ok) throw new Error("Failed to start the conversation");
+        const thread = threadResponseSchema.parse(await response.json()).thread;
+        // Before the thread goes on screen: any read already in flight is now
+        // out of date, and must not land over it.
+        listVersion.current += 1;
+        setState((current) =>
+          current.status === "ok" && !current.items.some((item) => item.id === thread.id)
+            ? { ...current, items: [thread, ...current.items] }
+            : current,
+        );
+        // And a fresh read, so the list is the server's again. Until it lands —
+        // or if it fails — the thread just confirmed stays where it is.
+        reload();
+        return thread;
+      } catch (cause) {
+        setCreateError(cause instanceof Error ? cause.message : "Failed to start the conversation");
+        return undefined;
+      } finally {
+        setCreating(false);
+      }
+    },
+    [reload],
+  );
 
   /** A failed start belongs to that attempt — not to the next time the dialog opens. */
   const clearCreateError = useCallback(() => setCreateError(undefined), []);
