@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
 import { closeNodeDb, nodeDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
-import { appUsers, expenses } from "../../db/schema/index.js";
+import { appUsers, events, expenses } from "../../db/schema/index.js";
 
 const getSession = vi.hoisted(() => vi.fn());
 vi.mock("../../auth/auth.js", () => ({ auth: { api: { getSession }, handler: vi.fn() } }));
@@ -54,6 +54,53 @@ describe("finance routes (integration)", () => {
   afterAll(async () => {
     await clean();
     await closeNodeDb();
+  });
+
+  it("hides expenses on an event above the caller's tier, in the rows and the count", async () => {
+    const officer = await member("officer", "officer");
+    const treasurer = await member("treasurer", "treasurer");
+    const hiddenId = newId();
+    const visibleId = newId();
+    await db.insert(events).values([
+      { id: hiddenId, title: `${PREFIX}hidden`, startsAt: new Date(), minTier: 2 },
+      { id: visibleId, title: `${PREFIX}visible`, startsAt: new Date() },
+    ]);
+    const approved = { status: "approved" as const, decidedAt: new Date() };
+    const paid = { status: "paid" as const, decidedAt: new Date(), paidAt: new Date() };
+    const expense = (description: string, eventId: string | null) => ({
+      id: newId(),
+      eventId,
+      description: `${PREFIX}${description}`,
+      amountCents: 100,
+      category: "other" as const,
+    });
+    await db.insert(expenses).values([
+      { ...expense("hidden approved", hiddenId), ...approved },
+      { ...expense("hidden paid", hiddenId), ...paid },
+      // The caller's own claim, on an event since raised above their tier.
+      { ...expense("hidden own", hiddenId), submitter: officer.id },
+      { ...expense("visible approved", visibleId), ...approved },
+      { ...expense("standalone paid", null), ...paid },
+    ]);
+    const ours = (response: { body: { expenses: { description: string }[] } }) =>
+      response.body.expenses
+        .map((row) => row.description)
+        .filter((description) => description.startsWith(PREFIX))
+        .sort();
+
+    signInAs(officer);
+    const listed = await request(app).get("/api/expenses").query({ limit: 100 });
+    const asked = await request(app).get("/api/expenses").query({ eventId: hiddenId });
+
+    expect(ours(listed)).toEqual([`${PREFIX}standalone paid`, `${PREFIX}visible approved`]);
+    expect(JSON.stringify(listed.body)).not.toContain(hiddenId);
+    // Naming the hidden event outright finds nothing, and the count agrees.
+    expect(asked.body).toEqual({ expenses: [], total: 0 });
+
+    signInAs(treasurer);
+    const finance = await request(app).get("/api/expenses").query({ eventId: hiddenId });
+    expect(ours(finance)).toHaveLength(3);
+    expect(finance.body.total).toBe(3);
   });
 
   it("guards the full pending to approved to paid lifecycle", async () => {

@@ -796,7 +796,8 @@ unknown event; `409 BUDGET_EXCEEDED` when the club pool would be exceeded.
 
 Query: `?eventId&teamId&status&limit=<1-100, default 25>&offset=<default 0>`.
 President/treasurer see all rows. Other members see their own rows plus all
-`approved` and `paid` rows. Returns `{ "expenses": [ … ], "total": 12 }`, newest
+`approved` and `paid` rows, except any on an event above their tier — their
+own included, and `total` counts the same rows. Returns `{ "expenses": [ … ], "total": 12 }`, newest
 first. `createdAt` is the logged date. `receiptKey` remains a storage key until
 file storage exists; it is not a public download URL.
 
