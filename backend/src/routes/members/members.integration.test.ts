@@ -316,6 +316,80 @@ describe("/api/members (integration)", () => {
       expect(await vicePresidents()).toHaveLength(1);
     });
 
+    /** Resolves once a query is queued behind a row lock, so a race is staged, not hoped for. */
+    async function someoneWaitsOnALock() {
+      for (let attempt = 0; attempt < 300; attempt += 1) {
+        const result = await db.execute<{ waiting: number }>(sql`
+          SELECT count(*)::int AS waiting FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+        `);
+        if (Number(result.rows[0]?.waiting) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("No query ever waited on the lock");
+    }
+
+    it("waits for an assignment still in flight, then sees it and asks for a handover", async () => {
+      const actor = await member("actor", "president");
+      const leaving = await member("leaving", "officer");
+      const [open] = await db
+        .insert(tasks)
+        .values({ id: newId(), title: "test-role-in-flight", creator: actor.id })
+        .returning();
+      getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+      let removal: Promise<request.Response> | undefined;
+      await db.transaction(async (tx) => {
+        // The assignment is written but not committed: its foreign key holds a
+        // key-share lock on the departing member until it is.
+        await tx.insert(taskAssignees).values({ taskId: open!.id, userId: leaving.id });
+        removal = request(app)
+          .delete(`/api/members/${leaving.id}`)
+          .then((response) => response);
+        await someoneWaitsOnALock();
+      });
+
+      const response = await removal!;
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("OPEN_TASKS");
+      expect(await db.select().from(appUsers).where(eq(appUsers.id, leaving.id))).toHaveLength(1);
+      const links = await db
+        .select({ userId: taskAssignees.userId })
+        .from(taskAssignees)
+        .where(eq(taskAssignees.taskId, open!.id));
+      expect(links.map((link) => link.userId)).toEqual([leaving.id]);
+    });
+
+    it("answers an assignment that loses the race with a 422, and leaves the task alone", async () => {
+      const actor = await member("actor", "president");
+      const leaving = await member("leaving", "officer");
+      const [open] = await db
+        .insert(tasks)
+        .values({ id: newId(), title: "test-role-lost-race", creator: actor.id })
+        .returning();
+      getSession.mockResolvedValue({ user: { id: actor.authUserId, email: "actor@example.com" } });
+
+      let assigning: Promise<request.Response> | undefined;
+      await db.transaction(async (tx) => {
+        // Offboarding holds the member's row…
+        await tx.execute(sql`SELECT 1 FROM "app_user" WHERE "id" = ${leaving.id} FOR UPDATE`);
+        assigning = request(app)
+          .patch(`/api/tasks/${open!.id}`)
+          .send({ assigneeIds: [leaving.id] })
+          .then((response) => response);
+        await someoneWaitsOnALock();
+        // …and deletes it before committing.
+        await tx.delete(appUsers).where(eq(appUsers.id, leaving.id));
+      });
+
+      const response = await assigning!;
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe("ASSIGNEE_NOT_FOUND");
+      expect(
+        await db.select().from(taskAssignees).where(eq(taskAssignees.taskId, open!.id)),
+      ).toHaveLength(0);
+    });
+
     it("rolls the whole offboarding back when its last step fails", async () => {
       const actor = await member("actor", "president");
       const leaving = await member("leaving", "officer");

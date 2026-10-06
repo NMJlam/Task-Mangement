@@ -16,6 +16,7 @@ import {
 import { and, desc, eq, inArray, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
+import { pgError } from "../../db/errors.js";
 import { newId } from "../../db/id.js";
 import { appUsers, events, expenses, notifications } from "../../db/schema/index.js";
 import { authenticate, authorise, authoriseCapability, validate } from "../../middleware/index.js";
@@ -30,12 +31,7 @@ import {
 export const expensesRouter = Router();
 
 function sqlState(error: unknown): string | undefined {
-  let cursor: unknown = error;
-  while (typeof cursor === "object" && cursor !== null) {
-    if ("code" in cursor && typeof cursor.code === "string") return cursor.code;
-    cursor = (cursor as { cause?: unknown }).cause;
-  }
-  return undefined;
+  return pgError(error)?.code;
 }
 
 function transitionError(res: Response, error: ExpenseTransitionError): void {

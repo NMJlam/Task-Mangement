@@ -131,10 +131,13 @@ membersRouter.patch(
         res.status(200).json({ member: target } satisfies ChangeMemberRoleResponse);
         return;
       }
+      // Locked in id order, as offboarding locks: two transactions that take
+      // overlapping member rows in the same order cannot deadlock.
       const result = await db.execute<Member>(sql`
       WITH locked AS MATERIALIZED (
         SELECT id FROM "app_user"
         WHERE "role" = ${target.role}
+        ORDER BY "id"
         FOR UPDATE
       )
       UPDATE "app_user"
@@ -191,11 +194,22 @@ membersRouter.patch(
  * together or not at all, so a failure part-way never leaves tasks handed over
  * from a member who is still here.
  *
- * The rule-6 count locks every holder of the role with `FOR UPDATE`, the same
- * rows the role-change CTE above locks. That is what serialises two removals of
- * the last two treasurers, or a removal racing a demotion: the second waits for
- * the first, then counts what is left. A transaction alone would not — both
- * would read two holders and both would pass.
+ * Every row lock is taken up front, in one statement, in id order: the
+ * departing member, every holder of their office (unless it is `officer`), and
+ * the successor. A transaction alone serialises nothing — both of two removals
+ * would read two treasurers and both would pass — so the locks are the point:
+ *
+ * - The office holders are the rows the role-change CTE above locks, so two
+ *   removals of the last two treasurers, or a removal racing a demotion,
+ *   queue, and the second counts what the first left.
+ * - The departing member's own row is locked whatever their role. Assigning
+ *   them a task takes a key-share lock on that row (the foreign key does), so
+ *   a concurrent assignment either commits first — and the open-work read
+ *   below sees it — or waits for this one, then fails its foreign key and is
+ *   answered 422. Without the lock it could land between the read and the
+ *   delete and be cascaded away, leaving the task with no handover.
+ * - Taking them all in one ordered statement, the same order the role change
+ *   uses, is what keeps two of these from deadlocking each other.
  */
 type Offboarding =
   | { kind: "not_found" }
@@ -217,19 +231,32 @@ membersRouter.delete(
       const targetId = req.params.id!;
 
       const outcome = await getDb().transaction(async (tx): Promise<Offboarding> => {
+        // Unlocked, only to learn which office's holders to lock with it.
         const [target] = await tx.select().from(appUsers).where(eq(appUsers.id, targetId)).limit(1);
         if (!target) return { kind: "not_found" };
 
+        const locked = await tx.execute<{ id: string; role: string }>(sql`
+          SELECT "id", "role" FROM "app_user"
+          WHERE "id" = ${targetId}
+             OR "id" = ${reassignTo ?? targetId}
+             OR ${target.role === "officer" ? sql`false` : sql`"role" = ${target.role}`}
+          ORDER BY "id"
+          FOR UPDATE
+        `);
+        const departing = locked.rows.find((row) => row.id === targetId);
+        // Removed by someone else while this waited for the lock.
+        if (!departing) return { kind: "not_found" };
+        // A concurrent role change moved them out of the office read above, so
+        // the holders just locked are the wrong office's.
+        if (departing.role !== target.role) return { kind: "role_changed" };
+
         // Rule 6. Removing the only treasurer vacates the office just as surely
         // as demoting them, so it answers to the same guard as the role change.
-        if (target.role !== "officer") {
-          const holders = await tx.execute<{ id: string }>(sql`
-            SELECT "id" FROM "app_user" WHERE "role" = ${target.role} FOR UPDATE
-          `);
-          // A concurrent role change moved the target out of the role between
-          // the read above and the lock: the count would be for the wrong role.
-          if (!holders.rows.some((row) => row.id === targetId)) return { kind: "role_changed" };
-          if (holders.rows.length <= 1) return { kind: "vacancy" };
+        if (
+          target.role !== "officer" &&
+          locked.rows.filter((row) => row.role === target.role).length <= 1
+        ) {
+          return { kind: "vacancy" };
         }
 
         // Rule 7. Open is "not done" — a task the club is still waiting on. Any
@@ -243,11 +270,8 @@ membersRouter.delete(
 
         if (openLinks.length > 0) {
           if (!reassignTo) return { kind: "open_tasks", count: openLinks.length };
-          const [successor] = await tx
-            .select({ id: appUsers.id })
-            .from(appUsers)
-            .where(eq(appUsers.id, reassignTo))
-            .limit(1);
+          // Locked above with the rest, so they cannot leave mid-handover.
+          const successor = locked.rows.find((row) => row.id === reassignTo);
           if (!successor || reassignTo === targetId) {
             return { kind: "bad_successor", exists: Boolean(successor) };
           }
