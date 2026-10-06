@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { useEvents } from "@/hooks/use-events";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
-import { useTasks } from "@/hooks/use-tasks";
+import { MAX_TASKS, useTasks } from "@/hooks/use-tasks";
 
 /**
  * The filter state a URL carries. Every key is optional and every default is
@@ -230,6 +230,14 @@ export function TasksPage() {
               {visibleTasks.length === 1
                 ? "1 task matches the current filters."
                 : `${visibleTasks.length} tasks match the current filters.`}
+            </p>
+          )}
+          {/* The board reads every matching task up to a ceiling; past it, it
+              says so rather than passing a partial board off as the whole. */}
+          {tasks.state.truncated && (
+            <p className="mb-4 text-sm text-muted-foreground" role="status">
+              Showing the first {MAX_TASKS.toLocaleString()} tasks. Narrow the filters to see the
+              rest.
             </p>
           )}
           <TaskBoard

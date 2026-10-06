@@ -11,7 +11,51 @@ import { useCallback, useEffect, useState } from "react";
 import { reorder } from "@/lib/task-order";
 
 type TasksState =
-  { status: "loading" } | { status: "ok"; items: Task[] } | { status: "error"; message: string };
+  | { status: "loading" }
+  /** `truncated`: the read stopped at `MAX_TASKS`, so more may match. */
+  | { status: "ok"; items: Task[]; truncated: boolean }
+  | { status: "error"; message: string };
+
+/** The API's own default page, so the first request reads as it always has. */
+const FIRST_PAGE = 50;
+/** The API's maximum, for every page after the first. */
+const NEXT_PAGE = 100;
+/**
+ * Where a board stops reading. A club has hundreds of tasks, not thousands; a
+ * read that reaches this says so rather than pretending it saw everything.
+ */
+export const MAX_TASKS = 1000;
+
+/**
+ * Every task `url` matches, page by page, until a short page says there are no
+ * more. A board is one picture of the whole set — a column missing its older
+ * cards is a wrong board, not a shorter one — so it reads them all.
+ *
+ * Offsets can shift under a concurrent insert, so a task seen twice is kept
+ * once; the API's total order keeps pages from skipping one otherwise.
+ */
+async function readAllTasks(url: string): Promise<{ items: Task[]; truncated: boolean }> {
+  const items: Task[] = [];
+  const seen = new Set<string>();
+  let request = url;
+  let size = FIRST_PAGE;
+  for (;;) {
+    const response = await fetch(request, { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to load tasks");
+    const page = taskListResponseSchema.parse(await response.json()).tasks;
+    for (const task of page) {
+      if (!seen.has(task.id)) {
+        seen.add(task.id);
+        items.push(task);
+      }
+    }
+    const offset = items.length;
+    if (page.length < size) return { items, truncated: false };
+    if (offset >= MAX_TASKS) return { items, truncated: true };
+    size = NEXT_PAGE;
+    request = `${url}${url.includes("?") ? "&" : "?"}limit=${size}&offset=${offset}`;
+  }
+}
 
 /**
  * What narrows the board. Every field is a server-side filter on the same
@@ -79,13 +123,9 @@ export function useTasks({
     const search = params.toString();
     const url = `/api/tasks${overdue ? "/overdue" : ""}${search ? `?${search}` : ""}`;
 
-    fetch(url, { credentials: "include" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Failed to load tasks");
-        return taskListResponseSchema.parse(await response.json()).tasks;
-      })
-      .then((items) => {
-        if (active) setState({ status: "ok", items });
+    readAllTasks(url)
+      .then(({ items, truncated }) => {
+        if (active) setState({ status: "ok", items, truncated });
       })
       .catch((cause: unknown) => {
         if (active) {
