@@ -20,6 +20,7 @@ import {
 import { and, asc, desc, eq, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
 import { Router, type Response } from "express";
 import { getDb } from "../../db/client.js";
+import { pgError } from "../../db/errors.js";
 import { newId } from "../../db/id.js";
 import { appUsers, events, taskAssignees, tasks, teams } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
@@ -174,8 +175,46 @@ function assignedTo(userId: string): SQL {
 async function setAssignees(tx: Tx, taskId: string, userIds: readonly string[]): Promise<void> {
   await tx.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
   if (userIds.length > 0) {
+    await lockMembersInOrder(tx, userIds);
     await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
   }
+}
+
+/**
+ * Takes the key-share lock each assignee's foreign key would take, up front and
+ * in id order. Offboarding locks members in id order too, so an assignment and
+ * an offboarding never each hold a row the other is waiting for; the insert
+ * that follows finds its locks already held and keeps the caller's order.
+ */
+async function lockMembersInOrder(tx: Tx, userIds: readonly string[]): Promise<void> {
+  await tx
+    .select({ id: appUsers.id })
+    .from(appUsers)
+    .where(inArray(appUsers.id, [...userIds]))
+    .orderBy(asc(appUsers.id))
+    .for("key share");
+}
+
+/**
+ * A reference that was there for `findBadReference` and gone by the write.
+ * The real case is an assignee being offboarded mid-request: offboarding locks
+ * the member's row, this write waits for it (see `lockMembersInOrder`), and its
+ * foreign key then finds the member deleted. Answered as the 422 the up-front
+ * check would have given, rather than a 500.
+ */
+const VANISHED_REFERENCES: Record<string, { code: string; message: string }> = {
+  task_assignee_user_id_app_user_id_fk: {
+    code: "ASSIGNEE_NOT_FOUND",
+    message: "A member you assigned is no longer in the club.",
+  },
+  task_event_id_event_id_fk: { code: "EVENT_NOT_FOUND", message: "That event no longer exists." },
+  task_team_id_team_id_fk: { code: "TEAM_NOT_FOUND", message: "That team no longer exists." },
+};
+
+function vanishedReference(error: unknown): { code: string; message: string } | undefined {
+  const failure = pgError(error);
+  if (failure?.code !== "23503" || !failure.constraint) return undefined;
+  return VANISHED_REFERENCES[failure.constraint];
 }
 
 // ── GET /api/tasks ───────────────────────────────────────────────────────────
@@ -295,6 +334,11 @@ tasksRouter.post(
 
       res.status(201).json({ task } satisfies TaskResponse);
     } catch (error) {
+      const vanished = vanishedReference(error);
+      if (vanished) {
+        res.status(422).json({ error: vanished });
+        return;
+      }
       next(error);
     }
   },
@@ -337,6 +381,7 @@ tasksRouter.post(
           (input.tasks[index]!.assigneeIds ?? []).map((userId) => ({ taskId: row.id, userId })),
         );
         if (links.length > 0) {
+          await lockMembersInOrder(tx, [...new Set(links.map((link) => link.userId))]);
           await tx.insert(taskAssignees).values(links).onConflictDoNothing();
         }
         return assembleTasks(tx, inserted);
@@ -344,6 +389,11 @@ tasksRouter.post(
 
       res.status(201).json({ tasks: rows } satisfies TaskListResponse);
     } catch (error) {
+      const vanished = vanishedReference(error);
+      if (vanished) {
+        res.status(422).json({ error: vanished });
+        return;
+      }
       next(error);
     }
   },
@@ -447,6 +497,11 @@ tasksRouter.patch(
       }
       res.status(200).json({ task: outcome.task } satisfies TaskResponse);
     } catch (error) {
+      const vanished = vanishedReference(error);
+      if (vanished) {
+        res.status(422).json({ error: vanished });
+        return;
+      }
       next(error);
     }
   },
