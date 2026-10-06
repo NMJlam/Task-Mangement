@@ -29,6 +29,7 @@ import {
   ensureWorkstreams,
   mergeLink,
   reorderColumn,
+  visibleTasks,
   workstreamKeys,
 } from "./service.js";
 
@@ -184,11 +185,12 @@ tasksRouter.get(
   authenticate,
   authorise(0),
   validate(listTasksQuerySchema, "query"),
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
       const query = res.locals.validated as ListTasksQuery;
       const db = getDb();
       const filters = [
+        visibleTasks(req.user!.tier),
         query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.status ? eq(tasks.status, query.status) : undefined,
@@ -201,8 +203,11 @@ tasksRouter.get(
       const rows = await db
         .select()
         .from(tasks)
-        .where(filters.length > 0 ? and(...filters) : undefined)
-        .orderBy(desc(tasks.createdAt))
+        .where(and(...filters))
+        // The id breaks ties: a bulk insert stamps every row with one
+        // created_at, and without a total order an offset page can repeat or
+        // skip rows from it.
+        .orderBy(desc(tasks.createdAt), desc(tasks.id))
         .limit(query.limit)
         .offset(query.offset);
 
@@ -222,13 +227,14 @@ tasksRouter.get(
   authenticate,
   authorise(0),
   validate(overdueTasksQuerySchema, "query"),
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
       const query = res.locals.validated as OverdueTasksQuery;
       const db = getDb();
       // Overdue is derived, never stored: past due and not yet done. A NULL
       // due_at is not overdue, and `lt` already excludes it.
       const filters = [
+        visibleTasks(req.user!.tier),
         lt(tasks.dueAt, new Date()),
         ne(tasks.status, "done"),
         query.eventId ? eq(tasks.eventId, query.eventId) : undefined,
@@ -241,7 +247,7 @@ tasksRouter.get(
         .select()
         .from(tasks)
         .where(and(...filters))
-        .orderBy(asc(tasks.dueAt))
+        .orderBy(asc(tasks.dueAt), asc(tasks.id))
         .limit(query.limit)
         .offset(query.offset);
 
@@ -269,12 +275,11 @@ tasksRouter.post(
         return;
       }
 
-      await ensureWorkstreams(db, workstreamKeys([input]));
-
       // `creator` is stamped from the session, never the body, so a caller
       // cannot attribute work to someone else.
       const { assigneeIds, ...columns } = input;
       const task = await db.transaction(async (tx) => {
+        await ensureWorkstreams(tx, workstreamKeys([input]));
         const [row] = await tx
           .insert(tasks)
           .values({
@@ -312,12 +317,11 @@ tasksRouter.post(
         return;
       }
 
-      await ensureWorkstreams(db, workstreamKeys(input.tasks));
-
       // One multi-row INSERT rather than one per task: it is atomic on its own
       // and works identically on the node and Neon serverless drivers. The
       // junction rows join the same transaction so no task lands unowned.
       const rows = await db.transaction(async (tx) => {
+        await ensureWorkstreams(tx, workstreamKeys(input.tasks));
         const inserted = await tx
           .insert(tasks)
           .values(
@@ -357,7 +361,7 @@ tasksRouter.get(
       const [task] = await getDb()
         .select()
         .from(tasks)
-        .where(eq(tasks.id, req.params.id!))
+        .where(and(eq(tasks.id, req.params.id!), visibleTasks(req.user!.tier)))
         .limit(1);
 
       if (!task) {
@@ -384,34 +388,32 @@ tasksRouter.patch(
   async (req, res, next) => {
     try {
       const patch = res.locals.validated as UpdateTask;
-      const db = getDb();
-      const bad = await findBadReference(db, [patch], req.user!.tier);
-      if (bad) {
-        res.status(422).json({ error: bad });
-        return;
-      }
+      const tier = req.user!.tier;
+      const { assigneeIds, ...columns } = patch;
 
-      // Moving either side of the link can land the task on a pair with no
-      // workstream — a new team on the same event is the common case — so work
-      // out the link the row will end up with and declare it before the update.
-      if (patch.eventId !== undefined || patch.teamId !== undefined) {
-        const [stored] = await db
+      // One transaction for the whole edit: the visibility check, the
+      // workstream it may declare, the task row and the junction. The check
+      // comes first and reads the STORED link, so a task on a hidden event
+      // cannot be edited — or unlinked from that event with `eventId: null`,
+      // which the reference check alone would wave through.
+      const outcome = await getDb().transaction(async (tx) => {
+        const [stored] = await tx
           .select({ eventId: tasks.eventId, teamId: tasks.teamId })
           .from(tasks)
-          .where(eq(tasks.id, req.params.id!))
+          .where(and(eq(tasks.id, req.params.id!), visibleTasks(tier)))
           .limit(1);
-        if (!stored) {
-          notFound(res);
-          return;
-        }
-        await ensureWorkstreams(db, workstreamKeys([mergeLink(stored, patch)]));
-      }
+        if (!stored) return { kind: "not_found" } as const;
 
-      // `assigneeIds` is a second table, so it cannot ride along in the UPDATE
-      // above; the task row and the junction move in one transaction, which is
-      // also what makes the submitted array replace the set atomically.
-      const { assigneeIds, ...columns } = patch;
-      const task = await db.transaction(async (tx) => {
+        const bad = await findBadReference(tx, [patch], tier);
+        if (bad) return { kind: "bad_reference", error: bad } as const;
+
+        // Moving either side of the link can land the task on a pair with no
+        // workstream — a new team on the same event is the common case — so
+        // declare the link the row will end up with before the update.
+        if (patch.eventId !== undefined || patch.teamId !== undefined) {
+          await ensureWorkstreams(tx, workstreamKeys([mergeLink(stored, patch)]));
+        }
+
         const [row] = await tx
           .update(tasks)
           .set({
@@ -426,18 +428,24 @@ tasksRouter.patch(
           .where(eq(tasks.id, req.params.id!))
           .returning();
 
-        if (!row) return undefined;
+        // `assigneeIds` is a second table, so it cannot ride along in the
+        // UPDATE; the same transaction is what makes the submitted array
+        // replace the set atomically.
         if (assigneeIds !== undefined) {
-          await setAssignees(tx, row.id, assigneeIds);
+          await setAssignees(tx, row!.id, assigneeIds);
         }
-        return (await assembleTasks(tx, [row]))[0];
+        return { kind: "updated", task: (await assembleTasks(tx, [row!]))[0]! } as const;
       });
 
-      if (!task) {
+      if (outcome.kind === "not_found") {
         notFound(res);
         return;
       }
-      res.status(200).json({ task } satisfies TaskResponse);
+      if (outcome.kind === "bad_reference") {
+        res.status(422).json({ error: outcome.error });
+        return;
+      }
+      res.status(200).json({ task: outcome.task } satisfies TaskResponse);
     } catch (error) {
       next(error);
     }
@@ -475,7 +483,7 @@ tasksRouter.patch(
             ...overdueCycleReset({ status }),
             updatedAt: new Date(),
           })
-          .where(eq(tasks.id, req.params.id!))
+          .where(and(eq(tasks.id, req.params.id!), visibleTasks(req.user!.tier)))
           .returning();
 
         if (!row) return undefined;
@@ -511,7 +519,7 @@ tasksRouter.delete(
     try {
       const [task] = await getDb()
         .delete(tasks)
-        .where(eq(tasks.id, req.params.id!))
+        .where(and(eq(tasks.id, req.params.id!), visibleTasks(req.user!.tier)))
         .returning({ id: tasks.id });
 
       if (!task) {

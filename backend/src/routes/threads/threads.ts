@@ -30,6 +30,7 @@ import {
   tasks,
 } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
+import { visibleTasks } from "../tasks/service.js";
 import {
   commentRecipients,
   escapeLike,
@@ -353,7 +354,7 @@ async function postToTask(
       creator: tasks.creator,
     })
     .from(tasks)
-    .where(eq(tasks.id, req.params.id!))
+    .where(and(eq(tasks.id, req.params.id!), visibleTasks(viewer.tier)))
     .limit(1);
   if (!task) {
     taskNotFound(res);
