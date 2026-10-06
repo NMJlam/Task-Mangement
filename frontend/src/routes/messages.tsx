@@ -62,8 +62,13 @@ export function MessagesPage() {
     event.preventDefault();
     const body = draft.trim();
     if (!body) return;
+    // `send` only answers with the message while the reader is still on the
+    // visit it was sent from, so a slow send never clears a draft typed since
+    // in another thread — or in this one after leaving and coming back.
     void messages.send(body).then((sent) => {
-      if (sent) setDraft("");
+      if (!sent) return;
+      setDraft("");
+      threads.noteActivity(sent);
     });
   }
 
@@ -82,7 +87,10 @@ export function MessagesPage() {
 
       <NewConversationDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          threads.clearCreateError();
+        }}
         members={memberItems}
         selfId={selfId}
         busy={threads.creating}
@@ -203,6 +211,24 @@ export function MessagesPage() {
                     ? `No messages match "${searchQuery}".`
                     : "No messages yet. Start the conversation below."}
                 </p>
+              )}
+              {messages.state.status === "ok" && messages.state.nextCursor !== null && (
+                <div className="mb-5 flex flex-col items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={messages.loadingOlder}
+                    onClick={() => void messages.loadOlder()}
+                  >
+                    {messages.loadingOlder ? "Loading…" : "Load older messages"}
+                  </Button>
+                  {messages.olderError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {messages.olderError}. Try again.
+                    </p>
+                  )}
+                </div>
               )}
               {messages.state.status === "ok" && (
                 <div className="grid gap-5">
