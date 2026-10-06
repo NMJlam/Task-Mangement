@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessagesPage } from "./messages";
 
@@ -309,7 +309,113 @@ describe("MessagesPage", () => {
       { timeout: 1000 },
     );
   });
+
+  it("keeps a draft typed in another thread when an earlier send lands", async () => {
+    const threadA = "018f3a4b-0000-7000-8000-0000000000a1";
+    const threadB = "018f3a4b-0000-7000-8000-0000000000b2";
+    const author = "018f3a4b-0000-7000-8000-000000000003";
+    let land: (value: unknown) => void = () => undefined;
+    const pendingSend = new Promise((resolve) => {
+      land = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        if (input === "/api/threads") {
+          return response({
+            threads: [thread(threadA, "Winter Showcase"), thread(threadB, "Logistics")],
+          });
+        }
+        if (input === "/api/members") return response({ members: [] });
+        if (init?.method === "POST") return pendingSend;
+        return response({ messages: [], nextCursor: null });
+      }),
+    );
+
+    render(<MessagesPage />);
+    const first = await screen.findByLabelText(/message winter showcase/i);
+    fireEvent.change(first, { target: { value: "Doors at six" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /logistics/i }));
+    const second = await screen.findByLabelText(/message logistics/i);
+    fireEvent.change(second, { target: { value: "Half-typed for B" } });
+    // A's send is not B's: B can send while it is still in flight.
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await act(async () => {
+      land(response({ message: buildMessage(threadA, author, "Doors at six") }, 201));
+      // Let the send, and the page's handling of its answer, run to the end.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByLabelText(/message logistics/i)).toHaveValue("Half-typed for B");
+    expect(screen.queryByText("Doors at six")).not.toBeInTheDocument();
+  });
+
+  it("forgets a failed start when the dialog is closed and reopened", async () => {
+    const other = "018f3a4b-0000-7000-8000-000000000008";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        if (input === "/api/threads" && init?.method === "POST") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        if (input === "/api/threads") {
+          return response({
+            threads: [thread("018f3a4b-0000-7000-8000-000000000002", "Winter Showcase")],
+          });
+        }
+        if (input === "/api/members") {
+          return response({
+            members: [
+              {
+                id: other,
+                role: "officer",
+                tier: 0,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                name: "Jamie Lee",
+                email: "jamie@example.com",
+                teamIds: [],
+                portfolio: null,
+              },
+            ],
+          });
+        }
+        return response({ messages: [], nextCursor: null });
+      }),
+    );
+
+    render(<MessagesPage />);
+    await screen.findByRole("heading", { name: "Winter Showcase" });
+    fireEvent.click(screen.getByRole("button", { name: /new message/i }));
+    fireEvent.click(await screen.findByText("Jamie Lee"));
+    expect(await screen.findByText(/failed to start the conversation/i)).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /new message/i }));
+
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/failed to start the conversation/i)).not.toBeInTheDocument();
+  });
 });
+
+function thread(id: string, name: string) {
+  return {
+    id,
+    kind: "event",
+    name,
+    teamId: null,
+    eventId: "018f3a4b-0000-7000-8000-000000000004",
+    minTier: 0,
+    createdAt: "2026-06-01T00:00:00.000Z",
+    memberIds: [],
+    lastReadAt: null,
+    unreadCount: 0,
+    lastMessageAt: "2026-09-18T00:00:00.000Z",
+  };
+}
 
 function response(body: unknown, status = 200) {
   return { ok: true, status, json: async () => body };
