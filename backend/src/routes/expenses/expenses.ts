@@ -186,7 +186,7 @@ expensesRouter.post(
       );
       res.status(200).json({
         expense,
-        budget: await getBudgetSummary(db),
+        budget: await getBudgetSummary(db, req.user!.tier),
       } satisfies ExpenseDecisionResponse);
     } catch (error) {
       if (error instanceof ExpenseTransitionError) return transitionError(res, error);

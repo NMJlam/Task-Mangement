@@ -95,6 +95,38 @@ describe("/api/budget (integration)", () => {
     );
   });
 
+  it("names only the events the caller may see, while the totals stay club-wide", async () => {
+    const treasurer = await member("treasurer", "treasurer");
+    const officer = await member("officer", "officer");
+    const visibleId = newId();
+    const hiddenId = newId();
+    await db.insert(events).values([
+      { id: visibleId, title: `${PREFIX}visible`, startsAt: new Date(), allocationCents: 1_000 },
+      {
+        id: hiddenId,
+        title: `${PREFIX}hidden`,
+        startsAt: new Date(),
+        allocationCents: 2_000,
+        minTier: 2,
+      },
+    ]);
+
+    signInAs(officer);
+    const asOfficer = await request(app).get("/api/budget");
+    signInAs(treasurer);
+    const asTreasurer = await request(app).get("/api/budget");
+
+    const eventIds = (response: typeof asOfficer) =>
+      response.body.budget.allocations.map((row: { eventId: string }) => row.eventId);
+    expect(eventIds(asOfficer)).toContain(visibleId);
+    expect(eventIds(asOfficer)).not.toContain(hiddenId);
+    expect(JSON.stringify(asOfficer.body)).not.toContain(`${PREFIX}hidden`);
+    expect(eventIds(asTreasurer)).toEqual(expect.arrayContaining([visibleId, hiddenId]));
+    // The hidden allocation still counts against the pool, for everyone.
+    expect(asOfficer.body.budget.allocationCents).toBe(asTreasurer.body.budget.allocationCents);
+    expect(asOfficer.body.budget.availableCents).toBe(asTreasurer.body.budget.availableCents);
+  });
+
   it("includes per-event spend even when the event has no allocation", async () => {
     const officer = await member("officer", "officer");
     const eventId = newId();

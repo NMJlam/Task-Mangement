@@ -1,4 +1,4 @@
-import type { BudgetSummary, Risk } from "@ctp/shared";
+import type { BudgetSummary, Risk, Tier } from "@ctp/shared";
 import { sql } from "drizzle-orm";
 import type { Queryable, Tx } from "../events/service.js";
 import { BudgetExceededError, computeProgress } from "../events/service.js";
@@ -63,6 +63,7 @@ interface AllocationRow {
   spentCents: string;
   startsAt: string;
   createdAt: string;
+  minTier: number;
 }
 
 interface CategoryRow {
@@ -72,7 +73,17 @@ interface CategoryRow {
   spentCents: string;
 }
 
-export async function getBudgetSummary(db: Queryable): Promise<BudgetSummary> {
+/**
+ * The club's money, as `viewerTier` may see it.
+ *
+ * The totals, the risk and the category split are club-wide figures: the pool
+ * a hidden event draws on is the same pool everyone spends from, so leaving its
+ * allocation out of `allocationCents` would show money as available that is
+ * not. Only the per-event `allocations` list is narrowed, because each of its
+ * rows names an event — and an event above your tier is one `GET
+ * /api/events/:id` answers 404 for.
+ */
+export async function getBudgetSummary(db: Queryable, viewerTier: Tier): Promise<BudgetSummary> {
   const totalsResult = await db.execute<SummaryRow>(sql`
     SELECT
       COALESCE((SELECT budget_cents FROM "settings" WHERE id = 1), 0) AS "budgetCents",
@@ -83,7 +94,7 @@ export async function getBudgetSummary(db: Queryable): Promise<BudgetSummary> {
   const allocationResult = await db.execute<AllocationRow>(sql`
     SELECT
       e.id AS "eventId", e.title AS "eventTitle", e.allocation_cents AS "allocationCents",
-      e.starts_at AS "startsAt", e.created_at AS "createdAt",
+      e.starts_at AS "startsAt", e.created_at AS "createdAt", e.min_tier AS "minTier",
       COALESCE(SUM(x.amount_cents) FILTER (WHERE x.status IN ('approved', 'paid')), 0) AS "committedCents",
       COALESCE(SUM(x.amount_cents) FILTER (WHERE x.status = 'paid'), 0) AS "spentCents"
     FROM "event" e
@@ -124,13 +135,15 @@ export async function getBudgetSummary(db: Queryable): Promise<BudgetSummary> {
         committedCents: Number(row.committedCents),
       })),
     ),
-    allocations: allocationResult.rows.map((row) => ({
-      eventId: row.eventId,
-      eventTitle: row.eventTitle,
-      allocationCents: Number(row.allocationCents),
-      committedCents: Number(row.committedCents),
-      spentCents: Number(row.spentCents),
-    })),
+    allocations: allocationResult.rows
+      .filter((row) => Number(row.minTier) <= viewerTier)
+      .map((row) => ({
+        eventId: row.eventId,
+        eventTitle: row.eventTitle,
+        allocationCents: Number(row.allocationCents),
+        committedCents: Number(row.committedCents),
+        spentCents: Number(row.spentCents),
+      })),
     byCategory: categoryResult.rows.map((row) => ({
       ...row,
       committedCents: Number(row.committedCents),
