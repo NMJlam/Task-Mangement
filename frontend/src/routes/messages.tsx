@@ -28,23 +28,38 @@ export function MessagesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  // The conversation the draft and search above were typed in.
+  const [typedIn, setTypedIn] = useState<string>();
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
-  const active = threadItems.find((thread) => thread.id === selectedId) ?? threadItems[0];
-  const messages = useThreadMessages(active?.id, searchQuery);
-  const memberItems = members.state.status === "ok" ? members.state.items : [];
-  const markThreadRead = threads.markRead;
-  const selfId = me.status === "ok" ? me.user.id : undefined;
 
   // The conversation on screen is pinned by id. The list re-sorts by activity
   // on every refresh, so "whichever is first" would move the reader to another
   // conversation — wiping their draft and search — without a click. A new one
   // is chosen only when there is none yet, or the pinned one has gone.
-  useEffect(() => {
-    if (threads.state.status !== "ok") return;
-    const items = threads.state.items;
-    if (selectedId !== undefined && items.some((thread) => thread.id === selectedId)) return;
-    setSelectedId(items[0]?.id);
-  }, [threads.state, selectedId]);
+  //
+  // This and the reset below are settled while rendering, not in effects: an
+  // effect runs only after the conversation is on screen, so a refresh landing
+  // first would find nothing pinned, and anything typed in between would be
+  // wiped by a reset that arrived late.
+  if (threads.state.status === "ok" && !threadItems.some((thread) => thread.id === selectedId)) {
+    const fallback = threadItems[0]?.id;
+    if (fallback !== selectedId) setSelectedId(fallback);
+  }
+  const active = threadItems.find((thread) => thread.id === selectedId) ?? threadItems[0];
+
+  // A draft and a search belong to the conversation they were typed in —
+  // switching should never carry half a message into the wrong one.
+  if (typedIn !== active?.id) {
+    setTypedIn(active?.id);
+    setDraft("");
+    setSearchInput("");
+    setSearchQuery("");
+  }
+
+  const messages = useThreadMessages(active?.id, searchQuery);
+  const memberItems = members.state.status === "ok" ? members.state.items : [];
+  const markThreadRead = threads.markRead;
+  const selfId = me.status === "ok" ? me.user.id : undefined;
 
   // Debounced so every keystroke doesn't fire a request — the search is
   // server-side (the thread can hold far more than one loaded page).
@@ -53,21 +68,9 @@ export function MessagesPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // A search belongs to the thread it was typed in, same as the draft.
-  useEffect(() => {
-    setSearchInput("");
-    setSearchQuery("");
-  }, [active?.id]);
-
   useEffect(() => {
     if (active) void markThreadRead(active);
   }, [active, markThreadRead]);
-
-  // A draft belongs to the thread it was typed in — switching threads should
-  // never carry half a message into the wrong conversation.
-  useEffect(() => {
-    setDraft("");
-  }, [active?.id]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
