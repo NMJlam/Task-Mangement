@@ -1,10 +1,13 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, type RouteObject } from "react-router-dom";
 import { RequireAuth } from "./components/layout/require-auth";
+import { RouteError } from "./components/layout/route-error";
 import "./index.css";
+import { applyTheme, storedTheme } from "./lib/theme";
 import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
+import { NotFoundPage } from "./routes/not-found";
 
 const AiBreakdownPage = lazy(() =>
   import("./routes/ai-breakdown").then(({ AiBreakdownPage }) => ({ default: AiBreakdownPage })),
@@ -45,9 +48,9 @@ const TasksPage = lazy(() =>
   import("./routes/tasks").then(({ TasksPage }) => ({ default: TasksPage })),
 );
 
-document.documentElement.classList.toggle("dark", localStorage.getItem("theme") === "dark");
+applyTheme(storedTheme());
 
-const router = createBrowserRouter([
+const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
   {
     path: "/",
@@ -180,7 +183,20 @@ const router = createBrowserRouter([
         },
       ]
     : []),
-]);
+  // Last, so every real path above wins. Inside the shell, like any page.
+  {
+    path: "*",
+    element: (
+      <RequireAuth>
+        <NotFoundPage />
+      </RequireAuth>
+    ),
+  },
+];
+
+// One boundary for every page: a page that throws, or whose code fails to
+// load, offers a way back instead of React Router's developer screen.
+const router = createBrowserRouter([{ errorElement: <RouteError />, children: routes }]);
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Root element #root not found");
