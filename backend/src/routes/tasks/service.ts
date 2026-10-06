@@ -1,7 +1,7 @@
-import { insertAfter, type TaskStatus } from "@ctp/shared";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { insertAfter, type TaskStatus, type Tier } from "@ctp/shared";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { newId } from "../../db/id.js";
-import { taskAssignees, tasks, workstreams } from "../../db/schema/index.js";
+import { events, taskAssignees, tasks, workstreams } from "../../db/schema/index.js";
 import type { Queryable, Tx } from "../events/service.js";
 
 /**
@@ -14,6 +14,26 @@ import type { Queryable, Tx } from "../events/service.js";
  * Framework-free like `routes/events/service.ts`, so the pure half is
  * unit-tested with no database.
  */
+
+/**
+ * The tasks a member at `tier` may see: the task's own `min_tier` is at or
+ * below theirs, and so is its event's, if it has one. Every task route reads
+ * through this, so a task on an event that `GET /api/events/:id` hides answers
+ * 404 too — a task list is not a side door to the event's title or id.
+ *
+ * A cancelled event does NOT hide its tasks, matching the event routes, which
+ * still serve a cancelled event by id: its open work still needs a home on the
+ * board until someone closes or moves it.
+ */
+export function visibleTasks(tier: Tier): SQL {
+  return and(
+    lte(tasks.minTier, tier),
+    or(
+      isNull(tasks.eventId),
+      sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${tasks.eventId} AND ${lte(events.minTier, tier)})`,
+    ),
+  )!;
+}
 
 /** Where a task sits. Either side may be null: standing or cross-team work. */
 export interface TaskLink {
@@ -91,10 +111,8 @@ export function workstreamKeys(
  * one-per-team-per-event key makes this idempotent and safe under concurrent
  * requests for the same pair.
  *
- * Deliberately not in a transaction with the task write: production runs the
- * Neon HTTP driver, which has none. A task write that fails afterwards leaves a
- * workstream with no tasks — the same state `POST /api/events` with a `teamId`
- * creates, so nothing downstream reads it as an error.
+ * The task routes call it inside the same transaction as the task write, so a
+ * write that fails leaves no workstream behind.
  */
 export async function ensureWorkstreams(
   db: Queryable,

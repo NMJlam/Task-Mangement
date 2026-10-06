@@ -1162,4 +1162,117 @@ describe("/api/tasks", () => {
       ]);
     });
   });
+
+  /**
+   * A task is visible when its own min_tier and its event's are at or below
+   * yours. Every task route answers a hidden one as missing, the way the event
+   * routes answer a hidden event — or the task list hands out the event's id.
+   */
+  describe("tasks above your tier", () => {
+    const dueAt = new Date(Date.now() - DAY);
+
+    async function hiddenTask() {
+      const hidden = await event({ title: "test-task-hidden-event", minTier: 2 });
+      const [row] = await db
+        .insert(tasks)
+        .values({ id: newId(), eventId: hidden.id, title: "test-task-hidden", dueAt })
+        .returning();
+      return { hidden, task: row! };
+    }
+
+    function titles(response: { body: { tasks: { title: string }[] } }) {
+      return response.body.tasks.map((task) => task.title);
+    }
+
+    it("leaves a hidden event's tasks out of the list, the overdue list and the calendar", async () => {
+      const officer = await member("officer", "officer");
+      const { hidden } = await hiddenTask();
+      signedInAs(officer);
+
+      const list = await request(app).get("/api/tasks").query({ eventId: hidden.id });
+      const overdue = await request(app).get("/api/tasks/overdue").query({ eventId: hidden.id });
+      const calendar = await request(app)
+        .get("/api/calendar")
+        .query({
+          from: new Date(dueAt.getTime() - HOUR).toISOString(),
+          to: new Date(dueAt.getTime() + HOUR).toISOString(),
+          include: "tasks",
+        });
+
+      expect(titles(list)).toEqual([]);
+      expect(titles(overdue)).toEqual([]);
+      expect(calendar.body.items.map((item: { title: string }) => item.title)).not.toContain(
+        "test-task-hidden",
+      );
+    });
+
+    it("404s reading, editing, unlinking, moving, commenting on and deleting one", async () => {
+      const director = await member("director", "director");
+      const { hidden, task } = await hiddenTask();
+      signedInAs(director);
+
+      const responses = [
+        await request(app).get(`/api/tasks/${task.id}`),
+        await request(app).patch(`/api/tasks/${task.id}`).send({ title: "test-task-renamed" }),
+        await request(app).patch(`/api/tasks/${task.id}`).send({ eventId: null }),
+        await request(app).patch(`/api/tasks/${task.id}/status`).send({ status: "done" }),
+        await request(app).post(`/api/tasks/${task.id}/comments`).send({ body: "Found it" }),
+        await request(app).delete(`/api/tasks/${task.id}`),
+      ];
+
+      expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404, 404, 404]);
+      expect(responses.every((response) => response.body.task === undefined)).toBe(true);
+      const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+      expect(row).toMatchObject({ title: "test-task-hidden", eventId: hidden.id, status: "todo" });
+    });
+
+    it("still serves them to a member who can see the event", async () => {
+      const president = await member("president", "president");
+      const { hidden, task } = await hiddenTask();
+      signedInAs(president);
+
+      const one = await request(app).get(`/api/tasks/${task.id}`);
+      const list = await request(app).get("/api/tasks").query({ eventId: hidden.id });
+
+      expect(one.status).toBe(200);
+      expect(titles(list)).toEqual(["test-task-hidden"]);
+    });
+
+    it("hides a task above the caller's own tier, even with no event", async () => {
+      const officer = await member("officer", "officer");
+      const [row] = await db
+        .insert(tasks)
+        .values({ id: newId(), title: "test-task-tiered", minTier: 1, creator: officer.id })
+        .returning();
+      signedInAs(officer);
+
+      const response = await request(app).get(`/api/tasks/${row!.id}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("TASK_NOT_FOUND");
+    });
+  });
+
+  it("pages a bulk insert, which shares one created_at, without repeating or skipping a task", async () => {
+    const director = await member("director", "director");
+    const { id: teamId } = await team();
+    signedInAs(director);
+    const created = await request(app)
+      .post("/api/tasks/bulk")
+      .send({
+        tasks: ["one", "two", "three", "four", "five"].map((title) => ({ teamId, title })),
+      });
+    expect(created.status).toBe(201);
+
+    const seen: string[] = [];
+    for (const offset of [0, 2, 4]) {
+      const page = await request(app).get("/api/tasks").query({ teamId, limit: 2, offset });
+      seen.push(...page.body.tasks.map((task: { id: string }) => task.id));
+    }
+
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen)).toEqual(
+      new Set(created.body.tasks.map((task: { id: string }) => task.id)),
+    );
+  });
 });
