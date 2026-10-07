@@ -69,11 +69,9 @@ The FE prototype's `muted` text was darkened from `#78766f` (**4.35:1**) to
 The calendar's current day is `today`, a red of its own rather than
 `destructive`. Its date badge is `today-foreground` on `today`: white on
 `#c8231b` at **5.66:1** in light mode, `#16161a` on `#f97066` at **6.48:1** in
-dark. The ring around today's cell is `today` against the page, **5.42:1**
-light and **6.48:1** dark, so it clears the 3:1 minimum for non-text contrast
-too. It is a ring rather than a cell tint because a tint would thin
-`muted-foreground` inside the cell. Today also carries `aria-current="date"`,
-so the red is not the only signal.
+dark. Only the badge is red; the cell is not tinted, because a tint would thin
+`muted-foreground` inside it. Today also carries `aria-current="date"`, so the
+red is not the only signal.
 
 `muted-foreground` has so little headroom that it must never be faded further.
 The calendar's adjacent-month day cells are tinted with `bg-muted/40` (over

@@ -618,11 +618,6 @@ function DayColumn({
       className={cn(
         "grid content-start gap-1 rounded-lg",
         compact ? "min-h-24 p-1.5" : "min-h-20 p-2",
-        // Today is outlined as well as badged, so it can be found at a glance
-        // in a full month. A ring, not a tint: a tint would thin the contrast
-        // of the `muted-foreground` text inside, which has no room to spare.
-        isToday && !detailed && "ring-2 ring-today ring-inset",
-        // After today's ring, so a drag over today still shows the drop ring.
         isDropTarget && "bg-accent/60 ring-2 ring-ring/40 ring-inset",
       )}
     >
