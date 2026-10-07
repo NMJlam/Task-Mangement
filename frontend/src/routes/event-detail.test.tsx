@@ -365,6 +365,86 @@ describe("EventDetailPage", () => {
     expect(screen.getByText("Lighting rig is booked.")).toBeInTheDocument();
   });
 
+  describe("Thread tab", () => {
+    it("chats in the event's own thread, from the same box as Messages", async () => {
+      const fetchMock = stubEvent({ messages: [message()], members: [roster()] });
+      renderDetail("?tab=thread");
+
+      const box = await screen.findByLabelText(/message winter showcase/i);
+      fireEvent.change(box, { target: { value: "Doors at six." } });
+      fireEvent.keyDown(box, { key: "Enter" });
+
+      expect(await screen.findByText("Doors at six.")).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/threads/${CHANNEL_ID}/messages`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ body: "Doors at six." }),
+        }),
+      );
+      expect(box).toHaveValue("");
+    });
+
+    it("keeps Summarise above the chat, and its summary through a search", async () => {
+      const user = userEvent.setup({ delay: null });
+      const fetchMock = stubEvent({ messages: [message()], members: [roster()] });
+      // The search's answer is held back, so its loading state really renders —
+      // an instant stub would land before React ever drew it.
+      let land: (value: unknown) => void = () => undefined;
+      const answer = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+        url.includes("?q=")
+          ? new Promise((resolve) => {
+              land = resolve;
+            })
+          : answer(url, init),
+      );
+      renderDetail("?tab=thread");
+
+      const summarise = await screen.findByRole("button", { name: "Summarise thread" });
+      const box = await screen.findByLabelText(/message winter showcase/i);
+      expect(
+        summarise.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      await user.click(summarise);
+      expect(await screen.findByText(SUMMARY_POINT)).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/search this conversation/i), "rig");
+      expect(
+        await screen.findByText("Loading Messages…", undefined, { timeout: 1000 }),
+      ).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/threads/${CHANNEL_ID}/messages?q=rig`,
+        expect.anything(),
+      );
+      // Mid-search, and once the results are in: still the summary already asked for.
+      expect(screen.getByText(SUMMARY_POINT)).toBeInTheDocument();
+      await act(async () => land(ok({ messages: [message()], nextCursor: null })));
+      expect(await screen.findByText("Lighting rig is booked.")).toBeInTheDocument();
+      expect(screen.getByText(SUMMARY_POINT)).toBeInTheDocument();
+    });
+
+    it("offers no summary of an empty thread, which the server would refuse", async () => {
+      stubEvent();
+      renderDetail("?tab=thread");
+
+      expect(await screen.findByText(/no messages yet/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
+    });
+
+    it("names a message the assistant wrote as the assistant", async () => {
+      stubEvent({
+        messages: [{ ...message(), aiRunId: "018f3a4b-0000-7000-8000-0000000000c0" }],
+        members: [roster()],
+      });
+      renderDetail("?tab=thread");
+
+      expect(await screen.findByText("MAC Assistant")).toBeInTheDocument();
+      expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    });
+  });
+
   it("marks the unbuilt tabs as unbuilt rather than empty", async () => {
     const user = userEvent.setup({ delay: null });
     stubEvent();
@@ -647,6 +727,8 @@ describe("EventDetailPage", () => {
 });
 
 const AUTHOR_ID = "018f3a4b-0000-7000-8000-00000000000a";
+/** What the stubbed thread summary says. */
+const SUMMARY_POINT = "Rig is booked; doors at six.";
 
 function message() {
   return {
@@ -718,7 +800,30 @@ function stubEvent({
       );
     }
     if (url.includes("/progress")) return Promise.resolve(ok(progressFixture));
+    // A post comes back as the stored row, written by the signed-in member.
+    if (url === `/api/threads/${CHANNEL_ID}/messages` && init?.method === "POST") {
+      const { body } = JSON.parse(String(init.body)) as { body: string };
+      return Promise.resolve(
+        ok({
+          message: {
+            ...message(),
+            id: "018f3a4b-0000-7000-8000-00000000000c",
+            author: ME_ID,
+            body,
+            createdAt: "2026-06-03T00:00:00.000Z",
+          },
+        }),
+      );
+    }
     if (url.includes("/messages")) return Promise.resolve(ok({ messages, nextCursor: null }));
+    if (url === `/api/ai/threads/${CHANNEL_ID}/summary`) {
+      return Promise.resolve(
+        ok({
+          summary: { summary: [SUMMARY_POINT], actionItems: [] },
+          asOfMessageId: message().id,
+        }),
+      );
+    }
     if (url.startsWith("/api/members")) return Promise.resolve(ok({ members }));
     // The board's own request. Answering the unfiltered list with a task the
     // event does not own is what proves the filter is really applied.

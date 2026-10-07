@@ -165,7 +165,9 @@ export function ThreadChat({
 
 function MessageRow({ message, members }: { message: Message; members: RosterMember[] }) {
   const author = members.find((member) => member.id === message.author);
-  const name = author?.name || author?.email || "Former Member";
+  // A message the assistant wrote is posted under the member who ran it, so
+  // `aiRunId`, not the author, says whose words these are.
+  const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
 
   return (
     <article className="flex items-start gap-3">
