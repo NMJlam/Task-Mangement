@@ -229,11 +229,44 @@ describe("mentionsAsNames", () => {
 });
 
 describe("buildSummaryPrompt", () => {
-  it("lets an action item go to someone who was @mentioned, not only to an author", () => {
+  const said = (author: string, body: string) => ({
+    id: body,
+    author,
+    body,
+    createdAt: new Date(0),
+  });
+
+  it("gives each message on its own line, with who wrote it", () => {
     const prompt = buildSummaryPrompt([
-      { id: "1", author: "Ada", body: "@Ben Lee can you order pizza?", createdAt: new Date(0) },
+      said("dev@example.com", "@Leah Mueller what are you doing rn"),
+      said("dev@example.com", "nothing lol"),
     ]);
-    expect(prompt).toContain("Ada: @Ben Lee can you order pizza?");
-    expect(prompt).toMatch(/names that appear below, as authors or @mentions/u);
+    expect(prompt).toContain(
+      '{"from":"dev@example.com","text":"@Leah Mueller what are you doing rn"}\n' +
+        '{"from":"dev@example.com","text":"nothing lol"}',
+    );
+  });
+
+  it("keeps a message with a line break on one line, so its second line has a writer", () => {
+    const prompt = buildSummaryPrompt([said("Ada", "Room is booked.\nPizza is not.")]);
+    expect(prompt).toContain('{"from":"Ada","text":"Room is booked.\\nPizza is not."}');
+    expect(prompt.split("\n")).not.toContain("Pizza is not.");
+  });
+
+  it("says an @mention is who a message is to, not who wrote it", () => {
+    const prompt = buildSummaryPrompt([said("Ada", "@Ben Lee are you free?")]);
+    // A question to Ben followed by an answer is not Ben answering: the
+    // writer of each message is its "from", whoever it addresses.
+    expect(prompt).toMatch(
+      /An @Name in the text is who the message is addressed to, not who wrote it/u,
+    );
+    expect(prompt).toMatch(
+      /never assume a message is a reply from someone it does not name as "from"/u,
+    );
+  });
+
+  it("lets an action item go to someone who was @mentioned, not only to a writer", () => {
+    const prompt = buildSummaryPrompt([said("Ada", "@Ben Lee can you order pizza?")]);
+    expect(prompt).toMatch(/Only use names that appear below, as a "from" or an @mention/u);
   });
 });
