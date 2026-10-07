@@ -1,10 +1,4 @@
-import {
-  can,
-  eventStatusTransitions,
-  type ChangeableEventStatus,
-  type Message,
-  type RosterMember,
-} from "@ctp/shared";
+import { can, eventStatusTransitions, type ChangeableEventStatus } from "@ctp/shared";
 import {
   ArrowLeft,
   CalendarDays,
@@ -19,11 +13,11 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
-import { UserAvatar } from "@/components/common/user-avatar";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventDetailsDialog } from "@/components/events/event-details-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { EventRiskPanel } from "@/components/events/event-risk-panel";
+import { ThreadChat } from "@/components/messages/thread-chat";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskCreateDialog } from "@/components/tasks/task-create-dialog";
 import { Button } from "@/components/ui/button";
@@ -34,7 +28,7 @@ import { useEventProgress } from "@/hooks/use-event-progress";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
-import { useThreadMessages } from "@/hooks/use-threads";
+import { useThreadChat } from "@/hooks/use-thread-chat";
 import { canEditEvent } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -65,7 +59,7 @@ export function EventDetailPage() {
   const tab = searchParams.get("tab") ?? "overview";
   // Both sit above the early returns: hook order must not change between renders.
   // Each accepts an absent id and stays idle until there is one.
-  const messages = useThreadMessages(state.status === "ok" ? state.event.channelId : undefined);
+  const chat = useThreadChat(state.status === "ok" ? state.event.channelId : undefined);
   // The board reads `/api/tasks?eventId=`, not `event.tasks`: the board owns the
   // task list so a drop can move a card without refetching the whole event.
   // `enabled` keeps an absent id from ever loading the global list.
@@ -73,6 +67,14 @@ export function EventDetailPage() {
   const members = useMembers();
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const me = useMe();
+  const selfId = me.status === "ok" ? me.user.id : undefined;
+  // The server refuses to summarise an empty thread, so Summarise waits for a
+  // message. Read off an unsearched load only: a search, and its loading, must
+  // not unmount the panel and throw away a summary already on screen.
+  const threadEmpty =
+    chat.messages.state.status === "ok" &&
+    chat.messages.state.items.length === 0 &&
+    !chat.searchQuery;
   const [confirming, setConfirming] = useState(false);
   const [editingDates, setEditingDates] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
@@ -381,48 +383,26 @@ export function EventDetailPage() {
           )}
         </TabsContent>
 
+        {/* The event's conversation, as Messages shows it, minus the list of
+            other conversations — this page is about one event. */}
         <TabsContent value="thread">
-          <Card className="shadow-none">
-            <CardHeader>
-              <h2 className="text-lg font-semibold tracking-tight">Event Thread</h2>
-              <p className="text-sm text-muted-foreground">
-                Discussion attached to this event. Posting lives on Messages.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {event.channelId &&
-                messages.state.status === "ok" &&
-                messages.state.items.length > 0 && (
-                  <ThreadSummaryPanel channelId={event.channelId} />
-                )}
-              {!event.channelId ? (
-                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-                  This event has no thread yet.
-                </p>
-              ) : messages.state.status === "loading" ? (
-                <p className="text-sm text-muted-foreground" role="status">
-                  Loading Thread…
-                </p>
-              ) : messages.state.status === "error" ? (
-                <p className="text-sm text-destructive" role="alert">
-                  Couldn&apos;t load the thread: {messages.state.message}. Refresh the page to try
-                  again.
-                </p>
-              ) : messages.state.status === "ok" && messages.state.items.length > 0 ? (
-                <ol className="grid gap-4">
-                  {[...messages.state.items].reverse().map((item) => (
-                    <li key={item.id}>
-                      <ThreadMessage message={item} members={memberItems} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-                  No messages in this thread yet.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          {event.channelId ? (
+            <>
+              {!threadEmpty && <ThreadSummaryPanel channelId={event.channelId} />}
+              <ThreadChat
+                chat={chat}
+                title={event.title}
+                kind="event"
+                members={memberItems}
+                selfId={selfId}
+                className="min-h-[36rem] overflow-hidden rounded-xl border bg-card"
+              />
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+              This event has no thread yet.
+            </p>
+          )}
         </TabsContent>
 
         {/* TODO(R11): file upload is Deferred — no storage endpoint exists yet. */}
@@ -509,33 +489,6 @@ function PageState({
         {children}
       </p>
     </main>
-  );
-}
-
-/**
- * `messageSchema.author` is a member id, not a name — the roster resolves it,
- * exactly as `MessageRow` does on the Messages page.
- */
-function ThreadMessage({ message, members }: { message: Message; members: RosterMember[] }) {
-  const author = members.find((member) => member.id === message.author);
-  const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
-
-  return (
-    <article className="flex items-start gap-3 rounded-lg border p-4">
-      <UserAvatar name={name} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h3 className="text-sm font-semibold">{name}</h3>
-          <time
-            dateTime={message.createdAt.toISOString()}
-            className="text-xs text-muted-foreground"
-          >
-            {dateTime.format(message.createdAt)}
-          </time>
-        </div>
-        <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">{message.body}</p>
-      </div>
-    </article>
   );
 }
 
