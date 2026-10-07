@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessagesPage } from "./messages";
 
@@ -64,7 +65,7 @@ describe("MessagesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MessagesPage />);
+    renderPage();
 
     await waitFor(() => expect(screen.getByText(message.body)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/message winter showcase/i), {
@@ -124,7 +125,7 @@ describe("MessagesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MessagesPage />);
+    renderPage();
 
     await waitFor(() => expect(screen.getByText("@Jamie Lee")).toBeInTheDocument());
     expect(screen.queryByText(`@[${mentioned}]`)).not.toBeInTheDocument();
@@ -173,7 +174,7 @@ describe("MessagesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MessagesPage />);
+    renderPage();
     const input = await screen.findByLabelText(/message winter showcase/i);
 
     fireEvent.change(input, { target: { value: "hi @Jam", selectionStart: 7 } });
@@ -248,7 +249,7 @@ describe("MessagesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MessagesPage />);
+    renderPage();
     await screen.findByRole("heading", { name: "Winter Showcase" });
 
     fireEvent.click(screen.getByRole("button", { name: /new message/i }));
@@ -293,7 +294,7 @@ describe("MessagesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MessagesPage />);
+    renderPage();
     await screen.findByRole("heading", { name: "Winter Showcase" });
 
     fireEvent.change(screen.getByLabelText(/search this conversation/i), {
@@ -327,7 +328,7 @@ describe("MessagesPage", () => {
     vi.stubGlobal("fetch", fetchMock);
     const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "POST").length;
 
-    render(<MessagesPage />);
+    renderPage();
     const box = await screen.findByLabelText(/message winter showcase/i);
     fireEvent.change(box, { target: { value: "Ready for doors." } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -341,6 +342,51 @@ describe("MessagesPage", () => {
     });
     expect(await screen.findByText("Ready for doors.")).toBeInTheDocument();
     expect(box).toHaveValue("");
+  });
+
+  it("links an event's thread to the Thread tab of that event", async () => {
+    const eventThread = thread("018f3a4b-0000-7000-8000-0000000000a1", "Winter Showcase");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        if (input === "/api/threads") return response({ threads: [eventThread] });
+        if (input === "/api/members") return response({ members: [] });
+        return response({ messages: [], nextCursor: null });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "View event" })).toHaveAttribute(
+      "href",
+      `/events/${eventThread.eventId}?tab=thread`,
+    );
+  });
+
+  it("offers no event link on a conversation that is not an event's", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        if (input === "/api/threads") {
+          return response({
+            threads: [
+              {
+                ...thread("018f3a4b-0000-7000-8000-0000000000b2", "Logistics"),
+                kind: "group",
+                eventId: null,
+              },
+            ],
+          });
+        }
+        if (input === "/api/members") return response({ members: [] });
+        return response({ messages: [], nextCursor: null });
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Logistics" });
+    expect(screen.queryByRole("link", { name: "View event" })).not.toBeInTheDocument();
   });
 
   it("keeps a draft typed in another thread when an earlier send lands", async () => {
@@ -365,7 +411,7 @@ describe("MessagesPage", () => {
       }),
     );
 
-    render(<MessagesPage />);
+    renderPage();
     const first = await screen.findByLabelText(/message winter showcase/i);
     fireEvent.change(first, { target: { value: "Doors at six" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -411,7 +457,7 @@ describe("MessagesPage", () => {
 
     it("keeps the conversation on screen, with its draft and search, on a focus refresh", async () => {
       stubThreads();
-      render(<MessagesPage />);
+      renderPage();
       fireEvent.change(await screen.findByLabelText(/message winter showcase/i), {
         target: { value: "Half a thought" },
       });
@@ -434,7 +480,7 @@ describe("MessagesPage", () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       try {
         stubThreads();
-        render(<MessagesPage />);
+        renderPage();
         fireEvent.change(await screen.findByLabelText(/message winter showcase/i), {
           target: { value: "Half a thought" },
         });
@@ -539,7 +585,7 @@ describe("MessagesPage", () => {
         .map((button) => button.textContent);
 
     async function startWithJamieDuringARefresh(api: ReturnType<typeof stub>) {
-      render(<MessagesPage />);
+      renderPage();
       await screen.findByRole("heading", { name: "Winter Showcase" });
       act(() => {
         window.dispatchEvent(new Event("focus"));
@@ -642,7 +688,7 @@ describe("MessagesPage", () => {
       }),
     );
 
-    render(<MessagesPage />);
+    renderPage();
     await screen.findByRole("heading", { name: "Winter Showcase" });
     fireEvent.click(screen.getByRole("button", { name: /new message/i }));
     fireEvent.click(await screen.findByText("Jamie Lee"));
@@ -656,6 +702,15 @@ describe("MessagesPage", () => {
     expect(screen.queryByText(/failed to start the conversation/i)).not.toBeInTheDocument();
   });
 });
+
+/** The page links out to events, so it renders inside a router, as the app does. */
+function renderPage() {
+  return render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MessagesPage />
+    </MemoryRouter>,
+  );
+}
 
 function thread(id: string, name: string) {
   return {

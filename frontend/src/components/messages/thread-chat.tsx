@@ -1,7 +1,7 @@
 import type { Message, RosterMember, Thread } from "@ctp/shared";
 import { splitMentions } from "@ctp/shared";
 import { Paperclip, Search, Send, X } from "lucide-react";
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { MentionTextarea } from "@/components/messages/mention-textarea";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ export function ThreadChat({
   kind,
   members,
   selfId,
+  titleAction,
   className,
 }: {
   chat: ThreadChatModel;
@@ -32,6 +33,8 @@ export function ThreadChat({
   kind: Thread["kind"];
   members: RosterMember[];
   selfId: string | undefined;
+  /** Sits beside the title — Messages puts the way to an event thread's event here. */
+  titleAction?: ReactNode;
   className?: string;
 }) {
   const { messages, searchInput, searchQuery } = chat;
@@ -43,9 +46,12 @@ export function ThreadChat({
     <section aria-labelledby={headingId} className={cn("flex min-w-0 flex-col", className)}>
       <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-4 sm:px-6">
         <div className="min-w-0">
-          <h2 id={headingId} className="font-semibold tracking-tight">
-            {title}
-          </h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id={headingId} className="font-semibold tracking-tight">
+              {title}
+            </h2>
+            {titleAction}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground capitalize">{kind} thread</p>
         </div>
         <div className="relative w-full max-w-56">
