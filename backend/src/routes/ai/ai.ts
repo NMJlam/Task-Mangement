@@ -14,6 +14,7 @@ import {
   aiMessageResponseSchema,
   aiProposalSchema,
   aiRunParamsSchema,
+  extractMentionedIds,
   type AiApplyRequest,
   type AiRenameChat,
   type AiResolvedProposal,
@@ -69,6 +70,8 @@ import {
   type BriefingInput,
   buildSummaryPrompt,
   completeJson,
+  memberNamesById,
+  mentionsAsNames,
   recordRun,
   type PromptMessage,
   type RunStep,
@@ -394,7 +397,10 @@ const threadParamsSchema = z.object({ id: z.uuid() });
 
 class ThreadEmptyError extends Error {}
 
-/** Newest-last, each with its author's display name — the thread as a member reads it. */
+/**
+ * Newest-last, each with its author's display name and its @mentions read as
+ * names — the thread as a member reads it.
+ */
 async function threadMessages(db: Queryable, channelId: string): Promise<PromptMessage[]> {
   const result = await db.execute<{
     id: string;
@@ -410,7 +416,14 @@ async function threadMessages(db: Queryable, channelId: string): Promise<PromptM
     ORDER BY m."created_at" DESC, m."id" DESC
     LIMIT ${SUMMARY_MESSAGE_LIMIT}
   `);
-  return result.rows.reverse().map((row) => ({ ...row, createdAt: new Date(row.createdAt) }));
+  const names = await memberNamesById(db, [
+    ...new Set(result.rows.flatMap((row) => extractMentionedIds(row.body))),
+  ]);
+  return result.rows.reverse().map((row) => ({
+    ...row,
+    body: mentionsAsNames(row.body, (id) => names.get(id) || "someone"),
+    createdAt: new Date(row.createdAt),
+  }));
 }
 
 aiRouter.post(

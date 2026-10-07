@@ -1105,6 +1105,20 @@ describe("/api/ai", () => {
       expect(runs).toEqual([{ kind: "summary", channelId }]);
     });
 
+    it("reads an @mention as the member it names, never as their id", async () => {
+      signedInAs(await member("mentioner", "officer"));
+      const ben = await member("ben", "officer");
+      const { channelId } = await thread(0, [`@[${ben.id}] can you order pizza?`]);
+      script(summaryJson);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(200);
+      // Said by the thread's talker, to Ben — both by name.
+      expect(prompts[0]).toContain("test-ai-talker-0-1: @test-ai-ben can you order pizza?");
+      expect(prompts[0]).not.toContain(ben.id);
+    });
+
     it("403s a thread the member cannot open, before the model is called", async () => {
       signedInAs(await member("outsider", "officer"));
       const { channelId } = await thread(2, ["Budget talk"]);
@@ -1158,6 +1172,59 @@ describe("/api/ai", () => {
       const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
 
       expect(response.status).toBe(503);
+    });
+  });
+
+  describe("readThread", () => {
+    it("says who sent each message, and who each @mention names, with handles", async () => {
+      signedInAs(await member("reader", "officer"));
+      const ada = await member("ada", "officer");
+      const ben = await member("ben", "officer");
+      // Alone on its day, so a date-bounded listEvents finds it whatever else is seeded.
+      const event = await seedEvent({
+        title: "test-ai-mentions",
+        startsAt: new Date("1990-01-01T12:00:00Z"),
+      });
+      const [channel] = await db
+        .insert(channels)
+        .values({ id: newId(), kind: "event", eventId: event.id, name: event.title })
+        .returning();
+      await db.insert(messages).values({
+        id: newId(),
+        channelId: channel!.id,
+        author: ada.id,
+        body: `@[${ben.id}] can you book the room?`,
+      });
+      script(
+        callTool("listEvents", { from: "1990-01-01T00:00:00Z", to: "1990-01-02T00:00:00Z" }),
+        (prompt) =>
+          callTool("readThread", {
+            eventHandle: (toolResult(prompt, "listEvents") as { handle: string }[])[0]!.handle,
+          }),
+        callTool("listMembers"),
+        reply(),
+      );
+
+      const response = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "Who is booking the room?" });
+
+      expect(response.status).toBe(200);
+      const last = prompts.at(-1)!;
+      const handleOf = (name: string) =>
+        (toolResult(last, "listMembers") as { handle: string; name: string }[]).find(
+          (row) => row.name === name,
+        )!.handle;
+      // The same handles listMembers hands out, so the model can act on either.
+      expect(toolResult(last, "readThread")).toEqual([
+        {
+          author: handleOf("test-ai-ada"),
+          authorName: "test-ai-ada",
+          body: `@test-ai-ben (${handleOf("test-ai-ben")}) can you book the room?`,
+          createdAt: expect.any(String),
+        },
+      ]);
+      expect(last).not.toContain(ben.id);
     });
   });
 

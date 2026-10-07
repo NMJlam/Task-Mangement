@@ -6,10 +6,12 @@ import {
   briefingText,
   budgetMessages,
   buildBriefingPrompt,
+  buildSummaryPrompt,
   clubDayKey,
   completeJson,
   conversationBlock,
   extractJson,
+  mentionsAsNames,
 } from "./service.js";
 
 const schema = z.object({ ok: z.boolean() });
@@ -201,5 +203,37 @@ describe("conversationBlock", () => {
     );
     expect(block).not.toContain("a".repeat(60));
     expect(block).toContain("latest");
+  });
+});
+
+describe("mentionsAsNames", () => {
+  const BEN = "0192f1a0-0000-7000-8000-0000000000b1";
+  const names = new Map([[BEN, "Ben Lee"]]);
+  const nameOf = (id: string) => names.get(id) ?? "a former member";
+
+  it("reads each @mention token as the member it names", () => {
+    expect(mentionsAsNames(`@[${BEN}] can you book the room?`, nameOf)).toBe(
+      "@Ben Lee can you book the room?",
+    );
+  });
+
+  it("reads a token in any case, as the composer's own parser does", () => {
+    expect(mentionsAsNames(`thanks @[${BEN.toUpperCase()}]!`, nameOf)).toBe("thanks @Ben Lee!");
+  });
+
+  it("leaves text without a token, and an @ that is not one, as it was", () => {
+    expect(mentionsAsNames("email me@club.org or @[not-an-id]", nameOf)).toBe(
+      "email me@club.org or @[not-an-id]",
+    );
+  });
+});
+
+describe("buildSummaryPrompt", () => {
+  it("lets an action item go to someone who was @mentioned, not only to an author", () => {
+    const prompt = buildSummaryPrompt([
+      { id: "1", author: "Ada", body: "@Ben Lee can you order pizza?", createdAt: new Date(0) },
+    ]);
+    expect(prompt).toContain("Ada: @Ben Lee can you order pizza?");
+    expect(prompt).toMatch(/names that appear below, as authors or @mentions/u);
   });
 });

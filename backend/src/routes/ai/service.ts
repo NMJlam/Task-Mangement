@@ -1,5 +1,6 @@
 import {
   aiBriefingSchema,
+  splitMentions,
   type AiBriefing,
   type AiProposalStatus,
   type AiRunKind,
@@ -154,6 +155,41 @@ export async function recordRunOutcome(
 export type PromptMessage = { id: string; author: string; body: string; createdAt: Date };
 
 /**
+ * A message body as the model reads it: each `@[user-id]` mention becomes `@`
+ * and whatever `nameOf` makes of the id. The raw token is a UUID, which says
+ * nothing about who was meant and which the model must never see
+ * (`handles.ts`). Found by the shared parser, so this and the composer agree on
+ * what counts as a mention.
+ */
+export function mentionsAsNames(body: string, nameOf: (userId: string) => string): string {
+  return splitMentions(body)
+    .map((part) => (typeof part === "string" ? part : `@${nameOf(part.userId)}`))
+    .join("");
+}
+
+/**
+ * Display names by member id, for the senders and mentions in a thread. A
+ * member who has gone is absent; one who never set a name is present with
+ * `""`, the roster's own blank — the caller says what to call either.
+ */
+export async function memberNamesById(
+  db: Queryable,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const result = await db.execute<{ id: string; name: string }>(sql`
+    SELECT au."id", u."name"
+    FROM "app_user" au
+    JOIN auth."user" u ON u."id" = au."auth_user_id"
+    WHERE au."id" IN (${sql.join(
+      ids.map((id) => sql`${id}`),
+      sql`, `,
+    )})
+  `);
+  return new Map(result.rows.map((row) => [row.id, row.name]));
+}
+
+/**
  * Free-tier context windows are small, and one pasted wall of text otherwise
  * blows the request. Budget by CHARACTERS, not message count — oldest dropped
  * first, because the recent end of a thread is what a catch-up needs.
@@ -182,7 +218,7 @@ export function buildSummaryPrompt(messages: PromptMessage[]): string {
     '{"summary": ["3-5 short bullets, most important first"],',
     ' "actionItems": [{"text": "what needs doing", "suggestedAssigneeName": "a name from the thread, or null"}]}',
     "",
-    "Only use names that appear as authors below. Invent nothing. If nothing was decided, return an empty actionItems array.",
+    "Only use names that appear below, as authors or @mentions. Invent nothing. If nothing was decided, return an empty actionItems array.",
     "",
     ...messages.map((message) => `${message.author}: ${message.body}`),
   ].join("\n");

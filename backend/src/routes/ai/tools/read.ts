@@ -1,5 +1,6 @@
 import {
   eventStatusSchema,
+  extractMentionedIds,
   taskPrioritySchema,
   taskStatusSchema,
   type TaskStatus,
@@ -32,6 +33,7 @@ import {
 import { getBudgetSummary } from "../../budget/service.js";
 import { computeProgress, visibleEvents, type Queryable } from "../../events/service.js";
 import { assertCanReadChannel, type Viewer } from "../../threads/service.js";
+import { memberNamesById, mentionsAsNames } from "../service.js";
 import type { Tool, ToolContext } from "./registry.js";
 
 /**
@@ -404,7 +406,7 @@ export const readThread: Tool = {
   name: "readThread",
   minTier: 0,
   describe:
-    "Read the most recent messages in an event's discussion thread, oldest first. Args: eventHandle (required).",
+    "Read the most recent messages in an event's discussion thread, oldest first, each with its sender's handle and name. An @mention in a body reads as the member's name and handle. Args: eventHandle (required).",
   async run(ctx: ToolContext, args): Promise<unknown> {
     if (typeof args.eventHandle !== "string") return { error: "eventHandle is required" };
     const eventId = ctx.handles.resolve(args.eventHandle);
@@ -433,12 +435,28 @@ export const readThread: Tool = {
       .orderBy(desc(messages.createdAt))
       .limit(READ_LIMIT);
 
+    // Who said it and who it names, by name — a handle alone would send the
+    // model to listMembers just to read the thread. A member who has gone
+    // gets no handle: there is nobody left for it to resolve to.
+    const names = await memberNamesById(ctx.db, [
+      ...new Set(
+        rows.flatMap((row) => [
+          ...(row.author ? [row.author] : []),
+          ...extractMentionedIds(row.body),
+        ]),
+      ),
+    ]);
+    const nameOf = (id: string) => names.get(id) || "a member with no name set";
+    const mention = (id: string) =>
+      names.has(id) ? `${nameOf(id)} (${ctx.handles.issue("M", id)})` : "a former member";
+
     return rows
       .slice()
       .reverse()
       .map((row) => ({
         author: row.author ? ctx.handles.issue("M", row.author) : null,
-        body: row.body,
+        authorName: row.author ? nameOf(row.author) : "a former member",
+        body: mentionsAsNames(row.body, mention),
         createdAt: row.createdAt.toISOString(),
       }));
   },
