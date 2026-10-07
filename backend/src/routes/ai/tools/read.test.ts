@@ -83,7 +83,8 @@ const ROW: Record<string, unknown> = {
   priority: "medium",
   category: "venue",
   venue: "Hall",
-  body: "hello",
+  // A message body can carry an @mention, and a mention token is a member id.
+  body: `hello @[${FAKE_UUID}]`,
   visible: true,
   dueAt: NOW,
   startsAt: NOW,
