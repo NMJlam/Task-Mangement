@@ -1,35 +1,22 @@
-import type { Message, RosterMember, Thread } from "@ctp/shared";
-import { splitMentions } from "@ctp/shared";
-import { Hash, MessageCircle, Paperclip, Plus, Search, Send, X } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import type { RosterMember, Thread } from "@ctp/shared";
+import { Hash, MessageCircle, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
-import { UserAvatar } from "@/components/common/user-avatar";
-import { MentionTextarea } from "@/components/messages/mention-textarea";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
+import { ThreadChat } from "@/components/messages/thread-chat";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
-import { useThreadMessages, useThreads } from "@/hooks/use-threads";
+import { useThreadChat } from "@/hooks/use-thread-chat";
+import { useThreads } from "@/hooks/use-threads";
 import { cn } from "@/lib/utils";
-
-const messageTime = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 export function MessagesPage() {
   const me = useMe();
   const threads = useThreads();
   const members = useMembers();
   const [selectedId, setSelectedId] = useState<string>();
-  const [draft, setDraft] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  // The conversation the draft and search above were typed in.
-  const [typedIn, setTypedIn] = useState<string>();
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
 
   // The conversation on screen is pinned by id. The list re-sorts by activity
@@ -37,56 +24,24 @@ export function MessagesPage() {
   // conversation — wiping their draft and search — without a click. A new one
   // is chosen only when there is none yet, or the pinned one has gone.
   //
-  // This and the reset below are settled while rendering, not in effects: an
-  // effect runs only after the conversation is on screen, so a refresh landing
-  // first would find nothing pinned, and anything typed in between would be
-  // wiped by a reset that arrived late.
+  // Settled while rendering, not in an effect, for the same reason as the
+  // chat's own reset of its draft and search: an effect runs only after the
+  // conversation is on screen, so a refresh landing first would find nothing
+  // pinned.
   if (threads.state.status === "ok" && !threadItems.some((thread) => thread.id === selectedId)) {
     const fallback = threadItems[0]?.id;
     if (fallback !== selectedId) setSelectedId(fallback);
   }
   const active = threadItems.find((thread) => thread.id === selectedId) ?? threadItems[0];
 
-  // A draft and a search belong to the conversation they were typed in —
-  // switching should never carry half a message into the wrong one.
-  if (typedIn !== active?.id) {
-    setTypedIn(active?.id);
-    setDraft("");
-    setSearchInput("");
-    setSearchQuery("");
-  }
-
-  const messages = useThreadMessages(active?.id, searchQuery);
+  const chat = useThreadChat(active?.id, threads.noteActivity);
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const markThreadRead = threads.markRead;
   const selfId = me.status === "ok" ? me.user.id : undefined;
 
-  // Debounced so every keystroke doesn't fire a request — the search is
-  // server-side (the thread can hold far more than one loaded page).
-  useEffect(() => {
-    const timer = setTimeout(() => setSearchQuery(searchInput), 300);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
-
   useEffect(() => {
     if (active) void markThreadRead(active);
   }, [active, markThreadRead]);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const body = draft.trim();
-    // Enter submits through `requestSubmit()`, which a disabled Send button
-    // does not stop — so a second Enter mid-send would post a duplicate.
-    if (!body || messages.sending) return;
-    // `send` only answers with the message while the reader is still on the
-    // visit it was sent from, so a slow send never clears a draft typed since
-    // in another thread — or in this one after leaving and coming back.
-    void messages.send(body).then((sent) => {
-      if (!sent) return;
-      setDraft("");
-      threads.noteActivity(sent);
-    });
-  }
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -169,175 +124,17 @@ export function MessagesPage() {
             ))}
           </nav>
 
-          <section aria-labelledby="active-thread-heading" className="flex min-w-0 flex-col">
-            <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-4 sm:px-6">
-              <div className="min-w-0">
-                <h2 id="active-thread-heading" className="font-semibold tracking-tight">
-                  {threadName(active, memberItems, selfId)}
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground capitalize">
-                  {active.kind} thread
-                </p>
-              </div>
-              <div className="relative w-full max-w-56">
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-                />
-                <Label htmlFor="message-search" className="sr-only">
-                  Search this conversation
-                </Label>
-                <Input
-                  id="message-search"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search messages"
-                  autoComplete="off"
-                  className="h-9 pl-8"
-                />
-                {searchInput && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => setSearchInput("")}
-                    aria-label="Clear search"
-                    className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
-                  >
-                    <X aria-hidden="true" />
-                  </Button>
-                )}
-              </div>
-            </header>
-
-            <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite">
-              {(messages.state.status === "idle" || messages.state.status === "loading") && (
-                <p className="text-sm text-muted-foreground" role="status">
-                  Loading Messages…
-                </p>
-              )}
-              {messages.state.status === "error" && (
-                <p className="text-sm text-destructive" role="alert">
-                  {messages.state.message}. Try again.
-                </p>
-              )}
-              {messages.state.status === "ok" && messages.state.items.length === 0 && (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  {searchQuery
-                    ? `No messages match "${searchQuery}".`
-                    : "No messages yet. Start the conversation below."}
-                </p>
-              )}
-              {messages.state.status === "ok" && messages.state.nextCursor !== null && (
-                <div className="mb-5 flex flex-col items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={messages.loadingOlder}
-                    onClick={() => void messages.loadOlder()}
-                  >
-                    {messages.loadingOlder ? "Loading…" : "Load older messages"}
-                  </Button>
-                  {messages.olderError && (
-                    <p className="text-sm text-destructive" role="alert">
-                      {messages.olderError}. Try again.
-                    </p>
-                  )}
-                </div>
-              )}
-              {messages.state.status === "ok" && (
-                <div className="grid gap-5">
-                  {[...messages.state.items].reverse().map((message) => (
-                    <MessageRow key={message.id} message={message} members={memberItems} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <form className="border-t p-4 sm:p-5" onSubmit={submit}>
-              {messages.sendError && (
-                <p className="mb-3 text-sm text-destructive" role="alert">
-                  {messages.sendError}. Try again.
-                </p>
-              )}
-              <label htmlFor="message" className="sr-only">
-                Message {threadName(active, memberItems, selfId)}
-              </label>
-              <MentionTextarea
-                id="message"
-                name="message"
-                rows={3}
-                maxLength={4000}
-                placeholder="Write a message…"
-                className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                required
-                value={draft}
-                onChange={setDraft}
-                candidates={memberItems}
-                selfId={selfId}
-              />
-              <div className="mt-2 flex justify-end">
-                <Button disabled={messages.sending}>
-                  <Send aria-hidden="true" />
-                  {messages.sending ? "Sending…" : "Send"}
-                </Button>
-              </div>
-            </form>
-          </section>
+          <ThreadChat
+            chat={chat}
+            title={threadName(active, memberItems, selfId)}
+            kind={active.kind}
+            members={memberItems}
+            selfId={selfId}
+          />
         </div>
       )}
     </main>
   );
-}
-
-function MessageRow({ message, members }: { message: Message; members: RosterMember[] }) {
-  const author = members.find((member) => member.id === message.author);
-  const name = author?.name || author?.email || "Former Member";
-
-  return (
-    <article className="flex items-start gap-3">
-      <UserAvatar name={name} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h3 className="text-sm font-semibold">{name}</h3>
-          <time
-            dateTime={message.createdAt.toISOString()}
-            className="text-xs text-muted-foreground"
-          >
-            {messageTime.format(message.createdAt)}
-          </time>
-        </div>
-        {message.body && (
-          <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">
-            {splitMentions(message.body).map((part, index) =>
-              typeof part === "string" ? (
-                <span key={index}>{part}</span>
-              ) : (
-                <span
-                  key={index}
-                  className="rounded bg-primary/10 px-1 py-0.5 font-medium text-primary"
-                >
-                  @{mentionName(part.userId, members)}
-                </span>
-              ),
-            )}
-          </p>
-        )}
-        {message.fileName && (
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs">
-            <Paperclip aria-hidden="true" className="size-3.5" />
-            {message.fileName}
-          </p>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function mentionName(userId: string, members: RosterMember[]): string {
-  const member = members.find((candidate) => candidate.id === userId);
-  return member?.name || member?.email || "a former member";
 }
 
 function threadName(thread: Thread, members: RosterMember[], myId: string | undefined) {
