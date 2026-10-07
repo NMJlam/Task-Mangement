@@ -75,7 +75,9 @@ export function MessagesPage() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = draft.trim();
-    if (!body) return;
+    // Enter submits through `requestSubmit()`, which a disabled Send button
+    // does not stop — so a second Enter mid-send would post a duplicate.
+    if (!body || messages.sending) return;
     // `send` only answers with the message while the reader is still on the
     // visit it was sent from, so a slow send never clears a draft typed since
     // in another thread — or in this one after leaving and coming back.

@@ -310,6 +310,39 @@ describe("MessagesPage", () => {
     );
   });
 
+  it("sends on Enter, and not a second copy while the first is in flight", async () => {
+    const threadId = "018f3a4b-0000-7000-8000-000000000002";
+    const author = "018f3a4b-0000-7000-8000-000000000003";
+    let land: (value: unknown) => void = () => undefined;
+    const pendingSend = new Promise((resolve) => {
+      land = resolve;
+    });
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/threads")
+        return response({ threads: [thread(threadId, "Winter Showcase")] });
+      if (input === "/api/members") return response({ members: [] });
+      if (init?.method === "POST") return pendingSend;
+      return response({ messages: [], nextCursor: null });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "POST").length;
+
+    render(<MessagesPage />);
+    const box = await screen.findByLabelText(/message winter showcase/i);
+    fireEvent.change(box, { target: { value: "Ready for doors." } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await screen.findByRole("button", { name: "Sending…" });
+    // The Send button is disabled by now, but Enter does not go through it.
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(posts()).toBe(1);
+
+    await act(async () => {
+      land(response({ message: buildMessage(threadId, author, "Ready for doors.") }, 201));
+    });
+    expect(await screen.findByText("Ready for doors.")).toBeInTheDocument();
+    expect(box).toHaveValue("");
+  });
+
   it("keeps a draft typed in another thread when an earlier send lands", async () => {
     const threadA = "018f3a4b-0000-7000-8000-0000000000a1";
     const threadB = "018f3a4b-0000-7000-8000-0000000000b2";

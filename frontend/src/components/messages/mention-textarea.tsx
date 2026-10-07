@@ -39,6 +39,10 @@ function label(candidate: MentionCandidate): string {
  * combobox is: ↑/↓ move the highlight, Enter or Tab picks it, Escape closes
  * the list, and `aria-activedescendant` tells a screen reader which option is
  * highlighted. The options are still buttons, for a pointer.
+ *
+ * With the list closed, Enter submits the enclosing form and Shift+Enter is a
+ * newline. That has to live here rather than in a caller's `onKeyDown`: the
+ * caller's handler runs first, so it could not tell a send from a pick.
  */
 export function MentionTextarea({
   value,
@@ -89,7 +93,16 @@ export function MentionTextarea({
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     onKeyDown?.(event);
-    if (!open || event.defaultPrevented) return;
+    if (event.defaultPrevented) return;
+    if (!open) {
+      // Enter sends, Shift+Enter keeps a newline — the chat convention. An
+      // IME's Enter is committing characters, not finishing the message.
+      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+      }
+      return;
+    }
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();

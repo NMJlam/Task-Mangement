@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MentionTextarea } from "./mention-textarea";
 
 const JAMIE = { id: "018f3a4b-0000-7000-8000-0000000000a1", name: "Jamie Lee", email: "j@x.io" };
@@ -63,14 +63,64 @@ it("picks with Tab too, and closes without picking on Escape", async () => {
   await waitFor(() => expect(box).toHaveValue(`@[${JAMIE.id}] `));
 });
 
-it("leaves Enter alone when the list is closed", () => {
-  render(<Composer />);
-  const box = typeInto("no mention here");
+describe("Enter with the list closed", () => {
+  function InForm({ onSubmit }: { onSubmit: () => void }) {
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Composer />
+      </form>
+    );
+  }
 
-  const unhandled = fireEvent.keyDown(box, { key: "Enter" });
+  it("sends the message", () => {
+    const onSubmit = vi.fn();
+    render(<InForm onSubmit={onSubmit} />);
+    const box = typeInto("no mention here");
 
-  // Not prevented: the textarea still gets its newline.
-  expect(unhandled).toBe(true);
+    const unhandled = fireEvent.keyDown(box, { key: "Enter" });
+
+    // Prevented, so no newline lands in the box on its way out.
+    expect(unhandled).toBe(false);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Shift+Enter to the textarea, as a newline", () => {
+    const onSubmit = vi.fn();
+    render(<InForm onSubmit={onSubmit} />);
+    const box = typeInto("first line");
+
+    const unhandled = fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+
+    expect(unhandled).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("leaves an IME's Enter alone: it is committing characters, not the message", () => {
+    const onSubmit = vi.fn();
+    render(<InForm onSubmit={onSubmit} />);
+    const box = typeInto("にほん");
+
+    const unhandled = fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+
+    expect(unhandled).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("picks the highlighted mention instead while the list is open", async () => {
+    const onSubmit = vi.fn();
+    render(<InForm onSubmit={onSubmit} />);
+    const box = typeInto("hi @Jam");
+
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() => expect(box).toHaveValue(`hi @[${JAMIE.id}] `));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
 
 it("lists a member with a blank name by email, and finds them by it", () => {
