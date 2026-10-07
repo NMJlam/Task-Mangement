@@ -1,6 +1,7 @@
 import type { RosterMember, Thread } from "@ctp/shared";
-import { Hash, MessageCircle, Plus } from "lucide-react";
+import { CalendarDays, Hash, MessageCircle, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { ThreadChat } from "@/components/messages/thread-chat";
@@ -130,6 +131,18 @@ export function MessagesPage() {
             kind={active.kind}
             members={memberItems}
             selfId={selfId}
+            titleAction={
+              // The same conversation, on its event's page — beside the
+              // event's tasks and the thread summary.
+              active.eventId && (
+                <Button asChild variant="outline" size="xs">
+                  <Link to={`/events/${active.eventId}?tab=thread`}>
+                    <CalendarDays aria-hidden="true" />
+                    View event
+                  </Link>
+                </Button>
+              )
+            }
           />
         </div>
       )}
