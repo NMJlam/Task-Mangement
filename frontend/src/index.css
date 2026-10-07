@@ -26,6 +26,10 @@
   --accent-foreground: #3a47c4;
   --destructive: #c14a3a;
   --destructive-foreground: #ffffff;
+  /* The calendar's current day. Its own token, not `destructive`: red here
+     means "now", not "danger". */
+  --today: #c8231b;
+  --today-foreground: #ffffff;
   --border: #e7e5e2;
   --input: #d6d3ce;
   --ring: #5b6cff;
@@ -55,6 +59,8 @@
   --accent-foreground: #aab4ff;
   --destructive: #e07566;
   --destructive-foreground: #16161a;
+  --today: #f97066;
+  --today-foreground: #16161a;
   --border: #2c2c33;
   --input: #3a3a42;
   --ring: #818df8;
@@ -85,6 +91,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-today: var(--today);
+  --color-today-foreground: var(--today-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

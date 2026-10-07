@@ -618,14 +618,28 @@ function DayColumn({
       className={cn(
         "grid content-start gap-1 rounded-lg",
         compact ? "min-h-24 p-1.5" : "min-h-20 p-2",
+        // Today is outlined as well as badged, so it can be found at a glance
+        // in a full month. A ring, not a tint: a tint would thin the contrast
+        // of the `muted-foreground` text inside, which has no room to spare.
+        isToday && !detailed && "ring-2 ring-today ring-inset",
+        // After today's ring, so a drag over today still shows the drop ring.
         isDropTarget && "bg-accent/60 ring-2 ring-ring/40 ring-inset",
       )}
     >
       <div className={cn("flex items-baseline gap-1.5", detailed && "border-b pb-2")}>
         {detailed ? (
-          // The day view's own heading: `h2` under the page's `h1`, which is
-          // where a screen reader's outline expects the section it names.
-          <h2 className="text-sm font-semibold">{fullDate.format(date)}</h2>
+          <>
+            {/* The day view's own heading: `h2` under the page's `h1`, which is
+                where a screen reader's outline expects the section it names. */}
+            <h2 className="text-sm font-semibold" aria-current={isToday ? "date" : undefined}>
+              {fullDate.format(date)}
+            </h2>
+            {isToday && (
+              <span className="rounded-full bg-today px-2 py-0.5 text-xs font-semibold text-today-foreground">
+                Today
+              </span>
+            )}
+          </>
         ) : (
           <button
             type="button"
@@ -633,10 +647,13 @@ function DayColumn({
             // A month cell shows a bare number and a week cell "Wed 12"; neither
             // is a date on its own, so the name spells the whole local day out.
             aria-label={`Show ${fullDate.format(date)}`}
+            aria-current={isToday ? "date" : undefined}
             className={cn(
               "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
               compact && "tabular-nums",
-              isToday && "bg-secondary",
+              // Filled red, white number — the calendar-app convention for "now".
+              isToday &&
+                "rounded-full bg-today px-1.5 font-semibold text-today-foreground hover:bg-today/85",
             )}
           >
             <time dateTime={date.toISOString()}>

@@ -649,6 +649,50 @@ describe("CalendarPage", () => {
     expect(lastCalendarRequest(fetchMock).toString()).toBe(stepped);
   });
 
+  describe("today", () => {
+    // The mark is `aria-current="date"`, which is also what the red keys off — so
+    // a screen reader hears "current date" and colour is not the only signal.
+    const todayButton = () =>
+      screen.findByRole("button", { name: `Show ${fullDate.format(startOfToday())}` });
+
+    it("marks today, and only today, in the month and the week", async () => {
+      const user = userEvent.setup({ delay: null });
+      stubFetch([showcase]);
+      renderPage();
+
+      expect(await todayButton()).toHaveAttribute("aria-current", "date");
+      expect(document.querySelectorAll('[aria-current="date"]')).toHaveLength(1);
+
+      await user.click(screen.getByRole("tab", { name: "Week" }));
+      expect(await todayButton()).toHaveAttribute("aria-current", "date");
+      expect(document.querySelectorAll('[aria-current="date"]')).toHaveLength(1);
+    });
+
+    it("says Today beside the day view's heading when it is today", async () => {
+      stubFetch([showcase]);
+      renderPage("/calendar?view=day");
+
+      const heading = await screen.findByRole("heading", {
+        level: 2,
+        name: fullDate.format(startOfToday()),
+      });
+      expect(heading).toHaveAttribute("aria-current", "date");
+      expect(within(heading.parentElement!).getByText("Today")).toBeInTheDocument();
+    });
+
+    it("leaves another day's heading unmarked", async () => {
+      stubFetch([showcase]);
+      renderPage(`/calendar?view=day&date=${toIso(at(0, 1))}`);
+
+      const heading = await screen.findByRole("heading", {
+        level: 2,
+        name: fullDate.format(at(0, 1)),
+      });
+      expect(heading).not.toHaveAttribute("aria-current");
+      expect(within(heading.parentElement!).queryByText("Today")).not.toBeInTheDocument();
+    });
+  });
+
   it("opens the day view from a day cell's own button", async () => {
     const user = userEvent.setup({ delay: null });
     const fetchMock = stubFetch([showcase]);
