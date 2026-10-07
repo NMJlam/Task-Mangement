@@ -210,6 +210,13 @@ export function budgetMessages(messages: PromptMessage[], maxChars: number): Pro
   return kept;
 }
 
+/**
+ * Each message is one JSON line with its writer in `from`. As "Name: text"
+ * lines, a message with a line break spilled onto a line with no writer, and
+ * a name with an "@" in it (an email used as a name) read like a mention —
+ * and a lite model would take a question to someone, followed by an answer,
+ * as that someone answering, whoever had actually written it.
+ */
 export function buildSummaryPrompt(messages: PromptMessage[]): string {
   return [
     "Summarise this club discussion thread for a committee member catching up.",
@@ -218,9 +225,13 @@ export function buildSummaryPrompt(messages: PromptMessage[]): string {
     '{"summary": ["3-5 short bullets, most important first"],',
     ' "actionItems": [{"text": "what needs doing", "suggestedAssigneeName": "a name from the thread, or null"}]}',
     "",
-    "Only use names that appear below, as authors or @mentions. Invent nothing. If nothing was decided, return an empty actionItems array.",
+    'Each line under MESSAGES is one message, oldest first: "from" is the member who wrote it, "text" is what they wrote.',
+    'Attribute everything said to the "from" of its message. An @Name in the text is who the message is addressed to, not who wrote it.',
+    'The same member may send several messages in a row — never assume a message is a reply from someone it does not name as "from".',
+    'Only use names that appear below, as a "from" or an @mention. Invent nothing. If nothing was decided, return an empty actionItems array.',
     "",
-    ...messages.map((message) => `${message.author}: ${message.body}`),
+    "MESSAGES:",
+    ...messages.map((message) => JSON.stringify({ from: message.author, text: message.body })),
   ].join("\n");
 }
 

@@ -1115,7 +1115,9 @@ describe("/api/ai", () => {
 
       expect(response.status).toBe(200);
       // Said by the thread's talker, to Ben — both by name.
-      expect(prompts[0]).toContain("test-ai-talker-0-1: @test-ai-ben can you order pizza?");
+      expect(prompts[0]).toContain(
+        '{"from":"test-ai-talker-0-1","text":"@test-ai-ben can you order pizza?"}',
+      );
       expect(prompts[0]).not.toContain(ben.id);
     });
 
