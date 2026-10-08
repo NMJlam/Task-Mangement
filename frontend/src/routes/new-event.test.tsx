@@ -1,11 +1,22 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NewEventPage } from "./new-event";
 
 const eventId = "018f3a4b-0000-7000-8000-000000000002";
 
-afterEach(() => vi.unstubAllGlobals());
+// The pickers open on the current month, so the day the tests click has to be
+// in it: pinned to early October 2026.
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 9, 1, 9, 0));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 it("creates an event and opens its detail page", async () => {
   const fetchMock = stubApi("director");
@@ -15,9 +26,8 @@ it("creates an event and opens its detail page", async () => {
   fireEvent.change(screen.getByLabelText("Title"), {
     target: { value: "Semester Hackathon" },
   });
-  // The start is a date and a time, so the two halves compose one local instant.
-  fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-10-10" } });
-  fireEvent.change(screen.getByLabelText("Start time"), { target: { value: "19:00" } });
+  // The same day-and-time picker as Edit dates, composing one local instant.
+  await pick("Starts", "2026-10-10", "19:00");
   fireEvent.change(screen.getByLabelText("Venue"), { target: { value: "Great Hall" } });
   fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
 
@@ -42,7 +52,7 @@ it("lets only a budget manager allocate, and sends no allocation for anyone else
   // The capability arrives with /api/me, so the field starts out locked.
   expect(field).toBeDisabled();
   expect(field).toHaveAccessibleDescription(/president or treasurer/i);
-  fillRequired();
+  await fillRequired();
   fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
   await waitFor(() => expect(screen.getByText("Created Event")).toBeInTheDocument());
   expect(postedBody(asDirector)).not.toHaveProperty("allocationCents");
@@ -51,7 +61,7 @@ it("lets only a budget manager allocate, and sends no allocation for anyone else
   const asTreasurer = stubApi("treasurer");
   renderPage();
   await waitFor(() => expect(screen.getByLabelText("Budget Allocation (AUD)")).toBeEnabled());
-  fillRequired();
+  await fillRequired();
   fireEvent.change(screen.getByLabelText("Budget Allocation (AUD)"), {
     target: { value: "250" },
   });
@@ -66,16 +76,52 @@ it("seeds the start date from the calendar's day link, and ignores a date that i
     vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) }),
   );
 
-  // The form is filled in as usual; only the DATE half of the start is seeded.
+  // Only the DAY of the start is seeded: the picker opens on it, and the
+  // trigger says the time is still the reader's to give.
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   const seeded = renderPage("/events/new?date=2026-10-12");
-  expect(screen.getByLabelText("Starts")).toHaveValue("2026-10-12");
-  // Nothing was invented for the time, which is what the reader still decides.
+  expect(screen.getByLabelText("Starts")).toHaveTextContent(/choose a time/);
+  await user.click(screen.getByLabelText("Starts"));
+  expect(document.querySelector('[data-day="2026-10-12"]')).toHaveAttribute(
+    "data-selected",
+    "true",
+  );
+  // Nothing was invented for the time.
   expect(screen.getByLabelText("Start time")).toHaveValue("");
 
   seeded.unmount();
   // Feb 30 is not a date, so the form opens exactly as the nav link leaves it.
   renderPage("/events/new?date=2026-02-30");
-  expect(screen.getByLabelText("Starts")).toHaveValue("");
+  expect(screen.getByLabelText("Starts")).toHaveTextContent("Select start date");
+});
+
+it("asks for a start before sending anything", async () => {
+  const fetchMock = stubApi("director");
+  renderPage();
+
+  fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Semester Hackathon" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/choose a start date and time/i);
+  expect(fetchMock).not.toHaveBeenCalledWith("/api/events", expect.anything());
+});
+
+it("takes an optional end from the same picker, and refuses one before the start", async () => {
+  const fetchMock = stubApi("director");
+  renderPage();
+
+  await fillRequired();
+  await pick("Ends", "2026-10-09", "21:00");
+  fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/end time must be after the start/i);
+  expect(fetchMock).not.toHaveBeenCalledWith("/api/events", expect.anything());
+
+  await pick("Ends", "2026-10-10", "22:00");
+  fireEvent.click(screen.getByRole("button", { name: "Create Event" }));
+  await waitFor(() => expect(screen.getByText("Created Event")).toBeInTheDocument());
+  expect(postedBody(fetchMock)).toMatchObject({
+    endsAt: new Date(2026, 9, 10, 22, 0).toISOString(),
+  });
 });
 
 /** `/api/me` as `role`; every other call is the create answering 201. */
@@ -114,10 +160,27 @@ function postedBody(fetchMock: ReturnType<typeof vi.fn>): object {
   return JSON.parse(String((call as [string, RequestInit])[1].body)) as object;
 }
 
-function fillRequired() {
+async function fillRequired() {
   fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Semester Hackathon" } });
-  fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-10-10" } });
-  fireEvent.change(screen.getByLabelText("Start time"), { target: { value: "19:00" } });
+  await pick("Starts", "2026-10-10", "19:00");
+}
+
+/**
+ * Sets a date through the form's picker, as a reader does: open it from its
+ * label, click the day (by `data-day`, which does not depend on the locale),
+ * give the time and Apply.
+ */
+async function pick(field: "Starts" | "Ends", isoDate: string, time: string) {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  await user.click(screen.getByLabelText(field));
+  const popover = screen.getByRole("dialog");
+  const cell = document.querySelector(`[data-day="${isoDate}"]`);
+  if (!cell) throw new Error(`No calendar cell for ${isoDate}`);
+  await user.click(within(cell as HTMLElement).getByRole("button"));
+  const timeField = within(popover).getByLabelText(field === "Starts" ? "Start time" : "End time");
+  await user.clear(timeField);
+  await user.type(timeField, time);
+  await user.click(within(popover).getByRole("button", { name: "Apply" }));
 }
 
 function renderPage(initialPath = "/events/new") {

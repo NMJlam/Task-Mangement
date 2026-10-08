@@ -5,11 +5,12 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateEvent } from "@/hooks/use-create-event";
 import { useMe } from "@/hooks/use-me";
-import { parseLocalDate, toIsoDate } from "@/lib/dates";
+import { parseLocalDate } from "@/lib/dates";
 
 export function NewEventPage() {
   const navigate = useNavigate();
@@ -24,18 +25,21 @@ export function NewEventPage() {
   // they were showing. Anything that is not a real date is ignored, so a
   // hand-edited URL opens the same empty form as the nav link does.
   const seedDate = parseLocalDate(searchParams.get("date"));
+  // The same picker as Edit dates owns both instants, so the form holds them as
+  // state rather than reading them out of the form data.
+  const [startsAt, setStartsAt] = useState<Date | null>(null);
+  const [endsAt, setEndsAt] = useState<Date | null>(null);
   const [validationError, setValidationError] = useState<string>();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    // The start is a date and a time in one field's place: a `datetime-local`
-    // cannot be seeded with a date alone, and pre-filling a midnight the reader
-    // never chose would quietly write an event at 00:00.
-    const startDate = String(form.get("startsAtDate") ?? "");
-    const startTime = String(form.get("startsAtTime") ?? "");
-    const startsAt = startDate && startTime ? new Date(`${startDate}T${startTime}`) : undefined;
-    const endsAt = String(form.get("endsAt"));
+    // The picker's trigger is a button, not a required field, so the form
+    // cannot refuse a missing start on its own.
+    if (!startsAt) {
+      setValidationError("Choose a start date and time.");
+      return;
+    }
     const attendance = String(form.get("attendanceEstimate"));
     // A disabled field is left out of the form data altogether.
     const allocation = canAllocate ? String(form.get("allocation") ?? "") : "";
@@ -44,7 +48,7 @@ export function NewEventPage() {
       description: form.get("description") || undefined,
       venue: form.get("venue") || undefined,
       startsAt,
-      endsAt: endsAt ? new Date(endsAt) : undefined,
+      endsAt: endsAt ?? undefined,
       attendanceEstimate: attendance ? Number(attendance) : undefined,
       allocationCents: allocation ? Math.round(Number(allocation) * 100) : undefined,
       minTier: Number(form.get("minTier")),
@@ -93,32 +97,34 @@ export function NewEventPage() {
               />
             </div>
 
+            {/* The same day-and-time picker as Edit dates. A calendar day link
+                seeds only the DAY: pre-filling a midnight the reader never
+                chose would quietly write an event at 00:00, so the time is
+                still theirs to give. */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="event-start-date">Starts</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    id="event-start-date"
-                    name="startsAtDate"
-                    type="date"
-                    required
-                    defaultValue={seedDate ? toIsoDate(seedDate) : ""}
-                    className="min-w-40 flex-1"
-                  />
-                  {/* The time is left empty on purpose — see `submit`. */}
-                  <Input
-                    id="event-start-time"
-                    name="startsAtTime"
-                    type="time"
-                    required
-                    aria-label="Start time"
-                    className="w-32"
-                  />
-                </div>
+                <Label htmlFor="event-start">Starts</Label>
+                <DateTimePicker
+                  id="event-start"
+                  label="start date"
+                  timeLabel="Start time"
+                  allowClear={false}
+                  value={startsAt}
+                  onChange={setStartsAt}
+                  defaultDay={seedDate}
+                  disabled={creation.busy}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="event-end">Ends</Label>
-                <Input id="event-end" name="endsAt" type="datetime-local" />
+                <DateTimePicker
+                  id="event-end"
+                  label="end date"
+                  timeLabel="End time"
+                  value={endsAt}
+                  onChange={setEndsAt}
+                  disabled={creation.busy}
+                />
               </div>
             </div>
 
