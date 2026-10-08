@@ -1,21 +1,24 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MembersPage } from "./members";
+import { staffableTeams } from "@/components/members/member-teams";
+
+const viewer = vi.hoisted(() => ({
+  id: "018f3a4b-0000-7000-8000-000000000001",
+  email: "president@example.com",
+  role: "president",
+  tier: 2,
+}));
 
 vi.mock("@/hooks/use-me", () => ({
-  useMe: () => ({
-    status: "ok",
-    user: {
-      id: "018f3a4b-0000-7000-8000-000000000001",
-      email: "president@example.com",
-      role: "president",
-      tier: 2,
-    },
-  }),
+  useMe: () => ({ status: "ok", user: viewer }),
 }));
 
 describe("MembersPage", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Object.assign(viewer, { role: "president", tier: 2 });
+  });
 
   const member = {
     id: "018f3a4b-0000-7000-8000-000000000002",
@@ -28,16 +31,41 @@ describe("MembersPage", () => {
     createdAt: "2026-01-10T00:00:00.000Z",
   };
 
-  it("renders the directory and confirms role changes", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response({ members: [member] }))
-      .mockResolvedValueOnce(
-        response({
-          member: { id: member.id, role: "director", tier: 1, createdAt: member.createdAt },
-        }),
-      );
+  const media = {
+    id: "018f3a4b-0000-7000-8000-0000000000a1",
+    name: "Media",
+    lead: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    memberIds: [member.id],
+  };
+  const marketing = {
+    id: "018f3a4b-0000-7000-8000-0000000000a2",
+    name: "Marketing",
+    lead: viewer.id,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    memberIds: [],
+  };
+
+  /**
+   * Routes by URL: the page reads the roster and the teams side by side, so an
+   * ordered queue of responses would hand one read the other's body.
+   */
+  function stubApi(writes: Record<string, unknown> = {}) {
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (init?.method) return writes[`${init.method} ${input}`] ?? response({});
+      if (input === "/api/teams") return response({ teams: [media, marketing] });
+      return response({ members: [member] });
+    });
     vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("renders the directory and confirms role changes", async () => {
+    const fetchMock = stubApi({
+      [`PATCH /api/members/${member.id}/role`]: response({
+        member: { id: member.id, role: "director", tier: 1, createdAt: member.createdAt },
+      }),
+    });
 
     render(<MembersPage />);
 
@@ -57,7 +85,7 @@ describe("MembersPage", () => {
   });
 
   it("dismisses the role change modal back to the select that raised it", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ members: [member] })));
+    stubApi();
 
     render(<MembersPage />);
 
@@ -73,6 +101,118 @@ describe("MembersPage", () => {
     // lands on `<body>` and has to tab in from the top of the page.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(select).toHaveFocus());
+  });
+
+  it("names the teams a member is on", async () => {
+    stubApi();
+
+    render(<MembersPage />);
+
+    const chips = await screen.findByRole("list", { name: "Teams for Alex Morgan" });
+    expect(
+      within(chips)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Media"]);
+  });
+
+  it("puts a member on a team from their card", async () => {
+    const fetchMock = stubApi();
+
+    render(<MembersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit teams for Alex Morgan" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Marketing" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(`/api/teams/${marketing.id}/members/${member.id}`, {
+        method: "PUT",
+        credentials: "include",
+      }),
+    );
+    const chips = screen.getByRole("list", { name: "Teams for Alex Morgan" });
+    await waitFor(() => expect(within(chips).getByText("Marketing")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "Marketing" })).toBeChecked();
+  });
+
+  it("takes a member off a team from their card", async () => {
+    const fetchMock = stubApi();
+
+    render(<MembersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit teams for Alex Morgan" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Media" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(`/api/teams/${media.id}/members/${member.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Teams for Alex Morgan" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("None")).toBeInTheDocument();
+  });
+
+  it("keeps the chips as they were and says so when a team change fails", async () => {
+    stubApi({
+      [`PUT /api/teams/${marketing.id}/members/${member.id}`]: {
+        ok: false,
+        status: 403,
+        json: async () => ({}),
+      },
+    });
+
+    render(<MembersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit teams for Alex Morgan" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Marketing" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to update Marketing");
+    expect(screen.getByRole("checkbox", { name: "Marketing" })).not.toBeChecked();
+  });
+
+  it("offers a lead only the teams they lead", async () => {
+    Object.assign(viewer, { role: "director", tier: 1 });
+    stubApi();
+
+    render(<MembersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit teams for Alex Morgan" }));
+
+    expect(screen.getByRole("checkbox", { name: "Marketing" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Media" })).not.toBeInTheDocument();
+  });
+
+  it("offers a tier-0 member no team editor", async () => {
+    Object.assign(viewer, { role: "officer", tier: 0 });
+    stubApi();
+
+    render(<MembersPage />);
+
+    await screen.findByRole("list", { name: "Teams for Alex Morgan" });
+    expect(screen.queryByRole("button", { name: /edit teams/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("staffableTeams", () => {
+  const lead = "018f3a4b-0000-7000-8000-000000000001";
+  const team = (id: string, teamLead: string | null) => ({
+    id,
+    name: id,
+    lead: teamLead,
+    createdAt: new Date(),
+    memberIds: [],
+  });
+  const teams = [team("led", lead), team("other", null)];
+
+  it("lets tier 2 staff every team", () => {
+    expect(staffableTeams(teams, { id: lead, tier: 2 }).map((t) => t.id)).toEqual(["led", "other"]);
+  });
+
+  it("lets tier 1 staff only the teams they lead", () => {
+    expect(staffableTeams(teams, { id: lead, tier: 1 }).map((t) => t.id)).toEqual(["led"]);
+  });
+
+  it("lets tier 0 staff nothing, even a team they lead — the route is authorise(1)", () => {
+    expect(staffableTeams(teams, { id: lead, tier: 0 })).toEqual([]);
   });
 });
 
