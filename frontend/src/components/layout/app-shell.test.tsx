@@ -13,6 +13,8 @@ function feed(unreadCount: number): NotificationsValue {
   return {
     state: { status: "ok", items: [], unreadCount, loaded: 0, hasMore: false },
     loadingMore: false,
+    syncedAt: undefined,
+    stale: false,
     mutationError: undefined,
     loadMore: vi.fn().mockResolvedValue(undefined),
     reload: vi.fn(),
