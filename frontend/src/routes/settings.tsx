@@ -1,4 +1,4 @@
-import { Moon, ShieldCheck, Sun } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
@@ -7,6 +7,49 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useMe } from "@/hooks/use-me";
 import { applyTheme, saveTheme, storedTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+
+/**
+ * The five palettes, each with a swatch of its page, ink and accent. The
+ * swatches are literal colours, not tokens, on purpose: they preview a palette
+ * that is not the one applied yet. Values match `index.css`.
+ */
+const THEME_OPTIONS: {
+  value: Theme;
+  label: string;
+  description: string;
+  swatch: [string, string, string];
+}[] = [
+  {
+    value: "light",
+    label: "Light",
+    description: "Crisp and clear",
+    swatch: ["#fcfbf9", "#14140f", "#cc3700"],
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Comfortable at night",
+    swatch: ["#12120f", "#f2f1ec", "#ff6b3d"],
+  },
+  {
+    value: "amber",
+    label: "Amber",
+    description: "Amber phosphor",
+    swatch: ["#120d05", "#ffb54d", "#fff0d1"],
+  },
+  {
+    value: "green",
+    label: "Green",
+    description: "Green phosphor",
+    swatch: ["#03110a", "#5dfc8d", "#dcffe6"],
+  },
+  {
+    value: "gruvbox",
+    label: "Gruvbox",
+    description: "Warm retro",
+    swatch: ["#282828", "#ebdbb2", "#fe8019"],
+  },
+];
 
 export function SettingsPage() {
   const me = useMe();
@@ -84,20 +127,7 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Theme">
-            {[
-              {
-                value: "light" as const,
-                label: "Light",
-                description: "Crisp and clear",
-                icon: Sun,
-              },
-              {
-                value: "dark" as const,
-                label: "Dark",
-                description: "Comfortable at night",
-                icon: Moon,
-              },
-            ].map((option) => (
+            {THEME_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 type="button"
@@ -109,8 +139,10 @@ export function SettingsPage() {
                   theme === option.value ? "border-ring bg-accent" : "hover:bg-accent",
                 )}
               >
-                <span className="bg-accent p-2 text-muted-foreground">
-                  <option.icon aria-hidden="true" className="size-4" />
+                <span aria-hidden="true" className="flex shrink-0 border">
+                  {option.swatch.map((colour) => (
+                    <span key={colour} className="size-4" style={{ backgroundColor: colour }} />
+                  ))}
                 </span>
                 <span>
                   <span className="block text-sm font-medium">{option.label}</span>
