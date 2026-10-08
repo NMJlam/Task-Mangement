@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   ListPlus,
   MapPin,
+  MessageSquare,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -395,6 +396,16 @@ export function EventDetailPage() {
                 kind="event"
                 members={memberItems}
                 selfId={selfId}
+                titleAction={
+                  // The way back to the same conversation among the others,
+                  // mirroring Messages' "View event".
+                  <Button asChild variant="outline" size="xs">
+                    <Link to={`/messages?thread=${event.channelId}`}>
+                      <MessageSquare aria-hidden="true" />
+                      Open in Messages
+                    </Link>
+                  </Button>
+                }
                 className="min-h-[36rem] overflow-hidden rounded-xl border bg-card"
               />
             </>

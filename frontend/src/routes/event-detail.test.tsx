@@ -425,6 +425,16 @@ describe("EventDetailPage", () => {
       expect(screen.getByText(SUMMARY_POINT)).toBeInTheDocument();
     });
 
+    it("links back to the same conversation on Messages", async () => {
+      stubEvent({ messages: [message()], members: [roster()] });
+      renderDetail("?tab=thread");
+
+      expect(await screen.findByRole("link", { name: "Open in Messages" })).toHaveAttribute(
+        "href",
+        `/messages?thread=${CHANNEL_ID}`,
+      );
+    });
+
     it("offers no summary of an empty thread, which the server would refuse", async () => {
       stubEvent();
       renderDetail("?tab=thread");
