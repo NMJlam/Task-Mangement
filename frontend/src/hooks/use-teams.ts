@@ -1,4 +1,4 @@
-import { teamListResponseSchema, type TeamWithMembers } from "@ctp/shared";
+import { teamListResponseSchema, teamResponseSchema, type TeamWithMembers } from "@ctp/shared";
 import { useCallback, useEffect, useState } from "react";
 
 type TeamsState =
@@ -16,7 +16,7 @@ type TeamsState =
  */
 export function useTeams() {
   const [state, setState] = useState<TeamsState>({ status: "loading" });
-  /** `${teamId}:${userId}` while that one membership is being written. */
+  /** `${teamId}:${userId}` or `${teamId}:lead` while that one write is in flight. */
   const [busy, setBusy] = useState<string>();
   const [mutationError, setMutationError] = useState<string>();
 
@@ -86,5 +86,40 @@ export function useTeams() {
     [],
   );
 
-  return { state, busy, mutationError, setMembership };
+  /**
+   * Makes `userId` the lead of `team`, or leaves it without one with `null`
+   * (PATCH /api/teams/:id, tier 2). A team has one lead, so this replaces
+   * whoever led it before — and with them, their portfolio, which is derived
+   * from the team they lead.
+   */
+  const setLead = useCallback(async (team: TeamWithMembers, userId: string | null) => {
+    setBusy(`${team.id}:lead`);
+    setMutationError(undefined);
+    try {
+      const response = await fetch(`/api/teams/${team.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lead: userId }),
+      });
+      if (!response.ok) throw new Error(`Failed to update ${team.name}`);
+      const updated = teamResponseSchema.parse(await response.json()).team;
+      setState((current) =>
+        current.status === "ok"
+          ? {
+              ...current,
+              items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+            }
+          : current,
+      );
+      return true;
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to update team");
+      return false;
+    } finally {
+      setBusy(undefined);
+    }
+  }, []);
+
+  return { state, busy, mutationError, setMembership, setLead };
 }
