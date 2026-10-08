@@ -28,7 +28,10 @@ export function LoginPage() {
        * /65 is 7.38:1, /70 is 8.39:1. The floor is /50, but every string here
        * sits at /60 or above for headroom. See docs/accessibility.md.
        */}
-      <section className="relative hidden overflow-hidden border-r border-screen-foreground/15 bg-screen p-12 text-screen-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
+      <section className="relative isolate hidden overflow-hidden border-r border-screen-foreground/15 bg-screen p-12 text-screen-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
+        {/* Behind the copy (`isolate` keeps it above the panel's own
+            background), and masked away from it. */}
+        <div aria-hidden="true" className="dither pointer-events-none absolute inset-0 -z-10" />
         <div>
           <AsciiWordmark className="text-sm text-screen-foreground" />
           <p className="mt-3 text-xs text-screen-foreground/65">Club Operations</p>
