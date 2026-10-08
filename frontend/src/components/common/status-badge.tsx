@@ -9,46 +9,60 @@ type Status = EventStatus | ExpenseStatus | Risk | TaskStatus;
  * shows: two copies of "what does `live` look like" is how a chip and a badge
  * drift into disagreeing about the same row.
  *
- * The class names are the contrast-safe pairs the palette's contrast table was
- * computed against — `text-emerald-700` on `bg-emerald-50` and friends. They are
- * intended to be applied to a chip that keeps its own text colours, so a chip
- * must not add a text colour of its own on top of these.
+ * A status here is a TUI tag - `[Live]` - not a filled pill: coloured text on
+ * the panel, brackets drawn by the `.tag` class in `index.css` so the element's
+ * text content stays exactly its label for screen readers and tests.
  *
- * EVERY TINTED PAIR DEFINES BOTH HALVES OF THE DARK VARIANT. `dark:` swaps the
- * background to the `-950` shade, so the text colour has to swap with it:
- * leaving the light `-700`/`-800` text on that background measures 2.1–2.8:1 and
- * fails WCAG AA (R13), which is the state this file shipped in until these pairs
- * were completed. The dark shades measure 9.94:1 (emerald), 12.03:1 (amber) and
- * 8.51:1 (red) — see docs/accessibility.md. Naming the pairs once rather than
- * inlining fifteen class strings is what makes "a tint without its dark text" a
- * shape that cannot be written here; the colocated test asserts it anyway.
+ * Colours come from `--ok` / `--warn` / `--danger` / `--muted-foreground` and
+ * the one accent (`--ring`). Both themes define every one of them, so there is
+ * no `dark:` half that can be forgotten - which is the failure this file used to
+ * ship, at 2.1-2.8:1. See docs/accessibility.md.
  */
-const tints = {
-  emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  amber: "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-  red: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
-  // Token pairs: `accent` and `secondary` already redefine both halves under
-  // `dark` in index.css, so they take no variant here.
-  accent: "bg-accent text-accent-foreground",
-  secondary: "bg-secondary text-secondary-foreground",
-} as const;
+export type StatusTone = "neutral" | "ok" | "warn" | "danger" | "accent";
 
-export const statusStyles: Record<Status, { label: string; className: string }> = {
-  planning: { label: "Planning", className: tints.accent },
-  live: { label: "Live", className: tints.emerald },
-  wrapped: { label: "Wrapped", className: tints.secondary },
-  cancelled: { label: "Cancelled", className: tints.red },
-  pending: { label: "Pending", className: tints.amber },
-  approved: { label: "Approved", className: tints.accent },
-  paid: { label: "Paid", className: tints.emerald },
-  rejected: { label: "Rejected", className: tints.red },
-  todo: { label: "To Do", className: tints.secondary },
-  in_progress: { label: "In Progress", className: tints.accent },
-  blocked: { label: "Blocked", className: tints.red },
-  done: { label: "Done", className: tints.emerald },
-  on_track: { label: "On Track", className: tints.emerald },
-  at_risk: { label: "At Risk", className: tints.amber },
-  critical: { label: "Critical", className: tints.red },
+/** Text colour for a tag on a panel. */
+export const toneText: Record<StatusTone, string> = {
+  neutral: "text-muted-foreground",
+  ok: "text-ok",
+  warn: "text-warn",
+  danger: "text-danger",
+  accent: "text-ring",
+};
+
+/**
+ * The same tone as a wash, for a chip that has to hold two lines of its own
+ * text (the calendar). The hue lives in the wash; the text is always ink, not
+ * the tone colour.
+ *
+ * That is deliberate, and it is measured: `ring` (#cc3700) on its own 15% wash
+ * over `--card` is 3.71:1 in light mode and would fail AA, while ink on the same
+ * wash is 13.42:1. Keeping one rule for every tone beats a rule that holds for
+ * green, amber and red but not orange. Numbers: docs/accessibility.md.
+ */
+export const toneChip: Record<StatusTone, string> = {
+  neutral: "bg-foreground/5 text-muted-foreground",
+  ok: "bg-ok/15 text-foreground",
+  warn: "bg-warn/15 text-foreground",
+  danger: "bg-danger/15 text-foreground",
+  accent: "bg-ring/15 text-foreground",
+};
+
+export const statusStyles: Record<Status, { label: string; tone: StatusTone }> = {
+  planning: { label: "Planning", tone: "accent" },
+  live: { label: "Live", tone: "ok" },
+  wrapped: { label: "Wrapped", tone: "neutral" },
+  cancelled: { label: "Cancelled", tone: "danger" },
+  pending: { label: "Pending", tone: "warn" },
+  approved: { label: "Approved", tone: "accent" },
+  paid: { label: "Paid", tone: "ok" },
+  rejected: { label: "Rejected", tone: "danger" },
+  todo: { label: "To Do", tone: "neutral" },
+  in_progress: { label: "In Progress", tone: "accent" },
+  blocked: { label: "Blocked", tone: "danger" },
+  done: { label: "Done", tone: "ok" },
+  on_track: { label: "On Track", tone: "ok" },
+  at_risk: { label: "At Risk", tone: "warn" },
+  critical: { label: "Critical", tone: "danger" },
 };
 
 export function StatusBadge({ status, className }: { status: Status; className?: string }) {
@@ -57,8 +71,8 @@ export function StatusBadge({ status, className }: { status: Status; className?:
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center rounded-full px-2 py-1 text-xs leading-none font-medium",
-        style.className,
+        "tag inline-flex w-fit items-center text-xs leading-none font-medium tracking-[0.02em] uppercase",
+        toneText[style.tone],
         className,
       )}
     >
