@@ -196,6 +196,33 @@ dark direction's orange) is fixed at **6.53:1** for the check glyphs there.
 - `text-muted-foreground/40` on the calendar's **disabled** day buttons is left
   alone: disabled controls are exempt from 1.4.3, and axe skips them.
 
+## Text-mode chrome
+
+Three pieces draw the terminal with characters and lines rather than shapes.
+None adds a colour pair: each uses tokens already measured above.
+
+- **Text meters** (`TextMeter`, `[██████░░░░]`), used on the Overview's
+  Committee Load, every event health strip and Finance's allocation table. A
+  meter is a `role="progressbar"` with a name and an `aria-valuetext` that says
+  the reading in words ("62% complete", "120% used, over budget"). The value is
+  clamped to the maximum, so "over" is carried by the words and the `danger`
+  colour, never by an out-of-range number. The glyphs are `aria-hidden`.
+  Filled cells are `foreground` (or `danger`, 5.90:1 light / 8.43:1 dark), and
+  the track and brackets are `muted-foreground` (6.14:1 light / 6.62:1 dark on a
+  panel). Both pass as text, so the bar also clears 1.4.11's 3:1 as a graphic.
+- **Panels** (`Panel`, a box titled in its top border). Each is a `section`
+  named by its own `h2`/`h3`, so it is a region a screen reader can jump to by
+  name. The drawn lines are `--border` hairlines and `aria-hidden`. They group
+  content, which 1.4.11 does not cover, the same as the cards they replace. The
+  title straddles the page and the panel surface, and ink passes on both.
+- **The status line** (a `footer` named "Status line", a contentinfo landmark).
+  It is **deliberately not a live region**: its "synced 2s ago" changes every
+  second, and announcing that would drown everything else. The unread count it
+  shows is a link to the Inbox, and the sidebar's Inbox link already carries the
+  count in its name. The text is `foreground`/`muted-foreground` on `card`, and
+  "offline · retrying" is `danger` on `card`. The `$` prompt and the `●` unread
+  marker are `ring` and decorative.
+
 ## ⚠️ Re-run this after any palette change
 
 These numbers are current for the terminal palette. Recompute them whenever a
