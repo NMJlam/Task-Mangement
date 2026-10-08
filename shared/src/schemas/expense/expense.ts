@@ -73,6 +73,7 @@ export const decideExpenseSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("approve") }),
   z.object({ action: z.literal("reject"), reason: z.string().trim().min(1).max(500) }),
   z.object({ action: z.literal("mark_paid") }),
+  z.object({ action: z.literal("unmark_paid") }),
 ]);
 
 export type DecideExpense = z.infer<typeof decideExpenseSchema>;

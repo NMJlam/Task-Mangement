@@ -55,6 +55,7 @@ describe("expense schemas", () => {
       decideExpenseSchema.safeParse({ action: "reject", reason: "Outside the allocation" }).success,
     ).toBe(true);
     expect(decideExpenseSchema.safeParse({ action: "mark_paid" }).success).toBe(true);
+    expect(decideExpenseSchema.safeParse({ action: "unmark_paid" }).success).toBe(true);
   });
 
   it("validates params, rows, queries, and response envelopes", () => {

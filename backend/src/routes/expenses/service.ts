@@ -33,6 +33,20 @@ export function expenseTransition(
     return { status: "paid", paidAt: now };
   }
 
+  if (decision.action === "unmark_paid") {
+    if (status !== "paid") {
+      throw new ExpenseTransitionError(
+        "INVALID_EXPENSE_STATE",
+        "Only a paid expense can be marked unpaid.",
+      );
+    }
+    // Back to approved, not pending: it was approved, and being paid and then
+    // un-paid does not un-decide that — decider and decidedAt stay as they
+    // were. paidAt has to clear with the status, because
+    // expense_paid_at_matches_status_check ties the two together.
+    return { status: "approved", paidAt: null };
+  }
+
   if (status !== "pending") {
     throw new ExpenseTransitionError(
       "INVALID_EXPENSE_STATE",
@@ -51,6 +65,13 @@ export function expenseTransition(
         decidedAt: now,
         rejectionReason: decision.reason,
       };
+}
+
+/** How a decision reads in the submitter's notification. */
+function decisionVerb(decision: DecideExpense, resultingStatus: ExpenseStatus): string {
+  if (decision.action === "mark_paid") return "marked paid";
+  if (decision.action === "unmark_paid") return "marked unpaid";
+  return resultingStatus;
 }
 
 async function lockedExpense(tx: Tx, id: string) {
@@ -102,7 +123,7 @@ export async function decideExpense(tx: Tx, id: string, decision: DecideExpense,
     .returning();
 
   if (current.submitter && current.submitter !== actorId) {
-    const verb = decision.action === "mark_paid" ? "marked paid" : updated!.status;
+    const verb = decisionVerb(decision, updated!.status);
     await tx.insert(notifications).values({
       id: newId(),
       userId: current.submitter,

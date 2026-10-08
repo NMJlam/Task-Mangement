@@ -27,4 +27,21 @@ describe("expenseTransition", () => {
       expenseTransition("rejected", { action: "mark_paid" }, "payer", "submitter", now),
     ).toThrow(ExpenseTransitionError);
   });
+
+  it("returns a paid expense to approved and clears paidAt", () => {
+    // paidAt must clear with the status: expense_paid_at_matches_status_check
+    // ties the two together, so leaving it set would be refused by the database.
+    expect(expenseTransition("paid", { action: "unmark_paid" }, "payer", null, now)).toEqual({
+      status: "approved",
+      paidAt: null,
+    });
+  });
+
+  it("only unmarks an expense that is actually paid", () => {
+    for (const status of ["pending", "approved", "rejected"] as const) {
+      expect(() =>
+        expenseTransition(status, { action: "unmark_paid" }, "payer", "submitter", now),
+      ).toThrow(ExpenseTransitionError);
+    }
+  });
 });

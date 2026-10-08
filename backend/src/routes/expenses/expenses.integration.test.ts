@@ -151,6 +151,61 @@ describe("finance routes (integration)", () => {
     expect((await db.select().from(expenses).where(eq(expenses.id, id)))[0]?.status).toBe("paid");
   });
 
+  it("unmarks a paid expense: back to approved, still committed, no longer spent", async () => {
+    const treasurer = await member("treasurer", "treasurer");
+    const president = await member("president", "president");
+    const officer = await member("officer", "officer");
+
+    signInAs(treasurer);
+    const created = await request(app)
+      .post("/api/expenses")
+      .send({ description: `${PREFIX}printing`, amountCents: 4_000, category: "printing" });
+    const id = created.body.expense.id as string;
+
+    signInAs(president);
+    await request(app).post(`/api/expenses/${id}/decision`).send({ action: "approve" });
+    signInAs(treasurer);
+    const paid = await request(app)
+      .post(`/api/expenses/${id}/decision`)
+      .send({ action: "mark_paid" });
+    expect(paid.status).toBe(200);
+    const spentWhilePaid = paid.body.budget.spentCents as number;
+    const committedWhilePaid = paid.body.budget.committedCents as number;
+
+    // Only the finance roles can reverse a payment, same as making one.
+    signInAs(officer);
+    expect(
+      (await request(app).post(`/api/expenses/${id}/decision`).send({ action: "unmark_paid" }))
+        .status,
+    ).toBe(403);
+
+    signInAs(treasurer);
+    const unpaid = await request(app)
+      .post(`/api/expenses/${id}/decision`)
+      .send({ action: "unmark_paid" });
+    expect(unpaid.status).toBe(200);
+    expect(unpaid.body.expense).toMatchObject({ status: "approved", paidAt: null });
+    // The money is still owed (committed) but has stopped counting as spent.
+    expect(unpaid.body.budget.spentCents).toBe(spentWhilePaid - 4_000);
+    expect(unpaid.body.budget.committedCents).toBe(committedWhilePaid);
+    expect((await db.select().from(expenses).where(eq(expenses.id, id)))[0]).toMatchObject({
+      status: "approved",
+      paidAt: null,
+    });
+
+    // Reversible, and only from paid: unmarking again is a conflict, and the
+    // expense can be marked paid a second time.
+    expect(
+      (await request(app).post(`/api/expenses/${id}/decision`).send({ action: "unmark_paid" }))
+        .status,
+    ).toBe(409);
+    const repaid = await request(app)
+      .post(`/api/expenses/${id}/decision`)
+      .send({ action: "mark_paid" });
+    expect(repaid.status).toBe(200);
+    expect(repaid.body.expense.status).toBe("paid");
+  });
+
   it("updates and deletes only pending expenses", async () => {
     const treasurer = await member("treasurer", "treasurer");
     signInAs(treasurer);
