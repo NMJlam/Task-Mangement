@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const dayStamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 /** The value's local `HH:MM`, or `""` when there is no value. */
 function timeOf(value: Date | null): string {
@@ -63,6 +64,7 @@ export function DateTimePicker({
   label,
   timeLabel = "Time",
   defaultTime = "",
+  defaultDay,
   allowClear = true,
   disabled = false,
   portalTarget = null,
@@ -80,13 +82,19 @@ export function DateTimePicker({
    * no sensible default (an event's start) still makes the user state one.
    */
   defaultTime?: string;
+  /**
+   * The day an empty picker opens on — New Event's start, reached from a
+   * calendar day. Only the day: the time stays empty (with `defaultTime: ""`),
+   * so Apply waits for the reader to give one, and the trigger says so.
+   */
+  defaultDay?: Date;
   /** Off for a required instant, where clearing is not a state the caller accepts. */
   allowClear?: boolean;
   disabled?: boolean;
   portalTarget?: HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [day, setDay] = useState<Date | undefined>(value ?? undefined);
+  const [day, setDay] = useState<Date | undefined>(value ?? defaultDay);
   const [time, setTime] = useState(value ? timeOf(value) : defaultTime);
   const timeId = `${id}-time`;
   // A day with no time is not an instant, and guessing midnight would invent a
@@ -97,7 +105,7 @@ export function DateTimePicker({
     // Opening always starts from the stored value, so a cancelled attempt leaves
     // nothing half-edited behind.
     if (next) {
-      setDay(value ?? undefined);
+      setDay(value ?? defaultDay);
       setTime(value ? timeOf(value) : defaultTime);
     }
     setOpen(next);
@@ -119,7 +127,13 @@ export function DateTimePicker({
           )}
         >
           <CalendarDays aria-hidden="true" className="text-muted-foreground" />
-          <span className="truncate">{value ? stamp.format(value) : `Select ${label}`}</span>
+          <span className="truncate">
+            {value
+              ? stamp.format(value)
+              : defaultDay
+                ? `${dayStamp.format(defaultDay)} · choose a time`
+                : `Select ${label}`}
+          </span>
         </Button>
       </Popover.Trigger>
 

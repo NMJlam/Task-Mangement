@@ -164,6 +164,40 @@ describe("DateTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith(new Date(2026, 8, 21, 23, 59));
   });
 
+  /**
+   * The calendar's day cells link to New Event with the day they showed. The
+   * picker opens on that day, but the time stays the reader's to give: a seeded
+   * midnight would quietly write an event at 00:00.
+   */
+  it("opens an empty picker on its default day, and still asks for the time", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onChange = vi.fn();
+    render(
+      <DateTimePicker
+        id="event-start"
+        label="start date"
+        timeLabel="Start time"
+        value={null}
+        defaultDay={new Date(2026, 9, 12)}
+        onChange={onChange}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /choose a time/ });
+    expect(trigger).toHaveTextContent(/2026/);
+    await user.click(trigger);
+    expect(document.querySelector('[data-day="2026-10-12"]')).toHaveAttribute(
+      "data-selected",
+      "true",
+    );
+    expect(screen.getByLabelText("Start time")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Start time"), "19:00");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onChange).toHaveBeenCalledWith(new Date(2026, 9, 12, 19, 0));
+  });
+
   it("words the control from its label, and hides Clear where the value is required", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onChange = vi.fn();
