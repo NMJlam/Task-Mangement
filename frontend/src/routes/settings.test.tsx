@@ -17,15 +17,18 @@ vi.mock("@/hooks/use-me", () => ({
 afterEach(() => {
   localStorage.clear();
   document.documentElement.classList.remove("dark");
+  document.documentElement.removeAttribute("data-theme");
 });
 
-it("persists and applies the selected theme", () => {
+it("offers the five palettes, and persists and applies the one chosen", () => {
   render(<SettingsPage />);
 
-  fireEvent.click(screen.getByRole("button", { name: /dark: comfortable at night/i }));
+  expect(screen.getAllByRole("button", { pressed: false })).toHaveLength(4);
+  fireEvent.click(screen.getByRole("button", { name: /amber: amber phosphor/i }));
 
   expect(document.documentElement).toHaveClass("dark");
-  expect(localStorage.getItem("theme")).toBe("dark");
+  expect(document.documentElement).toHaveAttribute("data-theme", "amber");
+  expect(localStorage.getItem("theme")).toBe("amber");
 });
 
 it("still opens and switches theme when the browser blocks storage", () => {
