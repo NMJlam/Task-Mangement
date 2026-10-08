@@ -93,10 +93,15 @@ export function DashboardSearch({
           <Dialog.Description className="sr-only">
             Search tasks, events, and club members.
           </Dialog.Description>
-          {/* The field fills this row, and the dialog clips its overflow, so the
-              app's focus outline (drawn 2px outside a control) is drawn inside
-              the field instead. The results below do the same in their list. */}
-          <div className="flex items-center gap-3 border-b px-4">
+          {/* The field fills this row, and the dialog clips its overflow: the
+              app's focus outline, drawn 2px outside a control, was cut off here,
+              and a header-sized box was out of proportion anyway. The focused
+              field is marked instead by an accent rule along the bottom of its
+              row, like a prompt's underline (`ring` on `card`, 4.61:1). */}
+          <div
+            data-slot="search-row"
+            className="flex items-center gap-3 border-b px-4 has-[input:focus-visible]:shadow-[inset_0_-2px_0_var(--ring)]"
+          >
             <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <label htmlFor="dashboard-search" className="sr-only">
               Search Club Workspace
@@ -109,7 +114,7 @@ export function DashboardSearch({
               autoComplete="off"
               spellCheck={false}
               placeholder="Search tasks, events, or people…"
-              className="h-14 flex-1 border-0 bg-transparent px-0 shadow-none -outline-offset-2"
+              className="h-14 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:outline-none"
             />
             <Dialog.Close asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Close search">
