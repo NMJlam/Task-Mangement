@@ -19,6 +19,7 @@ import {
   type Queryable,
   type Tx,
 } from "../events/service.js";
+import { newlyAssigned, notifyAssigned } from "../tasks/service.js";
 import { recordRunOutcome } from "./service.js";
 
 /**
@@ -109,12 +110,33 @@ async function assertMembersExist(tx: Tx, ids: readonly string[]): Promise<void>
   if (missing) throw new ApplyError(422, "ASSIGNEE_NOT_FOUND", `No member with id ${missing}.`);
 }
 
-/** Replaces a task's whole assignment set, as PATCH /api/tasks/:id does. */
-async function setAssignees(tx: Tx, taskId: string, userIds: readonly string[]): Promise<void> {
-  await tx.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
+/**
+ * Replaces a task's whole assignment set and tells whoever it added, as
+ * PATCH /api/tasks/:id does.
+ */
+async function setAssignees(
+  tx: Tx,
+  task: { id: string; title: string },
+  userIds: readonly string[],
+  actorId: string,
+): Promise<void> {
+  const before = await tx
+    .delete(taskAssignees)
+    .where(eq(taskAssignees.taskId, task.id))
+    .returning({ userId: taskAssignees.userId });
   if (userIds.length > 0) {
-    await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
+    await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId: task.id, userId })));
   }
+  await notifyAssigned(tx, [
+    {
+      task,
+      userIds: newlyAssigned(
+        before.map((row) => row.userId),
+        userIds,
+        actorId,
+      ),
+    },
+  ]);
 }
 
 type CreateEventOperation = Extract<AiApplyOperation, { op: "create"; entity: "event" }>;
@@ -184,12 +206,12 @@ async function createTask(
     eventId: eventId ?? null,
     aiRunId: runId,
   });
-  await setAssignees(tx, id, data.assigneeIds);
+  await setAssignees(tx, { id, title: data.title }, data.assigneeIds, caller.id);
   return { id, title: data.title };
 }
 
 /** PATCH /api/tasks/:id. */
-async function updateTask(tx: Tx, runId: string, operation: UpdateTaskOperation) {
+async function updateTask(tx: Tx, caller: Caller, runId: string, operation: UpdateTaskOperation) {
   const { assigneeIds, ...columns } = operation.data;
   if (assigneeIds) await assertMembersExist(tx, assigneeIds);
   const [row] = await tx
@@ -204,7 +226,7 @@ async function updateTask(tx: Tx, runId: string, operation: UpdateTaskOperation)
     .where(eq(tasks.id, operation.id))
     .returning({ id: tasks.id, title: tasks.title });
   if (!row) throw new ApplyError(404, "TASK_NOT_FOUND", "Task not found.");
-  if (assigneeIds) await setAssignees(tx, row.id, assigneeIds);
+  if (assigneeIds) await setAssignees(tx, row, assigneeIds, caller.id);
   return row;
 }
 
@@ -348,7 +370,7 @@ export async function applyProposal(
     } else if (operation.op === "create") {
       applied.tasks.push(await createTask(tx, caller, runId, operation, refs));
     } else if (operation.entity === "task") {
-      applied.tasks.push(await updateTask(tx, runId, operation));
+      applied.tasks.push(await updateTask(tx, caller, runId, operation));
     } else {
       applied.events.push(await updateEvent(tx, caller, runId, operation));
     }
