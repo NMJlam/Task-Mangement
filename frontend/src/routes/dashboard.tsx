@@ -8,17 +8,18 @@ import {
   Plus,
   UsersRound,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BriefingCard } from "@/components/ai/briefing-card";
 import { DashboardSearch } from "@/components/common/dashboard-search";
 import { PageHeader } from "@/components/common/page-header";
+import { Panel } from "@/components/common/panel";
 import { PriorityDot } from "@/components/common/priority-dot";
 import { StatusBadge } from "@/components/common/status-badge";
+import { TextMeter } from "@/components/common/text-meter";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useEvents } from "@/hooks/use-events";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
@@ -246,37 +247,38 @@ export function DashboardPage() {
 
           <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="grid gap-6">
-              <Card className="gap-0 py-0 shadow-none">
-                <SectionHeading title="My Tasks" to="/tasks?scope=mine" action="View All" />
-                <CardContent className="px-5 pb-2 sm:px-6">
-                  {!personalLoaded ? (
-                    <EmptyState
-                      icon={CheckSquare2}
-                      message={
-                        personalFailed
-                          ? "Your tasks are unavailable right now."
-                          : "Waiting for your membership…"
-                      }
-                    />
-                  ) : myOpenTasks.length === 0 ? (
-                    <EmptyState icon={CheckSquare2} message="No open tasks are assigned to you." />
-                  ) : (
-                    <div className="divide-y">
-                      {myOpenTasks.slice(0, 5).map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          eventName={task.eventId ? eventNames.get(task.eventId) : undefined}
-                          today={today}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
+              <Panel
+                title="My Tasks"
+                action={<PanelLink to="/tasks?scope=mine">View All</PanelLink>}
+                bodyClassName="px-5 pb-2 sm:px-6 pt-2"
+              >
+                {!personalLoaded ? (
+                  <EmptyState
+                    icon={CheckSquare2}
+                    message={
+                      personalFailed
+                        ? "Your tasks are unavailable right now."
+                        : "Waiting for your membership…"
+                    }
+                  />
+                ) : myOpenTasks.length === 0 ? (
+                  <EmptyState icon={CheckSquare2} message="No open tasks are assigned to you." />
+                ) : (
+                  <div className="divide-y">
+                    {myOpenTasks.slice(0, 5).map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        eventName={task.eventId ? eventNames.get(task.eventId) : undefined}
+                        today={today}
+                      />
+                    ))}
+                  </div>
+                )}
                 {/* The widget is capped at five, so it says how much it left out
                     instead of letting the list read as the whole of one's work. */}
                 {personalLoaded && myOpenTasks.length > 5 && (
-                  <div className="border-t px-5 py-2.5 sm:px-6">
+                  <div className="mt-1 border-t pt-2.5">
                     <Link
                       to="/tasks?scope=mine"
                       className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -286,141 +288,135 @@ export function DashboardPage() {
                     </Link>
                   </div>
                 )}
-              </Card>
+              </Panel>
 
-              <Card className="gap-0 py-0 shadow-none">
-                <SectionHeading title="This Week’s Events" to="/events" action="All Events" />
-                <CardContent className="px-5 pb-2 sm:px-6">
-                  {!eventsLoaded ? (
-                    <EmptyState icon={CalendarDays} message="Events are unavailable right now." />
-                  ) : upcomingEvents.length === 0 ? (
-                    <EmptyState
-                      icon={CalendarDays}
-                      message="No events are scheduled in the next 7 days."
-                    />
-                  ) : (
-                    <div className="divide-y">
-                      {upcomingEvents.slice(0, 4).map((event) => (
-                        <EventRow key={event.id} event={event} />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <Panel
+                title="This Week’s Events"
+                action={<PanelLink to="/events">All Events</PanelLink>}
+                bodyClassName="px-5 pb-2 sm:px-6 pt-2"
+              >
+                {!eventsLoaded ? (
+                  <EmptyState icon={CalendarDays} message="Events are unavailable right now." />
+                ) : upcomingEvents.length === 0 ? (
+                  <EmptyState
+                    icon={CalendarDays}
+                    message="No events are scheduled in the next 7 days."
+                  />
+                ) : (
+                  <div className="divide-y">
+                    {upcomingEvents.slice(0, 4).map((event) => (
+                      <EventRow key={event.id} event={event} />
+                    ))}
+                  </div>
+                )}
+              </Panel>
             </div>
 
             <aside
               aria-label="Overview details"
               className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"
             >
-              <Card className="gap-0 py-0 shadow-none">
-                <SectionHeading title="Today" to="/calendar" action="Calendar" compact />
-                <CardContent className="px-5 pb-5">
-                  {!personalLoaded || !eventsLoaded ? (
-                    <EmptyState
-                      icon={Clock3}
-                      message="Today’s schedule is unavailable right now."
-                      compact
-                    />
-                  ) : todayItems.length === 0 ? (
-                    <EmptyState
-                      icon={Clock3}
-                      message="Nothing else is scheduled for today."
-                      compact
-                    />
-                  ) : (
-                    <div className="grid gap-4">
-                      {todayItems.map((item) => {
-                        const Icon = item.kind === "event" ? CalendarDays : CheckSquare2;
-                        return (
-                          <Link
-                            key={item.id}
-                            to={item.to}
-                            className="group flex min-w-0 gap-3 rounded-md"
-                          >
-                            <span className="mt-0.5 bg-accent p-1.5 text-muted-foreground group-hover:text-foreground">
-                              <Icon aria-hidden="true" className="size-3.5" />
+              <Panel
+                title="Today"
+                action={<PanelLink to="/calendar">Calendar</PanelLink>}
+                bodyClassName="px-5 pb-5 pt-2"
+              >
+                {!personalLoaded || !eventsLoaded ? (
+                  <EmptyState
+                    icon={Clock3}
+                    message="Today’s schedule is unavailable right now."
+                    compact
+                  />
+                ) : todayItems.length === 0 ? (
+                  <EmptyState
+                    icon={Clock3}
+                    message="Nothing else is scheduled for today."
+                    compact
+                  />
+                ) : (
+                  <div className="grid gap-4">
+                    {todayItems.map((item) => {
+                      const Icon = item.kind === "event" ? CalendarDays : CheckSquare2;
+                      return (
+                        <Link
+                          key={item.id}
+                          to={item.to}
+                          className="group flex min-w-0 gap-3 rounded-md"
+                        >
+                          <span className="mt-0.5 bg-accent p-1.5 text-muted-foreground group-hover:text-foreground">
+                            <Icon aria-hidden="true" className="size-3.5" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium group-hover:underline">
+                              {item.title}
                             </span>
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-medium group-hover:underline">
-                                {item.title}
+                            <time
+                              dateTime={item.at.toISOString()}
+                              className="mt-0.5 block text-xs text-muted-foreground"
+                            >
+                              {time.format(item.at)}
+                            </time>
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </Panel>
+
+              <Panel
+                title="Recent Activity"
+                action={<PanelLink to="/notifications">Inbox</PanelLink>}
+                bodyClassName="px-5 pb-5 pt-2"
+              >
+                {notificationItems.length === 0 ? (
+                  <EmptyState icon={Bell} message="No recent updates." compact />
+                ) : (
+                  <div className="grid gap-4">
+                    {notificationItems.slice(0, 4).map((notification) => (
+                      <ActivityRow key={notification.id} notification={notification} />
+                    ))}
+                  </div>
+                )}
+              </Panel>
+
+              <Panel
+                title="Committee Load"
+                action={<PanelLink to="/members">Members</PanelLink>}
+                className="sm:col-span-2 xl:col-span-1"
+                bodyClassName="px-5 pb-5 pt-2"
+              >
+                {committee.length === 0 ? (
+                  <EmptyState icon={UsersRound} message="No committee members found." compact />
+                ) : (
+                  <div className="grid gap-3.5">
+                    {committee.map(({ member, count }) => {
+                      const name = member.name || member.email;
+                      return (
+                        <div key={member.id} className="flex min-w-0 items-center gap-3">
+                          <UserAvatar name={name} className="size-7 text-[0.625rem]" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="truncate text-xs font-medium">{name}</span>
+                              <span className="shrink-0 text-[0.6875rem] text-muted-foreground tabular-nums">
+                                {count} open
                               </span>
-                              <time
-                                dateTime={item.at.toISOString()}
-                                className="mt-0.5 block text-xs text-muted-foreground"
-                              >
-                                {time.format(item.at)}
-                              </time>
-                            </span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="gap-0 py-0 shadow-none">
-                <SectionHeading
-                  title="Recent Activity"
-                  to="/notifications"
-                  action="Inbox"
-                  compact
-                />
-                <CardContent className="px-5 pb-5">
-                  {notificationItems.length === 0 ? (
-                    <EmptyState icon={Bell} message="No recent updates." compact />
-                  ) : (
-                    <div className="grid gap-4">
-                      {notificationItems.slice(0, 4).map((notification) => (
-                        <ActivityRow key={notification.id} notification={notification} />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="gap-0 py-0 shadow-none sm:col-span-2 xl:col-span-1">
-                <SectionHeading title="Committee Load" to="/members" action="Members" compact />
-                <CardContent className="px-5 pb-5">
-                  {committee.length === 0 ? (
-                    <EmptyState icon={UsersRound} message="No committee members found." compact />
-                  ) : (
-                    <div className="grid gap-3.5">
-                      {committee.map(({ member, count }) => {
-                        const name = member.name || member.email;
-                        return (
-                          <div key={member.id} className="flex min-w-0 items-center gap-3">
-                            <UserAvatar name={name} className="size-7 text-[0.625rem]" />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="truncate text-xs font-medium">{name}</span>
-                                <span className="shrink-0 text-[0.6875rem] text-muted-foreground tabular-nums">
-                                  {count} open
-                                </span>
-                              </div>
-                              <div
-                                role="progressbar"
-                                aria-label={`${name} open tasks`}
-                                aria-valuenow={count}
-                                aria-valuemin={0}
-                                aria-valuemax={maxLoad}
-                                aria-valuetext={`${count} open task${count === 1 ? "" : "s"}`}
-                                className="mt-1.5 h-1.5 overflow-hidden bg-input"
-                              >
-                                <div
-                                  className="h-full bg-accent-foreground transition-[width]"
-                                  style={{ width: `${(count / maxLoad) * 100}%` }}
-                                />
-                              </div>
                             </div>
+                            <TextMeter
+                              value={count}
+                              max={maxLoad}
+                              cells={12}
+                              label={`${name} open tasks`}
+                              valueText={`${count} open task${count === 1 ? "" : "s"}`}
+                              className="mt-1.5 text-xs"
+                            />
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Panel>
             </aside>
           </div>
         </>
@@ -442,45 +438,31 @@ function Metric({
   tone?: "danger";
 }) {
   return (
-    <Card className="gap-2 px-5 py-4 shadow-none">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <Panel title={label} bodyClassName="grid gap-1 px-4 pt-1 pb-3">
       <p
-        className={`text-3xl font-semibold tracking-[-0.04em] tabular-nums ${tone === "danger" ? "text-destructive" : ""}`}
+        className={cn(
+          "text-3xl font-semibold tracking-[-0.04em] tabular-nums",
+          tone === "danger" && "text-destructive",
+        )}
       >
         {value ?? "—"}
         {value === undefined && <span className="sr-only">unavailable</span>}
       </p>
       <p className="text-xs text-muted-foreground">{detail}</p>
-    </Card>
+    </Panel>
   );
 }
 
-function SectionHeading({
-  title,
-  to,
-  action,
-  compact = false,
-}: {
-  title: string;
-  to: string;
-  action: string;
-  compact?: boolean;
-}) {
+/** The link a panel carries in its border: "View All ›". */
+function PanelLink({ to, children }: { to: string; children: ReactNode }) {
   return (
-    <div
-      className={`flex items-center justify-between gap-4 border-b ${compact ? "px-5 py-4" : "px-5 py-4 sm:px-6"}`}
+    <Link
+      to={to}
+      className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
     >
-      <h2 className={compact ? "text-sm font-semibold" : "text-lg font-semibold tracking-tight"}>
-        {title}
-      </h2>
-      <Link
-        to={to}
-        className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
-      >
-        {action}
-        <ChevronRight aria-hidden="true" className="size-3.5" />
-      </Link>
-    </div>
+      {children}
+      <ChevronRight aria-hidden="true" className="size-3.5" />
+    </Link>
   );
 }
 

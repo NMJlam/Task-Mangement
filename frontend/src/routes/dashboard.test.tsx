@@ -174,6 +174,33 @@ it("leads the page with today's briefing, above the statistics", async () => {
   expect(within(rail).queryByRole("heading", { name: "Your Briefing" })).toBeNull();
 });
 
+it("frames each widget as a titled panel with its link in the border", async () => {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  stubFetch({
+    tasks: { tasks: [task(tomorrow)] },
+    events: { items: [event(tomorrow)], nextCursor: null },
+    notifications: { notifications: [], unreadCount: 0 },
+    members: { members: [rosterMember()] },
+  });
+
+  renderPage();
+
+  const myTasks = await screen.findByRole("region", { name: "My Tasks" });
+  expect(within(myTasks).getByRole("link", { name: /view all/i })).toHaveAttribute(
+    "href",
+    "/tasks?scope=mine",
+  );
+  for (const name of [
+    "This Week’s Events",
+    "Today",
+    "Recent Activity",
+    "Committee Load",
+    "My Open Tasks",
+  ]) {
+    expect(screen.getByRole("region", { name })).toBeInTheDocument();
+  }
+});
+
 /**
  * The notification feed is owned by the shell and consumed through context, so
  * a page that reads it has to be mounted under a provider — the same wiring
