@@ -182,7 +182,7 @@ export function ProposalCard({
             >
               <h3
                 id={`ai-section-${kind}`}
-                className="flex items-center gap-2 bg-muted/50 px-4 py-2 text-sm font-medium"
+                className="flex items-center gap-2 bg-foreground/5 px-4 py-2 text-sm font-medium"
               >
                 <Icon aria-hidden="true" className="size-4" />
                 {SECTION_LABELS[kind]}

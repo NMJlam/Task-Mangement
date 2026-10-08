@@ -59,14 +59,14 @@ export function TaskCard({
       ref={ref}
       className={cn(
         "relative gap-4 py-4 shadow-none transition-[border-color,box-shadow,opacity] motion-reduce:transition-none",
-        isDragging ? "border-ring opacity-60" : "hover:border-input hover:shadow-sm",
+        isDragging ? "border-ring opacity-60" : "hover:border-input",
       )}
     >
       <button
         type="button"
         onClick={() => onOpen(task)}
         aria-label={`Open ${task.title}`}
-        className="absolute inset-0 cursor-pointer rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="absolute inset-0 cursor-pointer rounded-xl"
       />
       <CardContent className="px-4">
         <div className="flex items-start gap-2">
@@ -85,13 +85,18 @@ export function TaskCard({
             <GripVertical aria-hidden="true" />
           </Button>
         </div>
-        <div className="mt-3 flex items-end justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
+        {/* Wraps rather than shrinking: the date is kept on one line (a mono
+            date broken mid-string is unreadable), so the chip cluster drops to
+            the next line instead of pushing the grid column wider than the
+            viewport. Grid items size to min-content, so a non-wrapping row here
+            is what made the board scroll sideways. */}
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+          <p className="text-xs whitespace-nowrap text-muted-foreground">
             {task.dueAt ? `Due ${shortDate.format(task.dueAt)}` : "No due date"}
           </p>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             {eventTitle && (
-              <span className="max-w-36 truncate rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
+              <span className="max-w-36 truncate bg-accent px-1.5 py-0.5 text-accent-foreground">
                 {eventTitle}
               </span>
             )}

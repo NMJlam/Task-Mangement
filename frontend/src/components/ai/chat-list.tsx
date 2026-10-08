@@ -73,7 +73,7 @@ export function ChatList({
           <div
             key={chat.id}
             className={cn(
-              "flex min-w-56 items-center gap-1 rounded-md pr-1 text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground lg:mb-1 lg:min-w-0",
+              "flex min-w-56 items-center gap-1 rounded-md pr-1 text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground lg:mb-1 lg:min-w-0",
               active && "bg-accent font-medium text-accent-foreground",
             )}
           >
@@ -102,7 +102,7 @@ export function ChatList({
               <Link
                 to={`/ai/${chat.id}`}
                 aria-current={active ? "page" : undefined}
-                className="min-w-0 flex-1 rounded-md px-3 py-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="min-w-0 flex-1 rounded-md px-3 py-2"
               >
                 <span className="block truncate">{chat.title}</span>
                 <span className="block text-xs font-normal text-muted-foreground">

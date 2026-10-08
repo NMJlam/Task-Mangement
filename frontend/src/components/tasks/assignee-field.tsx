@@ -138,7 +138,7 @@ export function AssigneeField({
               // shifts or flips it to stay within the card.
               collisionBoundary={portalTarget}
               collisionPadding={12}
-              className="z-50 grid w-[min(18rem,calc(100vw-3rem))] gap-2 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg outline-none"
+              className="z-50 grid w-[min(18rem,calc(100vw-3rem))] gap-2 rounded-lg border bg-popover p-3 text-popover-foreground"
               // A search-first list should be typable the moment it appears.
               onOpenAutoFocus={(event) => {
                 event.preventDefault();
@@ -181,7 +181,7 @@ export function AssigneeField({
                     return (
                       <div
                         key={member.id}
-                        className="flex items-center gap-2.5 rounded-md bg-secondary px-2 py-1.5"
+                        className="flex items-center gap-2.5 rounded-md bg-accent px-2 py-1.5"
                       >
                         <UserAvatar name={name} className="size-7 text-[0.6875rem]" />
                         <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
@@ -201,7 +201,7 @@ export function AssigneeField({
                   {departedIds.map((id) => (
                     <div
                       key={id}
-                      className="flex items-center gap-2.5 rounded-md bg-secondary px-2 py-1.5"
+                      className="flex items-center gap-2.5 rounded-md bg-accent px-2 py-1.5"
                     >
                       <UserAvatar name="Former Member" className="size-7 text-[0.6875rem]" />
                       <span className="min-w-0 flex-1 truncate text-sm">Former Member</span>
@@ -239,7 +239,7 @@ export function AssigneeField({
                           setQuery("");
                         }}
                         aria-label={`Assign ${name}`}
-                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <UserAvatar name={name} className="size-7 text-[0.6875rem]" />
                         <span className="min-w-0 flex-1">

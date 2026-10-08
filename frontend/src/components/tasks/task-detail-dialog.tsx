@@ -124,7 +124,7 @@ function TaskDetailBody({
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <StatusBadge status={task.status} />
         {task.aiRunId && (
-          <span className="inline-flex w-fit items-center rounded-full bg-accent px-2 py-1 text-xs leading-none font-medium text-accent-foreground">
+          <span className="tag inline-flex w-fit items-center bg-accent px-2 py-1 text-xs leading-none font-medium text-accent-foreground">
             AI drafted
           </span>
         )}
@@ -137,11 +137,16 @@ function TaskDetailBody({
         <div className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
           <dt>
             {onEventChange ? (
-              <label htmlFor={`task-event-${task.id}`} className="text-muted-foreground">
+              <label
+                htmlFor={`task-event-${task.id}`}
+                className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+              >
                 Linked event
               </label>
             ) : (
-              <span className="text-muted-foreground">Linked event</span>
+              <span className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
+                Linked event
+              </span>
             )}
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
@@ -151,7 +156,7 @@ function TaskDetailBody({
                 value={task.eventId ?? ""}
                 disabled={busy || !events}
                 onChange={(event) => onEventChange(task, event.target.value || null)}
-                className="h-9 min-w-0 flex-1 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-56"
+                className="h-9 min-w-0 flex-1 cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-56"
               >
                 <option value="">No event</option>
                 {task.eventId && !events?.some((event) => event.id === task.eventId) && (
@@ -183,7 +188,9 @@ function TaskDetailBody({
           </dd>
         </div>
         <div className="flex items-start justify-between gap-3">
-          <dt className="text-muted-foreground">Assignees</dt>
+          <dt className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
+            Assignees
+          </dt>
           <dd className="min-w-0 flex-1">
             <AssigneeField
               members={members}
@@ -200,7 +207,10 @@ function TaskDetailBody({
         {onUpdate ? (
           <div className="flex items-center justify-between gap-3">
             <dt>
-              <label htmlFor={`task-priority-${task.id}`} className="text-muted-foreground">
+              <label
+                htmlFor={`task-priority-${task.id}`}
+                className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+              >
                 Priority
               </label>
             </dt>
@@ -214,7 +224,7 @@ function TaskDetailBody({
                 onChange={(event) =>
                   onUpdate({ priority: taskPrioritySchema.parse(event.target.value) })
                 }
-                className="h-9 max-w-56 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-9 max-w-56 cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {taskPrioritySchema.options.map((priority) => (
                   <option key={priority} value={priority}>
@@ -230,7 +240,10 @@ function TaskDetailBody({
         {onUpdate ? (
           <div className="flex items-center justify-between gap-3">
             <dt>
-              <label htmlFor={`task-due-${task.id}`} className="text-muted-foreground">
+              <label
+                htmlFor={`task-due-${task.id}`}
+                className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+              >
                 Due date
               </label>
             </dt>
@@ -406,7 +419,7 @@ function Description({
           // to null), and an untouched field writes nothing at all.
           if (changed) onUpdate({ description: draft });
         }}
-        className="h-full min-h-24 w-full min-w-0 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
+        className="h-full min-h-24 w-full min-w-0 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
       />
     </section>
   );
@@ -415,7 +428,9 @@ function Description({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
+        {label}
+      </dt>
       <dd className="tabular-nums">{value}</dd>
     </div>
   );

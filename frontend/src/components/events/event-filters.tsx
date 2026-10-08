@@ -41,11 +41,7 @@ export function EventFilters({
   return (
     <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
       <div className="flex flex-wrap items-center gap-3">
-        <div
-          role="group"
-          aria-label="Event time filter"
-          className="flex gap-1 rounded-lg bg-secondary p-1"
-        >
+        <div role="group" aria-label="Event time filter" className="flex gap-1 border p-1">
           {times.map((option) => (
             <button
               key={option.value}
@@ -53,8 +49,8 @@ export function EventFilters({
               aria-pressed={time === option.value}
               onClick={() => onTimeChange(option.value)}
               className={cn(
-                "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:flex-none",
-                time === option.value && "bg-card text-foreground shadow-sm",
+                "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color] sm:flex-none",
+                time === option.value && "bg-primary text-primary-foreground",
               )}
             >
               {option.label}
@@ -62,18 +58,14 @@ export function EventFilters({
           ))}
         </div>
 
-        <div
-          className="flex gap-1 rounded-lg bg-secondary p-1"
-          role="group"
-          aria-label="Event owner"
-        >
+        <div className="flex gap-1 border p-1" role="group" aria-label="Event owner">
           <button
             type="button"
             aria-pressed={mine}
             onClick={() => onOwnerChange(!mine)}
             className={cn(
-              "cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-              mine && "bg-card text-foreground shadow-sm",
+              "cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color]",
+              mine && "bg-primary text-primary-foreground",
             )}
           >
             My Events
@@ -81,14 +73,17 @@ export function EventFilters({
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground" htmlFor="event-status">
+          <label
+            className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase"
+            htmlFor="event-status"
+          >
             Status
           </label>
           <select
             id="event-status"
             value={status}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring"
           >
             {/* Literal: the page asks for `includeCancelled` whenever nothing is picked. */}
             <option value="">Any status</option>

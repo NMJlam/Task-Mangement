@@ -151,7 +151,7 @@ export function ThreadChat({
           rows={3}
           maxLength={4000}
           placeholder="Write a message…"
-          className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
           required
           value={chat.draft}
           onChange={chat.setDraft}
@@ -194,10 +194,7 @@ function MessageRow({ message, members }: { message: Message; members: RosterMem
               typeof part === "string" ? (
                 <span key={index}>{part}</span>
               ) : (
-                <span
-                  key={index}
-                  className="rounded bg-primary/10 px-1 py-0.5 font-medium text-primary"
-                >
+                <span key={index} className="bg-primary/10 px-1 py-0.5 font-medium text-primary">
                   @{mentionName(part.userId, members)}
                 </span>
               ),
@@ -205,7 +202,7 @@ function MessageRow({ message, members }: { message: Message; members: RosterMem
           </p>
         )}
         {message.fileName && (
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs">
+          <p className="mt-2 inline-flex items-center gap-1.5 bg-accent px-2 py-1 text-xs">
             <Paperclip aria-hidden="true" className="size-3.5" />
             {message.fileName}
           </p>

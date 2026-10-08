@@ -44,10 +44,10 @@ export function EventHealthStrip({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuetext={`${percentComplete}% complete`}
-        className="h-2 w-24 overflow-hidden rounded-full bg-muted"
+        className="h-2 w-24 overflow-hidden bg-input"
       >
         <div
-          className="h-full rounded-full bg-primary transition-[width]"
+          className="h-full bg-primary transition-[width]"
           style={{ width: `${percentComplete}%` }}
         />
       </div>
