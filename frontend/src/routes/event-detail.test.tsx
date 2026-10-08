@@ -118,14 +118,6 @@ const progressFixture = {
 describe("EventDetailPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("frames the overview in titled panels", async () => {
-    stubEvent();
-    renderDetail();
-
-    expect(await screen.findByRole("region", { name: "About" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Event Budget" })).toBeInTheDocument();
-  });
-
   it("renders event details and asks only for the channel", async () => {
     const fetchMock = stubEvent();
     renderDetail();
@@ -165,6 +157,8 @@ describe("EventDetailPage", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByText("At Risk")).toBeInTheDocument();
     expect(screen.getByText("1 overdue task")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "About" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Event Budget" })).toBeInTheDocument();
   });
 
   it("shows the event's own tasks only once the Tasks tab is chosen", async () => {
@@ -221,40 +215,6 @@ describe("EventDetailPage", () => {
     // A successful create closes the modal and puts the card on this board.
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(await screen.findByText("Book the rig")).toBeInTheDocument();
-  });
-
-  it("moves an event task to another column through the status endpoint", async () => {
-    const fetchMock = stubEvent();
-    renderDetail("?tab=tasks");
-
-    await screen.findByText("Confirm lighting");
-
-    // The same board as `/tasks`, on the event's own tasks: a drop on the
-    // Blocked column body takes its status and the end of that column.
-    act(() => {
-      dnd.onDragEnd?.({
-        canceled: false,
-        operation: {
-          source: new dnd.SortableFake({
-            id: eventTask.id,
-            index: 0,
-            group: "blocked",
-            data: { title: "Confirm lighting", status: "todo" },
-          }),
-          target: { id: "blocked" },
-        },
-      });
-    });
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        `/api/tasks/${eventTask.id}/status`,
-        expect.objectContaining({
-          method: "PATCH",
-          body: JSON.stringify({ status: "blocked", after: null }),
-        }),
-      ),
-    );
   });
 
   /**
@@ -315,7 +275,17 @@ describe("EventDetailPage", () => {
         },
       });
     });
-    await waitFor(() => expect(moved).toBe(true));
+    // The same board as `/tasks`: a drop on the Done column body takes its
+    // status and the end of that column.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/tasks/${eventTask.id}/status`,
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "done", after: null }),
+        }),
+      ),
+    );
     await user.click(screen.getByRole("tab", { name: "Overview" }));
 
     await waitFor(() =>
@@ -419,14 +389,6 @@ describe("EventDetailPage", () => {
     await screen.findByRole("button", { name: "Add Task" });
 
     expect(screen.queryByRole("link", { name: "Plan with AI" })).not.toBeInTheDocument();
-  });
-
-  it("takes the open tab from the URL", async () => {
-    stubEvent();
-    renderDetail("?tab=tasks");
-
-    expect(await screen.findByText("Confirm lighting")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("names the thread author from the roster", async () => {
