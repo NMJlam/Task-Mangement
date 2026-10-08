@@ -315,3 +315,19 @@
     background: var(--border);
   }
 }
+
+/* `TextMeter` cells (components/common/text-meter.tsx): one character wide,
+   drawn as boxes so no glyph depends on the font. A filled cell is solid in
+   its text colour; an empty one is a one-pixel dither of it, the way `░` reads
+   on a terminal. */
+@layer components {
+  .meter-cell {
+    display: inline-block;
+    width: 1ch;
+    height: 0.85em;
+    background: currentColor;
+  }
+  .meter-cell-off {
+    background: repeating-conic-gradient(currentColor 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+  }
+}
