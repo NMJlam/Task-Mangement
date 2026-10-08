@@ -116,7 +116,7 @@ export function NewConversationDialog({
                     onClick={() =>
                       void onCreateDm(member.id).then((created) => created && setOpen(false))
                     }
-                    className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <UserAvatar name={name} className="size-7 text-[0.6875rem]" />
                     <span className="min-w-0 flex-1">

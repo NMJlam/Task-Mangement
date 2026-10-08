@@ -44,7 +44,7 @@ export function isFiltered(filters: TaskFilterState): boolean {
 }
 
 const selectClass =
-  "h-9 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring  disabled:cursor-not-allowed disabled:opacity-50";
 
 const scopes: { value: TaskFilterState["scope"]; label: string }[] = [
   { value: "mine", label: "My Tasks" },
@@ -74,11 +74,7 @@ export function TaskFilters({
   return (
     <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
       <div className="flex flex-wrap items-center gap-3">
-        <div
-          role="group"
-          aria-label="Task scope"
-          className="flex gap-1 rounded-lg bg-secondary p-1"
-        >
+        <div role="group" aria-label="Task scope" className="flex gap-1 border p-1">
           {scopes.map((option) => (
             <button
               key={option.value}
@@ -86,8 +82,8 @@ export function TaskFilters({
               aria-pressed={filters.scope === option.value}
               onClick={() => onScopeChange(option.value)}
               className={cn(
-                "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none lg:flex-none",
-                filters.scope === option.value && "bg-card text-foreground shadow-sm",
+                "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color] lg:flex-none",
+                filters.scope === option.value && "bg-primary text-primary-foreground",
               )}
             >
               {option.label}
@@ -101,7 +97,7 @@ export function TaskFilters({
             type="checkbox"
             checked={filters.overdue}
             onChange={(event) => onOverdueChange(event.target.checked)}
-            className="size-4 cursor-pointer rounded border accent-primary"
+            className="size-4 cursor-pointer rounded-none border accent-primary"
           />
           <Label htmlFor="task-overdue" className="cursor-pointer text-sm text-muted-foreground">
             Overdue only

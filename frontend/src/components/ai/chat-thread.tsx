@@ -73,7 +73,7 @@ export function ChatThread({
         {seedEventId && (
           <Link
             to={`/events/${seedEventId}`}
-            className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="tag inline-flex items-center gap-1.5 bg-accent px-2 py-1 text-xs font-medium text-accent-foreground hover:text-foreground"
           >
             <CalendarDays aria-hidden="true" className="size-3.5" />
             About this event
@@ -144,7 +144,7 @@ export function ChatThread({
                 }
               }}
               placeholder="Plan the hack night, or ask what's overdue…"
-              className="min-h-10 flex-1 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="min-h-10 flex-1 resize-y rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
             />
             <Button type="submit" disabled={pending || !draft.trim()}>
               <Send aria-hidden="true" />
@@ -179,7 +179,7 @@ function Turn({
         className={
           fromAssistant
             ? "rounded-lg border bg-background p-4"
-            : "rounded-lg bg-secondary p-4 text-secondary-foreground"
+            : "bg-accent p-4 text-accent-foreground"
         }
       >
         <div className="flex items-center gap-2">
@@ -234,7 +234,7 @@ function AppliedNote({ applied }: { applied: AiChatMessage["applied"] }) {
             <li key={item.id}>
               <Link
                 to={item.to}
-                className="rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="rounded-sm underline underline-offset-4 hover:text-foreground"
               >
                 {item.title}
               </Link>
@@ -265,7 +265,7 @@ function ThinkingTurn() {
               key={delay}
               aria-hidden="true"
               style={{ animationDelay: `${delay}ms` }}
-              className="size-2 animate-bounce rounded-full bg-muted-foreground motion-reduce:animate-none"
+              className="size-2 animate-bounce bg-muted-foreground motion-reduce:animate-none"
             />
           ))}
         </div>

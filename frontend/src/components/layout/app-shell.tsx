@@ -57,11 +57,11 @@ export function AppShell({
     <>
       <a
         href="#main-content"
-        className="fixed top-3 left-3 z-50 -translate-y-20 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-transform focus-visible:translate-y-0 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="fixed top-3 left-3 z-50 -translate-y-20 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-transform focus-visible:translate-y-0"
       >
         Skip to Content
       </a>
-      <div className="min-h-svh lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <div className="min-h-svh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="sticky top-0 hidden h-svh flex-col border-r bg-card px-3 py-4 lg:flex">
           <Brand />
           <nav aria-label="Main navigation" className="mt-7 grid gap-1">
@@ -81,7 +81,7 @@ export function AppShell({
             </div>
             <Button
               variant="ghost"
-              className="mt-3 w-full justify-start text-muted-foreground"
+              className="mt-3 w-full justify-start text-muted-foreground hover:text-foreground"
               onClick={() => void signOut()}
             >
               <LogOut aria-hidden="true" />
@@ -91,7 +91,9 @@ export function AppShell({
         </aside>
 
         <div className="min-w-0">
-          <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
+          {/* Opaque, not translucent-with-blur: a terminal does not frost what
+              is behind its chrome. */}
+          <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background px-4 py-3 lg:hidden">
             <Brand compact />
             <Button
               variant="ghost"
@@ -104,7 +106,7 @@ export function AppShell({
           </header>
           <nav
             aria-label="Mobile navigation"
-            className="sticky top-14 z-30 flex overflow-x-auto border-b bg-background/95 backdrop-blur lg:hidden"
+            className="sticky top-14 z-30 flex overflow-x-auto border-b bg-background lg:hidden"
           >
             {navigation.map((item) => (
               <NavigationLink key={item.to} {...item} unread={unread} compact />
@@ -113,7 +115,10 @@ export function AppShell({
           <div
             id="main-content"
             tabIndex={-1}
-            className="min-w-0 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset"
+            // No focus outline here on purpose: this is a skip-link target, and
+            // an outline drawn around the whole main region reads as a bug. The
+            // global `:focus-visible` rule in `index.css` covers everything else.
+            className="min-w-0 focus:outline-none"
           >
             {children}
           </div>
@@ -128,13 +133,18 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <div className={cn("flex items-center gap-2.5", !compact && "px-2")}>
       <span
         aria-hidden="true"
-        className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-xs font-bold tracking-tight text-primary-foreground"
+        className="inline-flex size-8 items-center justify-center border border-screen-foreground/25 bg-screen font-display text-xs font-bold text-screen-foreground"
       >
         M
       </span>
       <div className="leading-tight">
-        <p className="text-sm font-semibold tracking-tight">MAC</p>
-        {!compact && <p className="text-xs text-muted-foreground">Club Operations</p>}
+        <p className="font-display text-sm tracking-[0.04em]">
+          MAC
+          {/* One blinking cursor for the whole app, beside the wordmark: the
+              session is live. Decorative, so the text stays "MAC". */}
+          {!compact && <span aria-hidden="true" className="caret" />}
+        </p>
+        {!compact && <p className="mt-1 text-xs text-muted-foreground">Club Operations</p>}
       </div>
     </div>
   );
@@ -167,28 +177,37 @@ function NavigationLink({
       aria-label={count > 0 ? `${label}, ${count} unread` : undefined}
       className={({ isActive }) =>
         cn(
-          "relative flex items-center rounded-md text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          "relative flex items-center rounded-md text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground",
           compact
             ? "min-w-20 flex-1 flex-col gap-1 rounded-none px-1 py-2 text-[0.6875rem]"
             : "gap-3 px-3 py-2",
-          isActive && "bg-accent font-medium text-accent-foreground",
+          isActive && "bg-accent font-medium text-foreground",
         )
       }
     >
-      <NavigationIcon aria-hidden="true" className="size-4 shrink-0" />
-      <span className="truncate">{label}</span>
-      {count > 0 && (
-        // `aria-hidden` because the link's own name already carries the number;
-        // announcing it twice is how "Inbox 3 3" happens.
-        <span
-          aria-hidden="true"
-          className={cn(
-            "rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-primary-foreground tabular-nums",
-            compact ? "absolute top-1 right-1/4" : "ml-auto",
+      {({ isActive }) => (
+        <>
+          {/* The selection marker, same glyph as the page header: a marker bar
+              rather than a fill, because the accent is never a background. */}
+          {isActive && !compact && (
+            <span aria-hidden="true" className="absolute top-1.5 bottom-1.5 left-0 w-0.5 bg-ring" />
           )}
-        >
-          {badgeLabel(count)}
-        </span>
+          <NavigationIcon aria-hidden="true" className="size-4 shrink-0" />
+          <span className="truncate">{label}</span>
+          {count > 0 && (
+            // `aria-hidden` because the link's own name already carries the
+            // number; announcing it twice is how "Inbox 3 3" happens.
+            <span
+              aria-hidden="true"
+              className={cn(
+                "bg-primary px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-primary-foreground tabular-nums",
+                compact ? "absolute top-1 right-1/4" : "ml-auto",
+              )}
+            >
+              {badgeLabel(count)}
+            </span>
+          )}
+        </>
       )}
     </NavLink>
   );

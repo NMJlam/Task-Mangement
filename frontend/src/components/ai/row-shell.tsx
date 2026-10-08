@@ -43,7 +43,7 @@ export function RowShell({
     <fieldset
       aria-label={label}
       disabled={disabled}
-      className={cn("flex gap-3 px-4 py-3", (disabled || !checked) && "bg-muted/40")}
+      className={cn("flex gap-3 px-4 py-3", (disabled || !checked) && "bg-foreground/5")}
     >
       <input
         type="checkbox"

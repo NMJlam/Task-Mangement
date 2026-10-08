@@ -17,7 +17,7 @@ export function BriefingCard({ className }: { className?: string }) {
   if (state.status === "disabled") return null;
 
   return (
-    <Card className={cn("gap-0 border-primary/20 bg-primary/5 py-0 shadow-none", className)}>
+    <Card className={cn("gap-0 border-ring/40 bg-ring/5 py-0", className)}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:px-6">
         <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
           <Sparkles aria-hidden="true" className="size-5 text-primary" />

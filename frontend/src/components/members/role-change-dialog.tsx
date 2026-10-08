@@ -19,16 +19,16 @@ function RoleChangeSummary({ from, to }: { from: Role; to: Role }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <section>
-        <h3 className="font-medium text-emerald-700 dark:text-emerald-400">Gains</h3>
-        <ul className="list-disc pl-5 text-sm text-emerald-700 dark:text-emerald-400">
+        <h3 className="font-medium text-ok">Gains</h3>
+        <ul className="list-disc pl-5 text-sm text-ok">
           {gains.map((capability) => (
             <li key={capability}>{capability}</li>
           ))}
         </ul>
       </section>
       <section>
-        <h3 className="font-medium text-red-700 dark:text-red-400">Removed</h3>
-        <ul className="list-disc pl-5 text-sm text-red-700 dark:text-red-400">
+        <h3 className="font-medium text-danger">Removed</h3>
+        <ul className="list-disc pl-5 text-sm text-danger">
           {removed.map((capability) => (
             <li key={capability}>{capability}</li>
           ))}

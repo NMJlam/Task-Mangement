@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 const selectBase =
-  "w-full cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring  disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * The create form both boards open — `/tasks` and an event's Tasks tab.
@@ -213,7 +213,7 @@ export function TaskCreateDialog({
               name="description"
               maxLength={2000}
               placeholder="Add a more detailed description…"
-              className="h-full min-h-24 w-full min-w-0 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
+              className="h-full min-h-24 w-full min-w-0 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
             />
           </div>
 
