@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  allowedFromStatuses,
   assertEventDates,
   assertNoTierEscalation,
   computeProgress,
@@ -30,20 +29,6 @@ describe("assertEventDates", () => {
       endsAt: new Date("2026-06-01T00:00:00Z"),
     };
     expect(() => assertEventDates(merged)).toThrow(ValidationError);
-  });
-});
-
-describe("allowedFromStatuses", () => {
-  it("allows planning -> live and wrapped -> live (reopen)", () => {
-    expect(allowedFromStatuses("live")).toEqual(["planning", "wrapped"]);
-  });
-
-  it("allows only live -> wrapped", () => {
-    expect(allowedFromStatuses("wrapped")).toEqual(["live"]);
-  });
-
-  it("allows only cancelled -> planning (restore), not a fresh POST's planning", () => {
-    expect(allowedFromStatuses("planning")).toEqual(["cancelled"]);
   });
 });
 

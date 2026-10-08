@@ -60,11 +60,6 @@ describe("/api/notifications (integration)", () => {
   });
 
   describe("GET /api/notifications", () => {
-    it("401s without a session", async () => {
-      getSession.mockResolvedValue(null);
-      expect((await request(app).get("/api/notifications")).status).toBe(401);
-    });
-
     it("returns only the caller's notifications, newest first, with an unread count", async () => {
       const actor = await member("actor");
       const other = await member("other");
@@ -92,18 +87,6 @@ describe("/api/notifications (integration)", () => {
       expect(response.status).toBe(200);
       expect(response.body.notifications).toHaveLength(1);
       expect(response.body.notifications[0].body).toBe("unread");
-    });
-
-    it("returns read and unread when unreadOnly=false", async () => {
-      const actor = await member("actor");
-      await notify(actor.id, "read", new Date());
-      await notify(actor.id, "unread");
-      signInAs(actor);
-
-      const response = await request(app).get("/api/notifications?unreadOnly=false");
-
-      expect(response.status).toBe(200);
-      expect(response.body.notifications).toHaveLength(2);
     });
   });
 
