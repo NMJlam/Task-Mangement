@@ -282,6 +282,11 @@ Things worth knowing before you test:
   replaces the set outright, `[]` clears every assignment, and omitting the
   field leaves it unchanged. Duplicate ids collapse to first-seen order, and a
   response never returns `null` — `[]` means unassigned.
+- **It notifies** each member a create, bulk create, `PATCH` or applied AI plan
+  newly puts on a task — never one already on it, never you — with a
+  `task_assigned` notification, in the same transaction as the write. A member
+  whose tier cannot see the task (its `minTier`, or its event's) gets none, so
+  the notification never names a task hidden from them.
 - **`description` is free text, up to 2000 characters.** It is trimmed, and an
   empty or all-whitespace value is stored as `null` — so "no description" has
   one representation, not two. Omitting it on `PATCH` leaves it alone; sending

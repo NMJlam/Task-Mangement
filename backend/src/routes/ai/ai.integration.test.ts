@@ -13,6 +13,7 @@ import {
   chanMembers,
   events,
   messages,
+  notifications,
   taskAssignees,
   tasks,
 } from "../../db/schema/index.js";
@@ -737,6 +738,29 @@ describe("/api/ai", () => {
       expect(created.every((task) => task.aiRunId === runId)).toBe(true);
       expect(response.body.events).toEqual([{ id: event!.id, title: "test-ai-applied" }]);
       expect(response.body.tasks).toHaveLength(7);
+    });
+
+    it("tells a member the applied plan assigned, but not the member who applied it", async () => {
+      const officer = await member("assigner", "officer");
+      const helper = await member("helper", "officer");
+      const runId = await runFor(officer);
+
+      const response = await request(app)
+        .post("/api/ai/proposals/apply")
+        .send({
+          runId,
+          stats,
+          operations: [newTask("test-ai-assigned", { assigneeIds: [helper.id, officer.id] })],
+        });
+
+      expect(response.status).toBe(201);
+      const notices = await db
+        .select({ userId: notifications.userId, body: notifications.body })
+        .from(notifications)
+        .where(eq(notifications.kind, "task_assigned"));
+      expect(notices.filter((row) => [helper.id, officer.id].includes(row.userId))).toEqual([
+        { userId: helper.id, body: "You were assigned to “test-ai-assigned”." },
+      ]);
     });
 
     it("refuses a tier-0 member an event create and writes nothing", async () => {

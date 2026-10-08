@@ -1,5 +1,5 @@
 import type { Role } from "@ctp/shared";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../../app.js";
@@ -8,6 +8,7 @@ import { newId } from "../../db/id.js";
 import {
   appUsers,
   events,
+  notifications,
   taskAssignees,
   tasks,
   teams,
@@ -1168,6 +1169,111 @@ describe("/api/tasks", () => {
    * yours. Every task route answers a hidden one as missing, the way the event
    * routes answer a hidden event — or the task list hands out the event's id.
    */
+  describe("assignment notifications", () => {
+    /** The `task_assigned` rows a member holds, as (task, body) pairs. */
+    async function assignedNotices(userId: string) {
+      return db
+        .select({ entityId: notifications.entityId, body: notifications.body })
+        .from(notifications)
+        .where(and(eq(notifications.userId, userId), eq(notifications.kind, "task_assigned")));
+    }
+
+    it("tells each assignee of a new task, but not the member who assigned them", async () => {
+      const actor = await member("officer", "officer");
+      const other = await member("director", "director");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ teamId, title: "Book the venue", assigneeIds: [actor.id, other.id] });
+
+      expect(response.status).toBe(201);
+      expect(await assignedNotices(other.id)).toEqual([
+        { entityId: response.body.task.id, body: "You were assigned to “Book the venue”." },
+      ]);
+      expect(await assignedNotices(actor.id)).toEqual([]);
+    });
+
+    it("tells only the members an edit adds", async () => {
+      const actor = await member("officer", "officer");
+      const kept = await member("director", "director");
+      const added = await member("secretary", "secretary");
+      const { id: teamId } = await team();
+      const task = await seedTask(teamId);
+      await assignTo(task.id, [kept.id]);
+      signedInAs(actor);
+
+      const response = await request(app)
+        .patch(`/api/tasks/${task.id}`)
+        .send({ assigneeIds: [kept.id, added.id] });
+
+      expect(response.status).toBe(200);
+      expect(await assignedNotices(kept.id)).toEqual([]);
+      expect(await assignedNotices(added.id)).toHaveLength(1);
+    });
+
+    it("tells no one when an edit leaves the assignees alone", async () => {
+      const actor = await member("officer", "officer");
+      const kept = await member("director", "director");
+      const { id: teamId } = await team();
+      const task = await seedTask(teamId);
+      await assignTo(task.id, [kept.id]);
+      signedInAs(actor);
+
+      await request(app).patch(`/api/tasks/${task.id}`).send({ title: "Renamed" });
+      await request(app)
+        .patch(`/api/tasks/${task.id}`)
+        .send({ assigneeIds: [kept.id] });
+
+      expect(await assignedNotices(kept.id)).toEqual([]);
+    });
+
+    it("tells every assignee across a bulk create", async () => {
+      const actor = await member("director", "director");
+      const other = await member("officer", "officer");
+      const { id: teamId } = await team();
+      signedInAs(actor);
+
+      const response = await request(app)
+        .post("/api/tasks/bulk")
+        .send({
+          tasks: [
+            { teamId, title: "First", assigneeIds: [other.id] },
+            { teamId, title: "Second", assigneeIds: [other.id, actor.id] },
+            { teamId, title: "Third" },
+          ],
+        });
+
+      expect(response.status).toBe(201);
+      expect((await assignedNotices(other.id)).map((row) => row.body).sort()).toEqual([
+        "You were assigned to “First”.",
+        "You were assigned to “Second”.",
+      ]);
+      expect(await assignedNotices(actor.id)).toEqual([]);
+    });
+
+    it("does not name a task the assignee's tier cannot open", async () => {
+      const actor = await member("president", "president");
+      const officer = await member("officer", "officer");
+      const hidden = await event({ title: "test-task-hidden", minTier: 2 });
+      const { id: teamId } = await team();
+      const aboveTier = await seedTask(teamId, { minTier: 1 });
+      signedInAs(actor);
+
+      const onHiddenEvent = await request(app)
+        .post("/api/tasks")
+        .send({ eventId: hidden.id, title: "Brief the sponsor", assigneeIds: [officer.id] });
+      const onAboveTier = await request(app)
+        .patch(`/api/tasks/${aboveTier.id}`)
+        .send({ assigneeIds: [officer.id] });
+
+      expect(onHiddenEvent.status).toBe(201);
+      expect(onAboveTier.status).toBe(200);
+      expect(await assignedNotices(officer.id)).toEqual([]);
+    });
+  });
+
   describe("tasks above your tier", () => {
     const dueAt = new Date(Date.now() - DAY);
 

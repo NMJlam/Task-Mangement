@@ -1,7 +1,14 @@
 import { insertAfter, type TaskStatus, type Tier } from "@ctp/shared";
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { newId } from "../../db/id.js";
-import { events, taskAssignees, tasks, workstreams } from "../../db/schema/index.js";
+import {
+  appUsers,
+  events,
+  notifications,
+  taskAssignees,
+  tasks,
+  workstreams,
+} from "../../db/schema/index.js";
 import type { Queryable, Tx } from "../events/service.js";
 
 /**
@@ -73,6 +80,69 @@ export async function assembleTasks<T extends { id: string; overdueEscalatedAt?:
     ...row,
     assigneeIds: links.filter((link) => link.taskId === row.id).map((link) => link.userId),
   }));
+}
+
+/**
+ * Who hears about an assignment: each member the write put on the task who was
+ * not on it before, never the member who made the write. Re-saving a task with
+ * its assignees unchanged is not news, and assigning yourself is not either.
+ */
+export function newlyAssigned(
+  before: readonly string[],
+  after: readonly string[],
+  actorId: string,
+): string[] {
+  const held = new Set(before);
+  return [...new Set(after)].filter((id) => !held.has(id) && id !== actorId);
+}
+
+/**
+ * Writes a `task_assigned` notification for each (task, member) pair, inside
+ * the transaction that assigned them, so no notification names an assignment
+ * that rolled back.
+ *
+ * A pair is dropped when the member could not open the task — its own
+ * `min_tier`, or its event's, is above theirs. Assignment does not check tier,
+ * and a notification is not a side door to a hidden task's title any more than
+ * the task list is (`visibleTasks`).
+ */
+export async function notifyAssigned(
+  tx: Tx,
+  assignments: readonly { task: { id: string; title: string }; userIds: readonly string[] }[],
+): Promise<void> {
+  const wanted = assignments.filter((assignment) => assignment.userIds.length > 0);
+  if (wanted.length === 0) return;
+
+  const visible = await tx
+    .select({ taskId: tasks.id, userId: appUsers.id })
+    .from(tasks)
+    .innerJoin(appUsers, inArray(appUsers.id, [...new Set(wanted.flatMap((a) => a.userIds))]))
+    .leftJoin(events, eq(events.id, tasks.eventId))
+    .where(
+      and(
+        inArray(
+          tasks.id,
+          wanted.map((assignment) => assignment.task.id),
+        ),
+        lte(tasks.minTier, appUsers.tier),
+        or(isNull(events.id), lte(events.minTier, appUsers.tier)),
+      ),
+    );
+  const canSee = new Set(visible.map((row) => `${row.taskId}|${row.userId}`));
+
+  const rows = wanted.flatMap(({ task, userIds }) =>
+    userIds
+      .filter((userId) => canSee.has(`${task.id}|${userId}`))
+      .map((userId) => ({
+        id: newId(),
+        userId,
+        kind: "task_assigned" as const,
+        body: `You were assigned to “${task.title}”.`,
+        entityType: "task",
+        entityId: task.id,
+      })),
+  );
+  if (rows.length > 0) await tx.insert(notifications).values(rows);
 }
 
 export interface WorkstreamKey {

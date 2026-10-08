@@ -29,6 +29,8 @@ import {
   assembleTasks,
   ensureWorkstreams,
   mergeLink,
+  newlyAssigned,
+  notifyAssigned,
   reorderColumn,
   visibleTasks,
   workstreamKeys,
@@ -171,13 +173,35 @@ function assignedTo(userId: string): SQL {
  *
  * The ids arrive already deduplicated by `assigneeIdsSchema`, so both
  * statements stay safe on the composite primary key.
+ *
+ * Then tells whoever the write added (`newlyAssigned`). The delete's
+ * `RETURNING` is the set as it stood, so telling an addition from a keep costs
+ * no extra read.
  */
-async function setAssignees(tx: Tx, taskId: string, userIds: readonly string[]): Promise<void> {
-  await tx.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
+async function setAssignees(
+  tx: Tx,
+  task: { id: string; title: string },
+  userIds: readonly string[],
+  actorId: string,
+): Promise<void> {
+  const before = await tx
+    .delete(taskAssignees)
+    .where(eq(taskAssignees.taskId, task.id))
+    .returning({ userId: taskAssignees.userId });
   if (userIds.length > 0) {
     await lockMembersInOrder(tx, userIds);
-    await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
+    await tx.insert(taskAssignees).values(userIds.map((userId) => ({ taskId: task.id, userId })));
   }
+  await notifyAssigned(tx, [
+    {
+      task,
+      userIds: newlyAssigned(
+        before.map((row) => row.userId),
+        userIds,
+        actorId,
+      ),
+    },
+  ]);
 }
 
 /**
@@ -328,7 +352,7 @@ tasksRouter.post(
             ...completionOf(input.status),
           })
           .returning();
-        await setAssignees(tx, row!.id, assigneeIds);
+        await setAssignees(tx, row!, assigneeIds, req.user!.id);
         return (await assembleTasks(tx, [row!]))[0]!;
       });
 
@@ -384,6 +408,13 @@ tasksRouter.post(
           await lockMembersInOrder(tx, [...new Set(links.map((link) => link.userId))]);
           await tx.insert(taskAssignees).values(links).onConflictDoNothing();
         }
+        await notifyAssigned(
+          tx,
+          inserted.map((row, index) => ({
+            task: row,
+            userIds: newlyAssigned([], input.tasks[index]!.assigneeIds ?? [], req.user!.id),
+          })),
+        );
         return assembleTasks(tx, inserted);
       });
 
@@ -482,7 +513,7 @@ tasksRouter.patch(
         // UPDATE; the same transaction is what makes the submitted array
         // replace the set atomically.
         if (assigneeIds !== undefined) {
-          await setAssignees(tx, row!.id, assigneeIds);
+          await setAssignees(tx, row!, assigneeIds, req.user!.id);
         }
         return { kind: "updated", task: (await assembleTasks(tx, [row!]))[0]! } as const;
       });
