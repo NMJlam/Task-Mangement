@@ -224,6 +224,37 @@ export function useFinance() {
     [],
   );
 
+  /**
+   * Sets the club-wide budget (`PATCH /api/budget`, `budget:manage`). Resolves
+   * to the server's message when it refuses, `undefined` when it took — not the
+   * page-wide `mutationError` banner, because the refusal people will actually
+   * hit (409: lower than what events already hold) belongs next to the field
+   * that caused it, not at the top of the page.
+   */
+  const updateBudget = useCallback(async (budgetCents: number): Promise<string | undefined> => {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/budget", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ budgetCents }),
+      });
+      if (!response.ok) return await failure(response, "Failed to update the budget");
+      // The response is the whole recomputed summary (available and risk move
+      // with the total), so it replaces ours rather than being patched.
+      setBudget({
+        status: "ok",
+        summary: budgetResponseSchema.parse(await response.json()).budget,
+      });
+      return undefined;
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : "Failed to update the budget";
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   return {
     budget,
     expenses,
@@ -234,5 +265,6 @@ export function useFinance() {
     reload,
     createExpense,
     decide,
+    updateBudget,
   };
 }

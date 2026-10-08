@@ -1,6 +1,6 @@
 import { can, type BudgetSummary, type Expense, type ExpenseCategory } from "@ctp/shared";
 import { ArrowDownToLine } from "lucide-react";
-import { type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { LogLine } from "@/components/common/log-line";
@@ -31,6 +31,11 @@ export function FinancePage() {
   const me = useMe();
   const finance = useFinance();
   const canManage = me.status === "ok" && can(me.user.role, "expense:approve");
+  // A separate capability from logging and deciding expenses: today the same two
+  // roles hold both, but they are different powers and can drift apart.
+  const canEditBudget = me.status === "ok" && can(me.user.role, "budget:manage");
+  const [editingBudget, setEditingBudget] = useState(false);
+  const editBudgetButton = useRef<HTMLButtonElement>(null);
   const summary = finance.budget.status === "ok" ? finance.budget.summary : undefined;
 
   function createExpense(event: FormEvent<HTMLFormElement>) {
@@ -97,11 +102,38 @@ export function FinancePage() {
               </h2>
               {/* The server computes this from every event's burn rate; it used
                   to be parsed and discarded. */}
-              <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                Overall
-                <StatusBadge status={summary.risk} />
-              </span>
+              <div className="flex items-center gap-3">
+                {canEditBudget && (
+                  <Button
+                    ref={editBudgetButton}
+                    variant="outline"
+                    size="sm"
+                    aria-expanded={editingBudget}
+                    aria-controls="edit-budget-form"
+                    onClick={() => setEditingBudget((open) => !open)}
+                  >
+                    Edit budget
+                  </Button>
+                )}
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  Overall
+                  <StatusBadge status={summary.risk} />
+                </span>
+              </div>
             </div>
+            {canEditBudget && editingBudget && (
+              <EditBudgetForm
+                currentCents={summary.budgetCents}
+                busy={finance.busy}
+                onSave={finance.updateBudget}
+                onClose={() => {
+                  setEditingBudget(false);
+                  // The form (and whatever had focus in it) is gone; hand focus
+                  // back to the control that opened it rather than to <body>.
+                  editBudgetButton.current?.focus();
+                }}
+              />
+            )}
             <MoneyCard label="Budget" cents={summary.budgetCents} />
             <MoneyCard label="Allocated" cents={summary.allocationCents} />
             {/* budget − allocated: what is left to hand to the next event. */}
@@ -282,6 +314,71 @@ export function FinancePage() {
         )}
       </section>
     </main>
+  );
+}
+
+function EditBudgetForm({
+  currentCents,
+  busy,
+  onSave,
+  onClose,
+}: {
+  currentCents: number;
+  busy: boolean;
+  onSave: (budgetCents: number) => Promise<string | undefined>;
+  onClose: () => void;
+}) {
+  const [error, setError] = useState<string>();
+  const input = useRef<HTMLInputElement>(null);
+
+  // Opening the form is the user's action, so focus follows it.
+  useEffect(() => input.current?.focus(), []);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cents = Math.round(Number(new FormData(event.currentTarget).get("budget")) * 100);
+    if (!Number.isFinite(cents) || cents < 0) {
+      setError("Enter an amount of $0 or more.");
+      return;
+    }
+    setError(undefined);
+    void onSave(cents).then((refusal) => {
+      if (refusal) setError(refusal);
+      else onClose();
+    });
+  }
+
+  return (
+    <form
+      id="edit-budget-form"
+      className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4 sm:col-span-2 xl:col-span-5"
+      onSubmit={submit}
+    >
+      <div className="grid gap-2">
+        <Label htmlFor="club-budget">Club budget (AUD)</Label>
+        <Input
+          id="club-budget"
+          ref={input}
+          name="budget"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          defaultValue={(currentCents / 100).toFixed(2)}
+          autoComplete="off"
+          required
+        />
+      </div>
+      <Button disabled={busy}>{busy ? "Saving…" : "Save budget"}</Button>
+      <Button type="button" variant="ghost" onClick={onClose}>
+        Cancel
+      </Button>
+      {error && (
+        <p className="basis-full text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 
