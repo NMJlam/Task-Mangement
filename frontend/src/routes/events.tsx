@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { StatusBadge } from "@/components/common/status-badge";
 import { EventFilters, eventsFiltered, type TimeFilter } from "@/components/events/event-filters";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
@@ -145,10 +146,15 @@ export function EventsPage() {
         )}
       {state.status === "ok" && state.items.length === 0 && (
         <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            {filtered
-              ? `No events match these filters: ${describeFilters(filters)}. Use Clear Filters to widen the list.`
-              : "No upcoming events. Lead+ members can create one to get started."}
+          <CardContent className="py-2">
+            <ShellEmpty
+              command="ls events/"
+              message={
+                filtered
+                  ? `No events match these filters: ${describeFilters(filters)}. Use Clear Filters to widen the list.`
+                  : "No upcoming events. Lead+ members can create one to get started."
+              }
+            />
           </CardContent>
         </Card>
       )}

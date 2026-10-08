@@ -11,6 +11,7 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -86,8 +87,11 @@ export function NotificationsPage() {
       )}
       {notifications.state.status === "ok" && items.length === 0 && (
         <Card className="mt-4 border-dashed shadow-none">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            {unreadOnly ? "You’re all caught up." : "No notifications yet."}
+          <CardContent className="py-2">
+            <ShellEmpty
+              command="tail inbox"
+              message={unreadOnly ? "You’re all caught up." : "No notifications yet."}
+            />
           </CardContent>
         </Card>
       )}

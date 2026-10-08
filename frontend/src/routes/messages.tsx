@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { ThreadChat } from "@/components/messages/thread-chat";
 import { Button } from "@/components/ui/button";
@@ -117,8 +118,8 @@ export function MessagesPage() {
         </p>
       )}
       {threads.state.status === "ok" && threadItems.length === 0 && (
-        <div className="mt-8 rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">
-          No conversations are available yet.
+        <div className="mt-8 rounded-xl border border-dashed">
+          <ShellEmpty command="ls threads/" message="No conversations are available yet." />
         </div>
       )}
       {threads.state.status === "ok" && active && (

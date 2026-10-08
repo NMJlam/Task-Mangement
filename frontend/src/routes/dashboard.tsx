@@ -1,13 +1,5 @@
 import type { EventSummary, Notification, Task } from "@ctp/shared";
-import {
-  Bell,
-  CalendarDays,
-  CheckSquare2,
-  ChevronRight,
-  Clock3,
-  Plus,
-  UsersRound,
-} from "lucide-react";
+import { Bell, CalendarDays, CheckSquare2, ChevronRight, Plus } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BriefingCard } from "@/components/ai/briefing-card";
@@ -15,6 +7,7 @@ import { DashboardSearch } from "@/components/common/dashboard-search";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { PriorityDot } from "@/components/common/priority-dot";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { StatusBadge } from "@/components/common/status-badge";
 import { TextMeter } from "@/components/common/text-meter";
 import { UserAvatar } from "@/components/common/user-avatar";
@@ -253,8 +246,8 @@ export function DashboardPage() {
                 bodyClassName="px-5 pb-2 sm:px-6 pt-2"
               >
                 {!personalLoaded ? (
-                  <EmptyState
-                    icon={CheckSquare2}
+                  <ShellEmpty
+                    command="ls tasks/"
                     message={
                       personalFailed
                         ? "Your tasks are unavailable right now."
@@ -262,7 +255,7 @@ export function DashboardPage() {
                     }
                   />
                 ) : myOpenTasks.length === 0 ? (
-                  <EmptyState icon={CheckSquare2} message="No open tasks are assigned to you." />
+                  <ShellEmpty command="ls tasks/" message="No open tasks are assigned to you." />
                 ) : (
                   <div className="divide-y">
                     {myOpenTasks.slice(0, 5).map((task) => (
@@ -296,10 +289,10 @@ export function DashboardPage() {
                 bodyClassName="px-5 pb-2 sm:px-6 pt-2"
               >
                 {!eventsLoaded ? (
-                  <EmptyState icon={CalendarDays} message="Events are unavailable right now." />
+                  <ShellEmpty command="ls events/" message="Events are unavailable right now." />
                 ) : upcomingEvents.length === 0 ? (
-                  <EmptyState
-                    icon={CalendarDays}
+                  <ShellEmpty
+                    command="ls events/"
                     message="No events are scheduled in the next 7 days."
                   />
                 ) : (
@@ -322,14 +315,14 @@ export function DashboardPage() {
                 bodyClassName="px-5 pb-5 pt-2"
               >
                 {!personalLoaded || !eventsLoaded ? (
-                  <EmptyState
-                    icon={Clock3}
+                  <ShellEmpty
+                    command="cal today"
                     message="Today’s schedule is unavailable right now."
                     compact
                   />
                 ) : todayItems.length === 0 ? (
-                  <EmptyState
-                    icon={Clock3}
+                  <ShellEmpty
+                    command="cal today"
                     message="Nothing else is scheduled for today."
                     compact
                   />
@@ -370,7 +363,7 @@ export function DashboardPage() {
                 bodyClassName="px-5 pb-5 pt-2"
               >
                 {notificationItems.length === 0 ? (
-                  <EmptyState icon={Bell} message="No recent updates." compact />
+                  <ShellEmpty command="tail inbox" message="No recent updates." compact />
                 ) : (
                   <div className="grid gap-4">
                     {notificationItems.slice(0, 4).map((notification) => (
@@ -387,7 +380,7 @@ export function DashboardPage() {
                 bodyClassName="px-5 pb-5 pt-2"
               >
                 {committee.length === 0 ? (
-                  <EmptyState icon={UsersRound} message="No committee members found." compact />
+                  <ShellEmpty command="ls members/" message="No committee members found." compact />
                 ) : (
                   <div className="grid gap-3.5">
                     {committee.map(({ member, count }) => {
@@ -578,25 +571,6 @@ function EventRow({ event }: { event: EventSummary }) {
           subject={event.title}
         />
       </div>
-    </div>
-  );
-}
-
-function EmptyState({
-  icon: Icon,
-  message,
-  compact = false,
-}: {
-  icon: typeof CheckSquare2;
-  message: string;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={`flex flex-col items-center justify-center text-center text-muted-foreground ${compact ? "py-7" : "py-10"}`}
-    >
-      <Icon aria-hidden="true" className="size-5" />
-      <p className="mt-2 text-sm">{message}</p>
     </div>
   );
 }
