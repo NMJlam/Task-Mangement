@@ -50,6 +50,9 @@ const STATUS_ACTIONS: Record<string, string> = {
   wrapped: "Mark Wrapped",
 };
 
+/** The page's sections. File upload (R11) and RSVPs (R4) are deferred, so neither has a tab. */
+const TABS = ["overview", "tasks", "thread"] as const;
+
 export function EventDetailPage() {
   const { id } = useParams();
   const detail = useEvent(id);
@@ -57,7 +60,10 @@ export function EventDetailPage() {
   const progress = useEventProgress(id);
   const [searchParams, setSearchParams] = useSearchParams();
   // The open tab lives in the URL so a tab deep-links and Back steps through them.
-  const tab = searchParams.get("tab") ?? "overview";
+  // A tab the page no longer has (Files and RSVPs, from a saved link) opens the
+  // Overview rather than a tabset with nothing selected.
+  const requestedTab = searchParams.get("tab");
+  const tab = TABS.find((known) => known === requestedTab) ?? "overview";
   // Both sit above the early returns: hook order must not change between renders.
   // Each accepts an absent id and stays idle until there is one.
   const chat = useThreadChat(state.status === "ok" ? state.event.channelId : undefined);
@@ -278,8 +284,6 @@ export function EventDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="thread">Thread</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="rsvps">RSVPs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -420,26 +424,6 @@ export function EventDetailPage() {
               This event has no thread yet.
             </p>
           )}
-        </TabsContent>
-
-        {/* TODO(R11): file upload is Deferred — no storage endpoint exists yet. */}
-        <TabsContent value="files">
-          <Card className="border-dashed shadow-none">
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              File attachments are not built yet. Documents and images will attach here once upload
-              ships.
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* TODO(R4): RSVP tracker — no schema, table or endpoint exists yet. */}
-        <TabsContent value="rsvps">
-          <Card className="border-dashed shadow-none">
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              RSVP tracking is not built yet. Attendance responses will appear here once the
-              endpoint ships.
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 

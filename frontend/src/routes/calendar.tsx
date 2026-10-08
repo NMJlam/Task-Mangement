@@ -778,7 +778,7 @@ function EventChip({
  *
  * `useEvent` is the same ViewModel the full page uses, so loading, not-found and
  * error are the page's own states rather than a second set invented here. The
- * preview stops at the summary: the tabs, task board, thread, files and RSVP
+ * preview stops at the summary: the tabs, task board and thread
  * content stay on `/events/:id`, one click away through `View full event`.
  */
 function EventOverviewDialog({
