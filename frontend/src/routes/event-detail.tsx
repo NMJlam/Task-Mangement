@@ -8,7 +8,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { PageHeader } from "@/components/common/page-header";
@@ -64,7 +64,17 @@ export function EventDetailPage() {
   // The board reads `/api/tasks?eventId=`, not `event.tasks`: the board owns the
   // task list so a drop can move a card without refetching the whole event.
   // `enabled` keeps an absent id from ever loading the global list.
-  const tasks = useTasks({ eventId: id, enabled: Boolean(id) });
+  // The board's writes change what the Overview reports — the counts behind
+  // Delivery Progress, the overdue flag, the risk verdict — and those come from
+  // the event's own reads, not from the board. Each write that lands re-reads
+  // them, so a move shows on the Overview without leaving the page.
+  const reloadEvent = detail.reload;
+  const reloadProgress = progress.reload;
+  const refreshSummary = useCallback(() => {
+    reloadEvent();
+    reloadProgress();
+  }, [reloadEvent, reloadProgress]);
+  const tasks = useTasks({ eventId: id, enabled: Boolean(id) }, { onChanged: refreshSummary });
   const members = useMembers();
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const me = useMe();

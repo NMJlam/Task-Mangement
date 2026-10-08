@@ -7,7 +7,7 @@ import {
   type TaskStatus,
   type UpdateTask,
 } from "@ctp/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { reorder } from "@/lib/task-order";
 
 type TasksState =
@@ -90,15 +90,26 @@ export type TasksQuery = {
  * list (the `/tasks` board); with an `eventId` it reads that event's tasks
  * alone; every other option narrows the same read.
  */
-export function useTasks({
-  eventId,
-  assignee,
-  status,
-  priority,
-  overdue = false,
-  enabled = true,
-}: TasksQuery = {}) {
+export function useTasks(
+  { eventId, assignee, status, priority, overdue = false, enabled = true }: TasksQuery = {},
+  {
+    onChanged,
+  }: {
+    /**
+     * Called after every write that lands — create, edit, move, re-link,
+     * delete. For a page that shows figures derived from these tasks somewhere
+     * the board does not reach: the event page's Delivery Progress and risk.
+     */
+    onChanged?: () => void;
+  } = {},
+) {
   const [state, setState] = useState<TasksState>({ status: "loading" });
+  // Read through a ref so the write callbacks stay stable when the caller
+  // passes a new function each render.
+  const changed = useRef(onChanged);
+  useEffect(() => {
+    changed.current = onChanged;
+  }, [onChanged]);
   const [busy, setBusy] = useState<string>();
   const [mutationError, setMutationError] = useState<string>();
 
@@ -155,6 +166,7 @@ export function useTasks({
       setState((current) =>
         current.status === "ok" ? { ...current, items: [created, ...current.items] } : current,
       );
+      changed.current?.();
       return true;
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : "Failed to create task");
@@ -184,6 +196,7 @@ export function useTasks({
             }
           : current,
       );
+      changed.current?.();
       return true;
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : "Failed to update task");
@@ -243,6 +256,7 @@ export function useTasks({
               }
             : current,
         );
+        changed.current?.();
         return true;
       } catch (cause) {
         setState((current) =>
@@ -278,6 +292,7 @@ export function useTasks({
             }
           : current,
       );
+      changed.current?.();
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : "Failed to link task");
     } finally {
@@ -306,6 +321,7 @@ export function useTasks({
           ? { ...current, items: current.items.filter((item) => item.id !== task.id) }
           : current,
       );
+      changed.current?.();
       return true;
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : "Failed to delete task");
