@@ -2,6 +2,7 @@ import type { RosterMember, Thread } from "@ctp/shared";
 import { CalendarDays, Hash, MessageCircle, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { ThreadChat } from "@/components/messages/thread-chat";
@@ -108,9 +109,7 @@ export function MessagesPage() {
       />
 
       {threads.state.status === "loading" && (
-        <p className="mt-8 text-sm text-muted-foreground" role="status">
-          Loading Conversations…
-        </p>
+        <LoadingLine label="Loading Conversations…" className="mt-8" />
       )}
       {threads.state.status === "error" && (
         <p className="mt-8 text-sm text-destructive" role="alert">

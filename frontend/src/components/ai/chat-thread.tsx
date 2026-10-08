@@ -3,6 +3,7 @@ import { Bot, CalendarDays, PowerOff, Send } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ProposalCard } from "./proposal-card";
+import { LoadingLine } from "@/components/common/loading-line";
 import { Button } from "@/components/ui/button";
 import type { ApplyStats } from "@/hooks/use-ai-chat";
 
@@ -86,9 +87,7 @@ export function ChatThread({
 
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite">
         {loading ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Loading chat…
-          </p>
+          <LoadingLine label="Loading chat…" />
         ) : messages.length === 0 && !thinking ? (
           <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
             Ask what&apos;s overdue, or to plan an event. Nothing changes until you confirm a plan.

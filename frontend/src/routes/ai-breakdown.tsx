@@ -5,6 +5,7 @@ import { BriefingPanel } from "@/components/ai/briefing-panel";
 import { ChatList } from "@/components/ai/chat-list";
 import { ChatThread } from "@/components/ai/chat-thread";
 import { GeneratedPanel } from "@/components/ai/generated-panel";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { useAiChat, type ChatSeed } from "@/hooks/use-ai-chat";
@@ -102,9 +103,7 @@ export function AiBreakdownPage({ view }: { view?: "briefing" }) {
             }
           />
           {chats.state.status === "loading" && (
-            <p className="px-4 py-3 text-sm text-muted-foreground" role="status">
-              Loading chats…
-            </p>
+            <LoadingLine label="Loading chats…" className="px-4 py-3" />
           )}
           {chats.state.status === "error" && (
             <p className="px-4 py-3 text-sm text-destructive">

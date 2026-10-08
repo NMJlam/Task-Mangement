@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { Link } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,9 +76,7 @@ export function NotificationsPage() {
         </p>
       )}
       {notifications.state.status === "loading" && (
-        <p className="mt-8 text-sm text-muted-foreground" role="status">
-          Loading Notifications…
-        </p>
+        <LoadingLine label="Loading Notifications…" className="mt-8" />
       )}
       {notifications.state.status === "error" && (
         <p className="mt-8 text-sm text-destructive" role="alert">

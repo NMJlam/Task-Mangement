@@ -1,5 +1,6 @@
 import { Moon, ShieldCheck, Sun } from "lucide-react";
 import { useState } from "react";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -34,9 +35,7 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent>
             {me.status === "loading" || me.status === "idle" ? (
-              <p className="text-sm text-muted-foreground" role="status">
-                Loading Profile…
-              </p>
+              <LoadingLine label="Loading Profile…" />
             ) : me.status === "ok" ? (
               <div className="flex items-center gap-4">
                 <UserAvatar name={me.user.email} className="size-12 text-sm" />

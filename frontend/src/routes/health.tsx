@@ -1,5 +1,6 @@
 import { Activity, BadgeCheck } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useHealth } from "@/hooks/use-health";
@@ -77,13 +78,7 @@ export function HealthPage() {
             </p>
           </CardHeader>
           <CardContent>
-            <Suspense
-              fallback={
-                <p className="text-sm text-muted-foreground" role="status">
-                  Loading Form…
-                </p>
-              }
-            >
+            <Suspense fallback={<LoadingLine label="Loading Form…" />}>
               <ExampleForm />
             </Suspense>
           </CardContent>

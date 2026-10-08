@@ -2,6 +2,7 @@ import { eventStatusSchema } from "@ctp/shared";
 import { CalendarDays, MapPin, Plus } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { EventFilters, eventsFiltered, type TimeFilter } from "@/components/events/event-filters";
@@ -124,11 +125,7 @@ export function EventsPage() {
           .
         </p>
       )}
-      {state.status === "loading" && (
-        <p className="mt-8 text-sm text-muted-foreground" role="status">
-          Loading Events…
-        </p>
-      )}
+      {state.status === "loading" && <LoadingLine label="Loading Events…" className="mt-8" />}
       {state.status === "error" && (
         <p className="mt-8 text-sm text-destructive" role="alert">
           Couldn&apos;t load events: {state.message}. Refresh the page to try again.
