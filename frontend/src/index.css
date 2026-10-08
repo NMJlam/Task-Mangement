@@ -316,18 +316,32 @@
   }
 }
 
-/* `TextMeter` cells (components/common/text-meter.tsx): one character wide,
-   drawn as boxes so no glyph depends on the font. A filled cell is solid in
-   its text colour; an empty one is a one-pixel dither of it, the way `░` reads
-   on a terminal. */
+/* `TextMeter` runs (components/common/text-meter.tsx): the filled run is solid
+   in its text colour, the track a flat tint of it. A one-pixel dither read as
+   `░` at 100% scaling but aliased into bands at 125% and 150%. */
 @layer components {
-  .meter-cell {
+  .meter-run {
     display: inline-block;
-    width: 1ch;
     height: 0.85em;
     background: currentColor;
   }
-  .meter-cell-off {
-    background: repeating-conic-gradient(currentColor 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+  .meter-run-off {
+    background: color-mix(in srgb, currentColor 35%, transparent);
+  }
+}
+
+/* Windows contrast themes force backgrounds to Canvas, which would blank every
+   meter and erase each panel's top rule (its sides are borders, which stay).
+   Both are drawing, not decoration, so they keep the system ink. */
+@media (forced-colors: active) {
+  .meter-run,
+  .panel-line {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  .meter-run-off {
+    background: transparent;
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
   }
 }

@@ -4,16 +4,16 @@ import { cn } from "@/lib/utils";
 /**
  * A progress bar drawn the way a terminal draws one: `[██████░░░░]`.
  *
- * The cells are character-wide boxes (`.meter-cell` in index.css), not `█`/`░`
- * characters: Windows draws `░` from a fallback font that is taller than the
- * monospace stack, so a glyph track sat high and overlapped the next row. A
- * filled cell is solid; the empty track is a dither, the way `░` looks.
+ * Two runs, each `cells` characters wide: a solid filled run and a tinted
+ * track. Not a box per cell — at 125% and 150% display scaling a `1ch` box
+ * lands on a fractional pixel and a row of them shows hairline seams — and not
+ * `█`/`░` glyphs, which Windows draws from a taller fallback font that
+ * overlapped the next row. Forced-colours handling is in index.css.
  *
  * Read-only, so `role="progressbar"` on a span is the right shape, as the `div`
  * bars it replaces were. The drawing is hidden; the name and `aria-valuetext`
- * carry the reading. Filled cells are ink (or `--danger`), the track and
- * brackets `--muted-foreground`: text tokens with measured contrast on the page
- * and on `--card` (docs/accessibility.md).
+ * carry the reading. The filled run is ink (or `--danger`), the track and
+ * brackets `--muted-foreground` (docs/accessibility.md).
  */
 export function TextMeter({
   value,
@@ -51,20 +51,22 @@ export function TextMeter({
         [
       </span>
       <span aria-hidden="true" className="inline-flex">
-        {Array.from({ length: filled }, (_, index) => (
+        {filled > 0 && (
           <span
-            key={`on-${index}`}
-            data-cell="on"
-            className={cn("meter-cell", tone === "danger" ? "text-danger" : "text-foreground")}
+            data-run="on"
+            data-cells={filled}
+            className={cn("meter-run", tone === "danger" ? "text-danger" : "text-foreground")}
+            style={{ width: `${filled}ch` }}
           />
-        ))}
-        {Array.from({ length: empty }, (_, index) => (
+        )}
+        {empty > 0 && (
           <span
-            key={`off-${index}`}
-            data-cell="off"
-            className="meter-cell meter-cell-off text-muted-foreground"
+            data-run="off"
+            data-cells={empty}
+            className="meter-run meter-run-off text-muted-foreground"
+            style={{ width: `${empty}ch` }}
           />
-        ))}
+        )}
       </span>
       <span aria-hidden="true" className="text-muted-foreground">
         ]
