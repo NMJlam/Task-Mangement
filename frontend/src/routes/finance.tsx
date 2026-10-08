@@ -1,18 +1,13 @@
 import { can, type BudgetSummary, type Expense, type ExpenseCategory } from "@ctp/shared";
-import {
-  ArrowDownToLine,
-  CircleDollarSign,
-  Landmark,
-  PiggyBank,
-  ReceiptText,
-  WalletCards,
-} from "lucide-react";
+import { ArrowDownToLine } from "lucide-react";
 import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
+import { Panel } from "@/components/common/panel";
 import { StatusBadge } from "@/components/common/status-badge";
+import { TextMeter } from "@/components/common/text-meter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance } from "@/hooks/use-finance";
@@ -105,17 +100,12 @@ export function FinancePage() {
                 <StatusBadge status={summary.risk} />
               </span>
             </div>
-            <MoneyCard icon={Landmark} label="Budget" cents={summary.budgetCents} />
-            <MoneyCard icon={WalletCards} label="Allocated" cents={summary.allocationCents} />
+            <MoneyCard label="Budget" cents={summary.budgetCents} />
+            <MoneyCard label="Allocated" cents={summary.allocationCents} />
             {/* budget − allocated: what is left to hand to the next event. */}
-            <MoneyCard icon={PiggyBank} label="Available" cents={summary.availableCents} />
-            <MoneyCard icon={ReceiptText} label="Committed" cents={summary.committedCents} />
-            <MoneyCard
-              icon={ArrowDownToLine}
-              label="Spent"
-              cents={summary.spentCents}
-              onDownload={exportBudgetCsv}
-            />
+            <MoneyCard label="Available" cents={summary.availableCents} />
+            <MoneyCard label="Committed" cents={summary.committedCents} />
+            <MoneyCard label="Spent" cents={summary.spentCents} onDownload={exportBudgetCsv} />
           </section>
 
           {summary.allocations.length > 0 && (
@@ -187,58 +177,50 @@ export function FinancePage() {
       )}
 
       {canManage && (
-        <Card className="mt-10 shadow-none">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
-              Log Expense
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 sm:grid-cols-3" onSubmit={createExpense}>
-              <div className="grid gap-2 sm:col-span-2">
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  name="description"
-                  autoComplete="off"
-                  placeholder="e.g. Event printing"
-                  required
-                  maxLength={500}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="amount">Amount (AUD)</Label>
-                <Input
-                  id="amount"
-                  name="amount"
-                  type="number"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  min="0.01"
-                  step="0.01"
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="category">Category</Label>
-                <select
-                  id="category"
-                  name="category"
-                  className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm capitalize focus-visible:border-ring"
-                >
-                  {categories.map((category) => (
-                    <option key={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
-              <Button className="self-end" disabled={finance.busy}>
-                {finance.busy ? "Saving…" : "Log Expense"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <Panel title="Log Expense" className="mt-10" bodyClassName="px-5 pt-3 pb-5">
+          <form className="grid gap-4 sm:grid-cols-3" onSubmit={createExpense}>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                name="description"
+                autoComplete="off"
+                placeholder="e.g. Event printing"
+                required
+                maxLength={500}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="amount">Amount (AUD)</Label>
+              <Input
+                id="amount"
+                name="amount"
+                type="number"
+                inputMode="decimal"
+                autoComplete="off"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="category">Category</Label>
+              <select
+                id="category"
+                name="category"
+                className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm capitalize focus-visible:border-ring"
+              >
+                {categories.map((category) => (
+                  <option key={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+            <Button className="self-end" disabled={finance.busy}>
+              {finance.busy ? "Saving…" : "Log Expense"}
+            </Button>
+          </form>
+        </Panel>
       )}
 
       <section aria-labelledby="expenses-heading" className="mt-10 grid gap-3">
@@ -322,8 +304,19 @@ function AllocationRow({ row }: { row: BudgetSummary["allocations"][number] }) {
         ) : (
           // Over-allocation is the condition that makes an event critical, so it
           // carries a word as well as the colour.
-          <span className={used > 1 ? "font-medium text-destructive" : undefined}>
-            {Math.round(used * 100)}%{used > 1 && <span className="sr-only"> — over budget</span>}
+          <span className="inline-flex items-center justify-end gap-2">
+            <TextMeter
+              value={Math.round(used * 100)}
+              max={100}
+              cells={8}
+              label={`${row.eventTitle} budget used`}
+              valueText={`${Math.round(used * 100)}% used${used > 1 ? ", over budget" : ""}`}
+              tone={used > 1 ? "danger" : "default"}
+              className="hidden text-xs sm:inline-flex"
+            />
+            <span className={used > 1 ? "font-medium text-destructive" : undefined}>
+              {Math.round(used * 100)}%{used > 1 && <span className="sr-only"> — over budget</span>}
+            </span>
           </span>
         )}
       </td>
@@ -398,42 +391,36 @@ function ExpenseRow({
 }
 
 function MoneyCard({
-  icon: Icon,
   label,
   cents,
   onDownload,
 }: {
-  icon: typeof Landmark;
   label: string;
   cents: number;
-  /** When given, the icon becomes a real button that exports this card's
-   * figures as CSV, instead of the plain decorative glyph the other cards keep. */
+  /** When given, the panel's border carries a button that exports the budget's
+   * figures as CSV. */
   onDownload?: () => void;
 }) {
   return (
-    <Card className="shadow-none">
-      <CardContent className="flex items-start justify-between py-5">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{money(cents)}</p>
-        </div>
-        {onDownload ? (
+    <Panel
+      title={label}
+      action={
+        onDownload && (
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             className="text-muted-foreground"
             onClick={onDownload}
             aria-label={`Download ${label.toLowerCase()} budget data as CSV`}
           >
-            <Icon aria-hidden="true" className="size-4" />
+            <ArrowDownToLine aria-hidden="true" />
           </Button>
-        ) : (
-          <span className="bg-accent p-2 text-muted-foreground">
-            <Icon aria-hidden="true" className="size-4" />
-          </span>
-        )}
-      </CardContent>
-    </Card>
+        )
+      }
+      bodyClassName="px-4 pt-1 pb-3"
+    >
+      <p className="text-2xl font-semibold tracking-tight tabular-nums">{money(cents)}</p>
+    </Panel>
   );
 }
 
