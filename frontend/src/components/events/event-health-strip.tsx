@@ -1,4 +1,5 @@
 import type { EventBudget, TaskCounts } from "@ctp/shared";
+import { TextMeter } from "@/components/common/text-meter";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,8 +9,8 @@ import { cn } from "@/lib/utils";
  * needs `daysUntil` and the club timezone, which the list read doesn't carry;
  * that belongs on a future event-detail page, not here).
  *
- * Not interactive — a status readout, not a control — so a plain `div` with
- * `role="progressbar"` is the correct accessible shape, not a hand-rolled
+ * Not interactive — a status readout, not a control — so the completion bar is
+ * a `TextMeter` (`role="progressbar"`, drawn as `[████░░]`), not a hand-rolled
  * interactive widget needing keyboard handling.
  */
 export function EventHealthStrip({
@@ -37,20 +38,12 @@ export function EventHealthStrip({
       className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
       data-slot="event-health-strip"
     >
-      <div
-        role="progressbar"
-        aria-label={subject ? `${subject} tasks complete` : "Tasks complete"}
-        aria-valuenow={percentComplete}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuetext={`${percentComplete}% complete`}
-        className="h-2 w-24 overflow-hidden bg-input"
-      >
-        <div
-          className="h-full bg-primary transition-[width]"
-          style={{ width: `${percentComplete}%` }}
-        />
-      </div>
+      <TextMeter
+        value={percentComplete}
+        max={100}
+        label={subject ? `${subject} tasks complete` : "Tasks complete"}
+        valueText={`${percentComplete}% complete`}
+      />
       <span className="text-muted-foreground">{percentComplete}% complete</span>
       {overdueCount > 0 && (
         <span className="font-medium text-destructive">

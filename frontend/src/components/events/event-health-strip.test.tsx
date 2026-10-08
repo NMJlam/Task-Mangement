@@ -17,6 +17,20 @@ describe("EventHealthStrip", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "75");
   });
 
+  it("draws completion as a text meter, named for the event it reports on", () => {
+    render(
+      <EventHealthStrip
+        taskCounts={{ todo: 1, inProgress: 0, blocked: 0, done: 3 }}
+        overdueCount={0}
+        budget={zeroBudget}
+        subject="Winter Showcase"
+      />,
+    );
+    const meter = screen.getByRole("progressbar", { name: "Winter Showcase tasks complete" });
+    expect(meter).toHaveTextContent("[████████░░]");
+    expect(meter).toHaveAttribute("aria-valuetext", "75% complete");
+  });
+
   it("shows 0% complete with zero tasks, not NaN", () => {
     render(
       <EventHealthStrip
