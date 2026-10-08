@@ -3,6 +3,7 @@ import { CalendarDays, MapPin, Plus } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -118,19 +119,19 @@ export function EventsPage() {
       />
 
       {filters.mine && !identityReady && me.status !== "loading" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load your membership, so your events can&apos;t be listed.{" "}
           <Link to="/events" className="underline">
             Show all events
           </Link>
           .
-        </p>
+        </LogLine>
       )}
       {state.status === "loading" && <LoadingLine label="Loading Events…" className="mt-8" />}
       {state.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load events: {state.message}. Refresh the page to try again.
-        </p>
+        </LogLine>
       )}
       {state.status === "ok" &&
         // Filtering swaps the list with no other cue, so the count is announced.

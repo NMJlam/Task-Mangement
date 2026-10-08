@@ -3,6 +3,7 @@ import { ArrowDownToLine } from "lucide-react";
 import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
@@ -75,9 +76,9 @@ export function FinancePage() {
         </p>
       )}
       {finance.budget.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load the budget: {finance.budget.message}. Refresh the page to try again.
-        </p>
+        </LogLine>
       )}
       {finance.budget.status === "loading" && (
         <LoadingLine label="Loading Finance Data…" className="mt-8" />
@@ -240,9 +241,9 @@ export function FinancePage() {
 
         {finance.expenses.status === "loading" && <LoadingLine label="Loading Expenses…" />}
         {finance.expenses.status === "error" && (
-          <p className="text-sm text-destructive" role="alert">
+          <LogLine tone="err">
             Couldn&apos;t load expenses: {finance.expenses.message}. Refresh the page to try again.
-          </p>
+          </LogLine>
         )}
         {finance.expenses.status === "ok" && finance.expenses.items.length === 0 && (
           <Card className="border-dashed shadow-none">

@@ -12,6 +12,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -356,9 +357,9 @@ export function EventDetailPage() {
           )}
           {tasks.state.status === "loading" && <LoadingLine label="Loading Tasks…" />}
           {tasks.state.status === "error" && (
-            <p className="text-sm text-destructive" role="alert">
+            <LogLine tone="err">
               Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.
-            </p>
+            </LogLine>
           )}
           {tasks.state.status === "ok" && (
             <TaskBoard

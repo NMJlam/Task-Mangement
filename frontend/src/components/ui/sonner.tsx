@@ -1,24 +1,27 @@
 "use client";
 
-import {
-  CircleCheckIcon,
-  InfoIcon,
-  Loader2Icon,
-  OctagonXIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import type { ReactNode } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { cn } from "@/lib/utils";
+
+/**
+ * A toast's kind as a log tag, `[ok]`, `[err]`, rather than an icon — the same
+ * vocabulary as `LogLine`. Pure ASCII, so no glyph waits on a fallback font.
+ */
+function Tag({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn("font-mono text-xs", className)}>[{children}]</span>;
+}
 
 const Toaster = (props: ToasterProps) => (
   <Sonner
     theme="system"
     className="toaster group"
     icons={{
-      success: <CircleCheckIcon className="size-4" />,
-      info: <InfoIcon className="size-4" />,
-      warning: <TriangleAlertIcon className="size-4" />,
-      error: <OctagonXIcon className="size-4" />,
-      loading: <Loader2Icon className="size-4 animate-spin" />,
+      success: <Tag className="text-ok">ok</Tag>,
+      info: <Tag>..</Tag>,
+      warning: <Tag className="text-warn">!!</Tag>,
+      error: <Tag className="text-danger">err</Tag>,
+      loading: <Tag>..</Tag>,
     }}
     style={
       {
