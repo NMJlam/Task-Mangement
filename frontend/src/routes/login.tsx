@@ -17,43 +17,46 @@ export function LoginPage() {
     <main className="grid min-h-svh bg-background lg:grid-cols-[1.1fr_0.9fr]">
       <h1 className="sr-only">Club Task Platform</h1>
       {/*
-       * 65% IS THE FLOOR FOR FADED TEXT ON THIS PANEL. `primary` inverts between
-       * themes — a near-black panel with near-white text in light mode, a
-       * near-white panel with near-black text in dark — so a `/NN` that reads
-       * comfortably in light mode is WEAKER in dark, not stronger. Measured
-       * against `--primary` in dark: /50 is 3.29:1 and /60 is 4.46:1, both under
-       * AA's 4.5:1, while /65 is 5.24:1. See docs/accessibility.md.
+       * The brand half is a terminal screen, not a page section: it keeps the
+       * SAME dark colour in both themes (`--screen`), rather than inverting with
+       * `--primary`. That is what the previous split screen got wrong - in dark
+       * mode the "dark" panel came out near-white - and it is also why the
+       * faded-text floors below are measured once instead of per theme.
+       *
+       * Measured against `--screen` (#14140f), fg = #f2f1ec: /50 is 4.80:1,
+       * /65 is 7.38:1, /70 is 8.39:1. The floor is /50, but every string here
+       * sits at /60 or above for headroom. See docs/accessibility.md.
        */}
-      <section className="relative hidden overflow-hidden bg-primary p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
+      <section className="relative hidden overflow-hidden border-r border-screen-foreground/15 bg-screen p-12 text-screen-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
         <div className="flex items-center gap-3">
           <span
             aria-hidden="true"
-            className="inline-flex size-9 items-center justify-center rounded-lg bg-primary-foreground text-sm font-bold text-primary"
+            className="inline-flex size-9 items-center justify-center bg-screen-foreground font-display text-sm font-bold text-screen"
           >
             M
           </span>
           <div className="leading-tight">
-            <p className="font-semibold">MAC</p>
-            <p className="text-xs text-primary-foreground/65">Club Operations</p>
+            <p className="font-display tracking-[0.04em]">MAC</p>
+            <p className="mt-1 text-xs text-screen-foreground/65">Club Operations</p>
           </div>
         </div>
 
         <div className="relative z-10 max-w-xl">
-          <p className="text-sm font-medium tracking-widest text-primary-foreground/65 uppercase">
+          <p className="text-xs font-medium tracking-[0.2em] text-screen-foreground/65 uppercase">
             One calm workspace
           </p>
-          <h2 className="mt-5 max-w-lg text-5xl leading-[1.02] font-semibold tracking-[-0.05em] text-balance xl:text-6xl">
+          <h2 className="mt-5 max-w-[20ch] text-2xl leading-[1.2] text-balance xl:text-3xl">
             Make every club event feel effortless.
           </h2>
-          <p className="mt-6 max-w-md text-base leading-7 text-primary-foreground/70">
+          <p className="mt-6 max-w-md text-sm leading-7 text-screen-foreground/70">
             Keep events, deadlines, and spending in view so the whole committee knows what comes
             next.
           </p>
-          <ul className="mt-8 grid gap-3 text-sm text-primary-foreground/80">
+          <ul className="mt-8 grid gap-3 text-sm text-screen-foreground/80">
             {["Shared event planning", "Clear task ownership", "Visible club spending"].map(
               (benefit) => (
                 <li key={benefit} className="flex items-center gap-2.5">
-                  <CheckCircle2 aria-hidden="true" className="size-4" />
+                  <CheckCircle2 aria-hidden="true" className="size-4 text-screen-accent" />
                   {benefit}
                 </li>
               ),
@@ -61,33 +64,23 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <p className="text-xs text-primary-foreground/65">Monash Association of Coding</p>
-        <div
-          aria-hidden="true"
-          className="absolute -right-28 -bottom-28 size-80 rounded-full border border-primary-foreground/10"
-        />
-        <div
-          aria-hidden="true"
-          className="absolute -right-12 -bottom-12 size-48 rounded-full border border-primary-foreground/10"
-        />
+        <p className="text-xs text-screen-foreground/60">Monash Association of Coding</p>
       </section>
 
       <section className="flex min-w-0 flex-col p-5 sm:p-8">
         <div className="flex items-center gap-2.5 lg:hidden">
           <span
             aria-hidden="true"
-            className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground"
+            className="inline-flex size-8 items-center justify-center bg-screen font-display text-xs font-bold text-screen-foreground"
           >
             M
           </span>
-          <p className="text-sm font-semibold">MAC</p>
+          <p className="font-display text-sm tracking-[0.04em]">MAC</p>
         </div>
         <div className="flex flex-1 items-center justify-center py-12">
-          <Card className="w-full max-w-md border-0 bg-transparent shadow-none">
+          <Card className="w-full max-w-md border-0 bg-transparent">
             <CardHeader className="px-0">
-              <h2 className="text-3xl leading-none font-semibold tracking-[-0.035em]">
-                Welcome Back
-              </h2>
+              <h2 className="text-2xl leading-tight sm:text-3xl">Welcome Back</h2>
               <CardDescription className="text-sm leading-6">
                 Sign in with your approved club account to continue.
               </CardDescription>

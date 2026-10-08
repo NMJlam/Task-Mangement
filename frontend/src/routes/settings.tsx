@@ -63,7 +63,7 @@ export function SettingsPage() {
             </p>
           </CardHeader>
           <CardContent className="flex items-start gap-3 text-sm">
-            <span className="rounded-lg bg-emerald-50 p-2 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+            <span className="bg-ok/12 p-2 text-ok">
               <ShieldCheck aria-hidden="true" className="size-4" />
             </span>
             <div>
@@ -106,11 +106,11 @@ export function SettingsPage() {
                 aria-pressed={theme === option.value}
                 onClick={() => chooseTheme(option.value)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-left transition-[background-color,border-color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                  theme === option.value ? "border-ring bg-accent" : "hover:bg-secondary",
+                  "flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-left transition-[background-color,border-color,box-shadow]",
+                  theme === option.value ? "border-ring bg-accent" : "hover:bg-accent",
                 )}
               >
-                <span className="rounded-md bg-secondary p-2 text-muted-foreground">
+                <span className="bg-accent p-2 text-muted-foreground">
                   <option.icon aria-hidden="true" className="size-4" />
                 </span>
                 <span>

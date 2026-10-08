@@ -46,7 +46,7 @@ export function NotificationsPage() {
         }
       />
 
-      <div className="mt-6 flex gap-1 rounded-lg bg-secondary p-1" aria-label="Notification filter">
+      <div className="mt-6 flex gap-1 border p-1" aria-label="Notification filter">
         {[false, true].map((onlyUnread) => (
           <button
             key={String(onlyUnread)}
@@ -54,8 +54,8 @@ export function NotificationsPage() {
             aria-pressed={unreadOnly === onlyUnread}
             onClick={() => setUnreadOnly(onlyUnread)}
             className={cn(
-              "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-              unreadOnly === onlyUnread && "bg-card text-foreground shadow-sm",
+              "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color]",
+              unreadOnly === onlyUnread && "bg-primary text-primary-foreground",
             )}
           >
             {onlyUnread ? "Unread" : "All"}
@@ -137,16 +137,16 @@ function NotificationRow({
     <article
       className={cn(
         "relative flex items-start gap-4 border-b p-4 last:border-0 sm:p-5",
-        unread && "bg-accent/35",
+        unread && "bg-foreground/5",
       )}
     >
       {unread && (
         <span
           aria-hidden="true"
-          className="absolute top-6 left-1.5 size-1.5 rounded-full bg-accent-foreground"
+          className="absolute top-6 left-1.5 size-1.5 bg-accent-foreground"
         />
       )}
-      <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
+      <span className="bg-accent p-2 text-muted-foreground">
         <Icon aria-hidden="true" className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
@@ -161,7 +161,7 @@ function NotificationRow({
             <Link
               to={to}
               onClick={unread ? onRead : undefined}
-              className="rounded-sm underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="rounded-sm underline-offset-4 hover:underline"
             >
               {notification.body}
             </Link>

@@ -194,7 +194,7 @@ export function DashboardPage() {
         <>
           {failedSections.length > 0 && (
             <p
-              className="mt-6 rounded-lg border border-destructive/30 bg-red-50 p-3 text-sm text-destructive dark:bg-red-950/40"
+              className="mt-6 border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
               role="alert"
             >
               Couldn&apos;t load {failedSections.join(", ")}. Refresh the page to try again.
@@ -279,7 +279,7 @@ export function DashboardPage() {
                   <div className="border-t px-5 py-2.5 sm:px-6">
                     <Link
                       to="/tasks?scope=mine"
-                      className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                      className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       {myOpenTasks.length - 5} more open task
                       {myOpenTasks.length - 5 === 1 ? "" : "s"}
@@ -336,9 +336,9 @@ export function DashboardPage() {
                           <Link
                             key={item.id}
                             to={item.to}
-                            className="group flex min-w-0 gap-3 rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                            className="group flex min-w-0 gap-3 rounded-md"
                           >
-                            <span className="mt-0.5 rounded-md bg-secondary p-1.5 text-muted-foreground group-hover:text-foreground">
+                            <span className="mt-0.5 bg-accent p-1.5 text-muted-foreground group-hover:text-foreground">
                               <Icon aria-hidden="true" className="size-3.5" />
                             </span>
                             <span className="min-w-0">
@@ -406,10 +406,10 @@ export function DashboardPage() {
                                 aria-valuemin={0}
                                 aria-valuemax={maxLoad}
                                 aria-valuetext={`${count} open task${count === 1 ? "" : "s"}`}
-                                className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary"
+                                className="mt-1.5 h-1.5 overflow-hidden bg-input"
                               >
                                 <div
-                                  className="h-full rounded-full bg-accent-foreground transition-[width]"
+                                  className="h-full bg-accent-foreground transition-[width]"
                                   style={{ width: `${(count / maxLoad) * 100}%` }}
                                 />
                               </div>
@@ -475,7 +475,7 @@ function SectionHeading({
       </h2>
       <Link
         to={to}
-        className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
       >
         {action}
         <ChevronRight aria-hidden="true" className="size-3.5" />
@@ -497,7 +497,7 @@ function TaskRow({ task, eventName, today }: { task: Task; eventName?: string; t
       <div className="min-w-0 flex-1">
         <Link
           to="/tasks?scope=mine"
-          className="block truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="block truncate rounded-sm text-sm font-medium hover:underline"
         >
           {task.title}
         </Link>
@@ -545,16 +545,13 @@ function ActivityRow({ notification }: { notification: Notification }) {
   );
 
   return (
-    <div className={cn("relative flex min-w-0 gap-3 rounded-md", unread && "bg-accent/35 p-2")}>
-      <span className="mt-0.5 shrink-0 rounded-md bg-secondary p-1.5 text-muted-foreground">
+    <div className={cn("relative flex min-w-0 gap-3 rounded-md", unread && "bg-foreground/5 p-2")}>
+      <span className="mt-0.5 shrink-0 bg-accent p-1.5 text-muted-foreground">
         <Bell aria-hidden="true" className="size-3.5" />
       </span>
       <div className="min-w-0">
         {to ? (
-          <Link
-            to={to}
-            className="line-clamp-2 rounded-sm text-sm leading-5 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
+          <Link to={to} className="line-clamp-2 rounded-sm text-sm leading-5 hover:underline">
             {body}
           </Link>
         ) : (
@@ -578,7 +575,7 @@ function EventRow({ event }: { event: EventSummary }) {
         <div className="min-w-0">
           <Link
             to={`/events/${event.id}`}
-            className="block truncate rounded-sm text-sm font-semibold hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="block truncate rounded-sm text-sm font-semibold hover:underline"
           >
             {event.title}
           </Link>

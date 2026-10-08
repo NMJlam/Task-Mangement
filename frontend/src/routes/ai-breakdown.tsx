@@ -91,7 +91,7 @@ export function AiBreakdownPage({ view }: { view?: "briefing" }) {
                   to="/ai/briefing"
                   aria-current={onBriefing ? "page" : undefined}
                   className={cn(
-                    "flex min-w-48 shrink-0 items-center gap-2.5 rounded-md border-primary/20 px-3 py-2 text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none lg:mb-3 lg:w-full lg:min-w-0 lg:border-b lg:pb-3",
+                    "flex min-w-48 shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground lg:mb-3 lg:w-full lg:min-w-0 lg:border-b lg:pb-3",
                     onBriefing && "bg-accent font-medium text-accent-foreground",
                   )}
                 >

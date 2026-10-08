@@ -106,7 +106,7 @@ export function MessagesPage() {
                 type="button"
                 onClick={() => setSelectedId(thread.id)}
                 className={cn(
-                  "flex min-w-48 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-[background-color,color] hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none lg:mb-1 lg:w-full lg:min-w-0",
+                  "flex min-w-48 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground lg:mb-1 lg:w-full lg:min-w-0",
                   thread.id === active.id && "bg-accent font-medium text-accent-foreground",
                 )}
               >
@@ -117,7 +117,7 @@ export function MessagesPage() {
                 )}
                 <span className="truncate">{threadName(thread, memberItems, selfId)}</span>
                 {thread.unreadCount > 0 && (
-                  <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] text-primary-foreground tabular-nums">
+                  <span className="ml-auto bg-primary px-1.5 py-0.5 text-[0.625rem] text-primary-foreground tabular-nums">
                     {thread.unreadCount}
                   </span>
                 )}

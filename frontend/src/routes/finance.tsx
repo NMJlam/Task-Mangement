@@ -226,7 +226,7 @@ export function FinancePage() {
                 <select
                   id="category"
                   name="category"
-                  className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm capitalize outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm capitalize focus-visible:border-ring"
                 >
                   {categories.map((category) => (
                     <option key={category}>{category}</option>
@@ -428,7 +428,7 @@ function MoneyCard({
             <Icon aria-hidden="true" className="size-4" />
           </Button>
         ) : (
-          <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
+          <span className="bg-accent p-2 text-muted-foreground">
             <Icon aria-hidden="true" className="size-4" />
           </span>
         )}
