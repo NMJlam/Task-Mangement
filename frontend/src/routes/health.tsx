@@ -35,7 +35,7 @@ export function HealthPage() {
                 <p className="text-sm text-muted-foreground">System</p>
                 <h2 className="mt-1 text-lg font-semibold tracking-tight">Backend Health</h2>
               </div>
-              <span className="rounded-lg bg-secondary p-2 text-muted-foreground">
+              <span className="bg-accent p-2 text-muted-foreground">
                 <Activity aria-hidden="true" className="size-5" />
               </span>
             </div>
@@ -48,7 +48,7 @@ export function HealthPage() {
             )}
             {health.status === "ok" && (
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 rounded-full bg-emerald-50 p-1.5 text-emerald-700 dark:bg-emerald-950">
+                <span className="mt-0.5 bg-ok/12 p-1.5 text-ok">
                   <BadgeCheck aria-hidden="true" className="size-4" />
                 </span>
                 <div>

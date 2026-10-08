@@ -12,7 +12,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus } from "luc
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
-import { StatusBadge, statusStyles } from "@/components/common/status-badge";
+import { StatusBadge, statusStyles, toneChip } from "@/components/common/status-badge";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventHealthStrip } from "@/components/events/event-health-strip";
 import { Button } from "@/components/ui/button";
@@ -359,7 +359,7 @@ export function CalendarPage() {
                   // where it was rather than jumping somewhere arbitrary.
                   if (next) show(view, next);
                 }}
-                className="h-9 cursor-pointer rounded-md border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="h-9 cursor-pointer rounded-md border bg-background px-2 text-sm focus-visible:border-ring"
               />
             </div>
           </div>
@@ -554,7 +554,7 @@ function MonthGrid({
                   // tint, never by fading the text: `muted-foreground` is 4.88:1
                   // on the page and 4.71:1 on this tint, but dropping it to 60%
                   // opacity would be 2.38:1 — under AA.
-                  day.getMonth() !== anchor.getMonth() && "bg-muted/40",
+                  day.getMonth() !== anchor.getMonth() && "bg-foreground/5",
                 )}
               >
                 <DayColumn
@@ -644,7 +644,7 @@ function DayColumn({
             aria-label={`Show ${fullDate.format(date)}`}
             aria-current={isToday ? "date" : undefined}
             className={cn(
-              "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium hover:bg-accent",
               compact && "tabular-nums",
               // Filled red, white number — the calendar-app convention for "now".
               isToday &&
@@ -723,18 +723,18 @@ function EventChip({
     data: { id: event.id, dayIndex, title: event.title },
   });
   // The same status vocabulary the badge on the event list uses, so a chip and
-  // the row behind it cannot disagree about what `live` looks like. Only the
-  // chip's own text colours are replaced — the handle inherits them rather than
-  // keeping `muted-foreground`, which was checked against `secondary` and not
-  // against these tints.
+  // the row behind it cannot disagree about what `live` looks like. The chip
+  // takes the *wash* form of the tone rather than the tag form: it holds two
+  // lines of its own text, and 12% of the token over the panel leaves the text
+  // colour's measured contrast against that panel unchanged.
   const status = statusStyles[event.status];
 
   return (
     <div
       ref={ref}
       className={cn(
-        "flex items-start gap-0.5 rounded-md px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
-        status.className,
+        "flex items-start gap-0.5 px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
+        toneChip[status.tone],
         // Hover is a ring, not a background swap: replacing the status tint on
         // hover would put the status text on a colour nothing checked it against.
         isDragging ? "opacity-60" : "hover:ring-1 hover:ring-ring/40",
@@ -748,7 +748,7 @@ function EventChip({
         // place it appears, and colour is not a label.
         aria-label={`Open ${event.title}, ${status.label}, on ${mediumDate.format(date)}`}
         onClick={(click) => onOpen(event.id, click.currentTarget)}
-        className="min-w-0 flex-1 cursor-pointer rounded-sm text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="min-w-0 flex-1 cursor-pointer rounded-sm text-left"
       >
         <span className="block truncate text-xs font-medium">{event.title}</span>
         {/* The start time only on the day the event starts; later days of a

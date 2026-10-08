@@ -152,7 +152,7 @@ export function EventDetailPage() {
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <Link
         to="/events"
-        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
         Events
@@ -198,7 +198,7 @@ export function EventDetailPage() {
         // preconditions still to clear, and paraphrasing them into "something
         // went wrong" would throw away the only actionable part.
         <div
-          className="mt-6 rounded-lg border border-destructive/30 bg-red-50 p-3 text-sm text-destructive dark:bg-red-950/40"
+          className="mt-6 border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
           role="alert"
         >
           <p className="font-medium">The event status did not change.</p>
@@ -474,7 +474,7 @@ function PageState({
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <Link
         to="/events"
-        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
         Events

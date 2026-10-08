@@ -139,7 +139,7 @@ function MemberCard({
                   onChange={(event) =>
                     onRoleChange(roleSchema.parse(event.target.value), event.currentTarget)
                   }
-                  className="h-8 max-w-40 cursor-pointer rounded-md border bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-8 max-w-40 cursor-pointer rounded-md border bg-background px-2 text-xs focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {roleSchema.options
                     .filter((role) => tierForRole(role) <= maxTier)

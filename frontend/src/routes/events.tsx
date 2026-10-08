@@ -160,7 +160,7 @@ export function EventsPage() {
           {state.items.map((event) => (
             <Card
               key={event.id}
-              className="relative gap-0 py-0 shadow-none transition-[border-color,box-shadow] focus-within:border-input focus-within:shadow-sm hover:border-input hover:shadow-sm"
+              className="relative gap-0 py-0 shadow-none transition-[border-color,box-shadow] focus-within:border-input hover:border-input"
             >
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
@@ -174,7 +174,7 @@ export function EventsPage() {
                       */}
                       <Link
                         to={`/events/${event.id}`}
-                        className="rounded-sm after:absolute after:inset-0 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                        className="rounded-sm after:absolute after:inset-0 hover:underline"
                       >
                         {event.title}
                       </Link>

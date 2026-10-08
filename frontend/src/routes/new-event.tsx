@@ -68,7 +68,7 @@ export function NewEventPage() {
     <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <Link
         to="/events"
-        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="mb-6 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
         Events
@@ -157,7 +157,7 @@ export function NewEventPage() {
                 placeholder="What is this event for?…"
                 maxLength={2000}
                 rows={4}
-                className="min-h-24 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="min-h-24 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
               />
             </div>
 
@@ -188,7 +188,7 @@ export function NewEventPage() {
                   id="event-visibility"
                   name="minTier"
                   defaultValue="0"
-                  className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="h-9 cursor-pointer rounded-md border bg-background px-3 text-sm focus-visible:border-ring"
                 >
                   <option value="0">All Members</option>
                   <option value="1">Leads & Executives</option>
