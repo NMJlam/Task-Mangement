@@ -788,6 +788,12 @@ Club risk is `critical` when committed spend exceeds the pool or an event is
 over its allocation. Otherwise it reuses the event progress rule: `at_risk`
 when an event's spend is ahead of its planning runway, and `on_track` otherwise.
 
+The Finance page re-reads this and `GET /api/expenses` every 15 seconds while
+its tab is visible (and on returning to it), so a payment or an allocation
+change made elsewhere shows up without a reload. A refresh asks for as many
+ledger rows as are already on screen, in pages of at most 100, so paging down
+the ledger is not undone by it.
+
 `allocations` lists only events at or below your tier. The totals, `risk` and
 `byCategory` stay club-wide — a hidden event's allocation still counts against
 the pool, so it never shows as available. The budget routes below and
@@ -843,12 +849,16 @@ Deletes a pending expense and returns `204`. Non-pending rows return
 ### `POST /api/expenses/:id/decision` · `expense:approve`
 
 Body is one of `{ "action": "approve" }`,
-`{ "action": "reject", "reason": "…" }`, or
-`{ "action": "mark_paid" }`. Approve/reject leaves `pending`; mark-paid leaves
-`approved`. Returns `{ "expense": { … }, "budget": { … } }` with refreshed
-budget context. A second or out-of-order decision is
+`{ "action": "reject", "reason": "…" }`, `{ "action": "mark_paid" }`, or
+`{ "action": "unmark_paid" }`. Approve/reject leaves `pending`; mark-paid leaves
+`approved`; unmark-paid leaves `paid`, returning the expense to `approved` and
+clearing `paidAt` — it stays committed (still owed) but stops counting as spent,
+and can be marked paid again. Returns `{ "expense": { … }, "budget": { … } }`
+with refreshed budget context. A second or out-of-order decision is
 `409 INVALID_EXPENSE_STATE`; approving/rejecting your own claim is
-`422 OWN_EXPENSE`.
+`422 OWN_EXPENSE` (marking paid or unpaid has no such rule — it is bookkeeping,
+not a spending decision). The submitter is notified of a payment and of its
+reversal.
 
 ## AI
 
