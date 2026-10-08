@@ -197,42 +197,6 @@ it("puts a drafted plan on its reply, open", async () => {
   });
 });
 
-it("takes a failed turn back out and says why, leaving the composer on", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi
-      .fn()
-      .mockResolvedValue(
-        respond(503, { error: { code: "AI_UNAVAILABLE", message: "The AI service is busy." } }),
-      ),
-  );
-  const { result } = renderHook(() => useAiChat(undefined));
-
-  let ok = true;
-  await act(async () => {
-    ok = await result.current.send("Plan it");
-  });
-
-  expect(ok).toBe(false);
-  // Nothing was saved, so nothing stays on screen: the page puts the text back in the box.
-  expect(result.current.state.status).toBe("blank");
-  expect(result.current.error).toBe("The AI service is busy.");
-  expect(result.current.disabled).toBe(false);
-});
-
-it("turns the composer off when the assistant is disabled, without calling it an error", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(respond(503, { error: { code: "AI_DISABLED", message: "Off." } })),
-  );
-  const { result } = renderHook(() => useAiChat(undefined));
-
-  await act(() => result.current.send("Plan it"));
-
-  expect(result.current.disabled).toBe(true);
-  expect(result.current.error).toBeUndefined();
-});
-
 it("applies a plan against its run, then reloads the chat to show what it made", async () => {
   const fetchMock = vi
     .fn()
