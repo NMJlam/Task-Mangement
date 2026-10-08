@@ -195,48 +195,49 @@ export function DashboardPage() {
             </p>
           )}
 
-          <section
-            aria-label="Overview statistics"
-            className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            <Metric
-              label="My Open Tasks"
-              value={personalLoaded ? myOpenTasks.length : undefined}
-              detail={
-                personalLoaded
-                  ? `${myOpenTasks.filter((task) => task.status === "in_progress").length} in progress`
-                  : "Couldn’t load your tasks"
-              }
-            />
-            <Metric
-              label="Due Next 7 Days"
-              value={personalLoaded ? dueThisWeek.length : undefined}
-              detail={
-                !personalLoaded
-                  ? "Couldn’t load your tasks"
-                  : overdueCount
-                    ? `${overdueCount} overdue`
-                    : "Nothing overdue"
-              }
-              tone={overdueCount ? "danger" : undefined}
-            />
-            <Metric
-              label="Upcoming Events"
-              value={eventsLoaded ? upcomingEvents.length : undefined}
-              detail={
-                !eventsLoaded
-                  ? "Couldn’t load events"
-                  : moreEvents
-                    ? `More than ${upcomingEvents.length} in the next 7 days`
-                    : "In the next 7 days"
-              }
-            />
-            <Metric
-              label="Unread Updates"
-              value={unreadCount}
-              detail={unreadCount ? "Review your inbox" : "You’re all caught up"}
-            />
-          </section>
+          {/* One panel, ruled into cells like a hardware readout: the 1px
+              gaps over the border colour are the grid lines. */}
+          <Panel title="At a glance" className="mt-6" bodyClassName="px-0 pt-1 pb-0">
+            <dl className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="My Open Tasks"
+                value={personalLoaded ? myOpenTasks.length : undefined}
+                detail={
+                  personalLoaded
+                    ? `${myOpenTasks.filter((task) => task.status === "in_progress").length} in progress`
+                    : "Couldn’t load your tasks"
+                }
+              />
+              <Metric
+                label="Due Next 7 Days"
+                value={personalLoaded ? dueThisWeek.length : undefined}
+                detail={
+                  !personalLoaded
+                    ? "Couldn’t load your tasks"
+                    : overdueCount
+                      ? `${overdueCount} overdue`
+                      : "Nothing overdue"
+                }
+                tone={overdueCount ? "danger" : undefined}
+              />
+              <Metric
+                label="Upcoming Events"
+                value={eventsLoaded ? upcomingEvents.length : undefined}
+                detail={
+                  !eventsLoaded
+                    ? "Couldn’t load events"
+                    : moreEvents
+                      ? `More than ${upcomingEvents.length} in the next 7 days`
+                      : "In the next 7 days"
+                }
+              />
+              <Metric
+                label="Unread Updates"
+                value={unreadCount}
+                detail={unreadCount ? "Review your inbox" : "You’re all caught up"}
+              />
+            </dl>
+          </Panel>
 
           <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="grid gap-6">
@@ -418,6 +419,10 @@ export function DashboardPage() {
   );
 }
 
+/**
+ * One cell of the At a glance grid: a tiny uppercase label over the figure,
+ * as a hardware readout labels its dials.
+ */
 function Metric({
   label,
   value,
@@ -431,18 +436,21 @@ function Metric({
   tone?: "danger";
 }) {
   return (
-    <Panel title={label} bodyClassName="grid gap-1 px-4 pt-1 pb-3">
-      <p
+    <div className="bg-card px-4 py-3">
+      <dt className="text-[0.6875rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd
         className={cn(
-          "text-3xl font-semibold tracking-[-0.04em] tabular-nums",
+          "mt-1 text-3xl font-semibold tracking-[-0.04em] tabular-nums",
           tone === "danger" && "text-destructive",
         )}
       >
         {value ?? "—"}
         {value === undefined && <span className="sr-only">unavailable</span>}
-      </p>
-      <p className="text-xs text-muted-foreground">{detail}</p>
-    </Panel>
+      </dd>
+      <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
+    </div>
   );
 }
 
