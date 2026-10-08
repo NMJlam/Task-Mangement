@@ -2,7 +2,6 @@ import { can, eventStatusTransitions, type ChangeableEventStatus } from "@ctp/sh
 import {
   ArrowLeft,
   CalendarDays,
-  CircleDollarSign,
   ListPlus,
   MapPin,
   MessageSquare,
@@ -13,6 +12,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { PageHeader } from "@/components/common/page-header";
+import { Panel } from "@/components/common/panel";
 import { StatusBadge } from "@/components/common/status-badge";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
 import { EventDetailsDialog } from "@/components/events/event-details-dialog";
@@ -274,61 +274,48 @@ export function EventDetailPage() {
 
         <TabsContent value="overview">
           <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_0.6fr]">
-            <Card className="shadow-none">
-              <CardHeader>
-                <h2 className="text-lg font-semibold tracking-tight">About</h2>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {event.description || "No event description has been added yet."}
+            <Panel title="About" bodyClassName="px-5 pt-3 pb-5">
+              <p className="text-sm leading-6 text-muted-foreground">
+                {event.description || "No event description has been added yet."}
+              </p>
+              {event.attendanceEstimate !== null && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Expected attendance:{" "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {event.attendanceEstimate}
+                  </span>
                 </p>
-                {event.attendanceEstimate !== null && (
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Expected attendance:{" "}
-                    <span className="font-medium text-foreground tabular-nums">
-                      {event.attendanceEstimate}
-                    </span>
+              )}
+              <div className="mt-6 border-t pt-5">
+                <h3 className="mb-3 text-sm font-medium">Delivery Progress</h3>
+                <EventHealthStrip
+                  taskCounts={event.taskCounts}
+                  overdueCount={event.overdueCount}
+                  budget={event.budget}
+                />
+              </div>
+              <div className="mt-6 border-t pt-5">
+                {progress.status === "ok" ? (
+                  <EventRiskPanel progress={progress.progress} />
+                ) : progress.status === "loading" ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    Loading Risk…
+                  </p>
+                ) : (
+                  // Deliberately soft: a missing verdict must not read as though
+                  // the event itself failed to load.
+                  <p className="text-sm text-muted-foreground">
+                    The risk verdict is unavailable right now.
                   </p>
                 )}
-                <div className="mt-6 border-t pt-5">
-                  <h3 className="mb-3 text-sm font-medium">Delivery Progress</h3>
-                  <EventHealthStrip
-                    taskCounts={event.taskCounts}
-                    overdueCount={event.overdueCount}
-                    budget={event.budget}
-                  />
-                </div>
-                <div className="mt-6 border-t pt-5">
-                  {progress.status === "ok" ? (
-                    <EventRiskPanel progress={progress.progress} />
-                  ) : progress.status === "loading" ? (
-                    <p className="text-sm text-muted-foreground" role="status">
-                      Loading Risk…
-                    </p>
-                  ) : (
-                    // Deliberately soft: a missing verdict must not read as though
-                    // the event itself failed to load.
-                    <p className="text-sm text-muted-foreground">
-                      The risk verdict is unavailable right now.
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
-            <Card className="shadow-none">
-              <CardHeader>
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold tracking-tight">Event Budget</h2>
-                  <CircleDollarSign aria-hidden="true" className="size-5 text-muted-foreground" />
-                </div>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
-                <BudgetRow label="Allocated" cents={event.budget.allocationCents} />
-                <BudgetRow label="Committed" cents={event.budget.committedCents} />
-                <BudgetRow label="Paid" cents={event.budget.spentCents} />
-              </CardContent>
-            </Card>
+            <Panel title="Event Budget" bodyClassName="grid gap-3 px-5 pt-3 pb-5 text-sm">
+              <BudgetRow label="Allocated" cents={event.budget.allocationCents} />
+              <BudgetRow label="Committed" cents={event.budget.committedCents} />
+              <BudgetRow label="Paid" cents={event.budget.spentCents} />
+            </Panel>
           </div>
         </TabsContent>
 

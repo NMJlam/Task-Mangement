@@ -118,6 +118,14 @@ const progressFixture = {
 describe("EventDetailPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("frames the overview in titled panels", async () => {
+    stubEvent();
+    renderDetail();
+
+    expect(await screen.findByRole("region", { name: "About" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Event Budget" })).toBeInTheDocument();
+  });
+
   it("renders event details and asks only for the channel", async () => {
     const fetchMock = stubEvent();
     renderDetail();
