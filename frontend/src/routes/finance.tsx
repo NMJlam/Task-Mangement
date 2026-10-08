@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useFinance } from "@/hooks/use-finance";
+import { useFinance, type ExpenseAction } from "@/hooks/use-finance";
 import { useMe } from "@/hooks/use-me";
 import { budgetSummaryToCsv, downloadTextFile } from "@/lib/csv";
 
@@ -53,7 +53,7 @@ export function FinancePage() {
       });
   }
 
-  function decide(expense: Expense, action: "approve" | "reject" | "mark_paid") {
+  function decide(expense: Expense, action: ExpenseAction) {
     // TODO(R8): a shadcn dialog belongs here — `window.prompt` is unstyled,
     // blockable, and outside the keyboard/ARIA guarantees the rest of the app
     // gets from Radix. Left as-is deliberately: replacing it is its own change.
@@ -435,7 +435,7 @@ function ExpenseRow({
   canManage: boolean;
   myId: string | undefined;
   busy: boolean;
-  onDecide: (expense: Expense, action: "approve" | "reject" | "mark_paid") => void;
+  onDecide: (expense: Expense, action: ExpenseAction) => void;
 }) {
   // Separation of duty: the database refuses a decider who is the submitter
   // (`expense_decider_is_not_submitter_check`), so the buttons match that rule
@@ -483,6 +483,20 @@ function ExpenseRow({
             aria-label={`Mark ${expense.description} paid`}
           >
             Mark Paid
+          </Button>
+        )}
+        {/* A payment can be entered against the wrong claim; this is the way
+            back to approved. Reversible, so no confirmation — Mark Paid is
+            right there if it was a slip. */}
+        {canManage && expense.status === "paid" && (
+          <Button
+            disabled={busy}
+            size="sm"
+            variant="outline"
+            onClick={() => onDecide(expense, "unmark_paid")}
+            aria-label={`Mark ${expense.description} unpaid`}
+          >
+            Unmark Paid
           </Button>
         )}
       </CardContent>
