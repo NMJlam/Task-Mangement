@@ -521,6 +521,27 @@ describe("EventDetailPage", () => {
       expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
     });
 
+    /**
+     * A cancelled event's thread is a read-only archive (the API answers a post
+     * with 409 THREAD_ARCHIVED), and Messages does not list it, so there is no
+     * box to type in and no "Open in Messages" to send the reader nowhere.
+     */
+    it("shows a cancelled event's thread read-only, with no box and no way to Messages", async () => {
+      stubEvent({
+        event: { ...eventFixture, status: "cancelled" },
+        messages: [message()],
+        members: [roster()],
+      });
+      renderDetail("?tab=thread");
+
+      expect(await screen.findByText("Lighting rig is booked.")).toBeInTheDocument();
+      expect(
+        screen.getByText("This event was cancelled, so its thread is read-only."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/message winter showcase/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Open in Messages" })).not.toBeInTheDocument();
+    });
+
     it("names a message the assistant wrote as the assistant", async () => {
       stubEvent({
         messages: [{ ...message(), aiRunId: "018f3a4b-0000-7000-8000-0000000000c0" }],

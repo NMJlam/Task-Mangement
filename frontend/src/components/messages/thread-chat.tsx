@@ -26,6 +26,7 @@ export function ThreadChat({
   members,
   selfId,
   titleAction,
+  readOnly,
   className,
 }: {
   chat: ThreadChatModel;
@@ -38,6 +39,12 @@ export function ThreadChat({
    * here, and the event's Thread tab the way back to Messages.
    */
   titleAction?: ReactNode;
+  /**
+   * Why the thread takes no new posts, shown where the box to write in would
+   * be. A cancelled event's thread is a read-only archive, and the API answers
+   * a post to it with 409 THREAD_ARCHIVED.
+   */
+  readOnly?: string;
   className?: string;
 }) {
   const { messages, searchInput, searchQuery } = chat;
@@ -133,41 +140,45 @@ export function ThreadChat({
         )}
       </div>
 
-      <form
-        className="border-t p-4 sm:p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          chat.send();
-        }}
-      >
-        {messages.sendError && (
-          <p className="mb-3 text-sm text-destructive" role="alert">
-            {messages.sendError}. Try again.
-          </p>
-        )}
-        <label htmlFor={draftId} className="sr-only">
-          Message {title}
-        </label>
-        <MentionTextarea
-          id={draftId}
-          name="message"
-          rows={3}
-          maxLength={4000}
-          placeholder="Write a message…"
-          className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
-          required
-          value={chat.draft}
-          onChange={chat.setDraft}
-          candidates={members}
-          selfId={selfId}
-        />
-        <div className="mt-2 flex justify-end">
-          <Button disabled={messages.sending}>
-            <Send aria-hidden="true" />
-            {messages.sending ? "Sending…" : "Send"}
-          </Button>
-        </div>
-      </form>
+      {readOnly ? (
+        <p className="border-t p-4 text-sm text-muted-foreground sm:p-5">{readOnly}</p>
+      ) : (
+        <form
+          className="border-t p-4 sm:p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            chat.send();
+          }}
+        >
+          {messages.sendError && (
+            <p className="mb-3 text-sm text-destructive" role="alert">
+              {messages.sendError}. Try again.
+            </p>
+          )}
+          <label htmlFor={draftId} className="sr-only">
+            Message {title}
+          </label>
+          <MentionTextarea
+            id={draftId}
+            name="message"
+            rows={3}
+            maxLength={4000}
+            placeholder="Write a message…"
+            className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
+            required
+            value={chat.draft}
+            onChange={chat.setDraft}
+            candidates={members}
+            selfId={selfId}
+          />
+          <div className="mt-2 flex justify-end">
+            <Button disabled={messages.sending}>
+              <Send aria-hidden="true" />
+              {messages.sending ? "Sending…" : "Send"}
+            </Button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }
