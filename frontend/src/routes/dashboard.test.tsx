@@ -28,7 +28,7 @@ it("summarises the current member’s work and upcoming events", async () => {
     `/events/${eventId}`,
   );
   expect(
-    within(screen.getByRole("region", { name: "Overview statistics" })).getByText("2"),
+    within(screen.getByRole("region", { name: "At a glance" })).getByText("2"),
   ).toBeInTheDocument();
   expect(screen.getByRole("progressbar", { name: "Jordan Lee open tasks" })).toHaveAttribute(
     "aria-valuenow",
@@ -131,7 +131,7 @@ it("reports an unavailable personal read instead of claiming zero work", async (
 
   renderPage();
 
-  const stats = await screen.findByRole("region", { name: "Overview statistics" });
+  const stats = await screen.findByRole("region", { name: "At a glance" });
   // The metric shows no value at all: "0 open tasks" is a claim a failed read
   // cannot support.
   expect(within(stats).getAllByText("—").length).toBeGreaterThanOrEqual(2);
@@ -149,7 +149,7 @@ it("marks an overdue task in words as well as in colour", async () => {
   // The date turning red is not a label: the row carries the word, for anyone
   // who cannot see the colour.
   expect(screen.getByText("Overdue")).toBeInTheDocument();
-  const stats = screen.getByRole("region", { name: "Overview statistics" });
+  const stats = screen.getByRole("region", { name: "At a glance" });
   expect(within(stats).getByText("1 overdue")).toBeInTheDocument();
 });
 
@@ -166,7 +166,7 @@ it("leads the page with today's briefing, above the statistics", async () => {
   const heading = await screen.findByRole("heading", { name: "Your Briefing" });
   expect(await screen.findByText("A quiet day.")).toBeInTheDocument();
   // The briefing loads on its own, so it can be ready before the rest of the page.
-  const stats = await screen.findByRole("region", { name: "Overview statistics" });
+  const stats = await screen.findByRole("region", { name: "At a glance" });
   // DOCUMENT_POSITION_FOLLOWING: the statistics come after the briefing.
   expect(heading.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   // It is no longer one of the right-rail cards.
@@ -195,7 +195,7 @@ it("frames each widget as a titled panel with its link in the border", async () 
     "Today",
     "Recent Activity",
     "Committee Load",
-    "My Open Tasks",
+    "At a glance",
   ]) {
     expect(screen.getByRole("region", { name })).toBeInTheDocument();
   }
