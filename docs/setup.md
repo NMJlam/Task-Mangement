@@ -277,6 +277,21 @@ decides whether it costs anything:
 The `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair is Better Auth sign-in (R1)
 and is unrelated — keep the Gemini key separate.
 
+### Inbox poll interval — `VITE_NOTIFICATION_POLL_MS`
+
+The Inbox and its sidebar badge re-read `GET /api/notifications` every
+**1000 ms** while a tab is in front (background tabs don't poll). Each read is
+one serverless invocation and two indexed queries per open tab, so a deployment
+on a tight Vercel or Neon quota can slow it down:
+
+```dotenv
+VITE_NOTIFICATION_POLL_MS=5000   # milliseconds; unset or invalid → 1000
+```
+
+It is a **frontend** variable: Vite inlines `VITE_*` values at build time, so on
+Vercel add it under **Settings → Environment Variables** and then **redeploy**.
+Saving the variable alone changes nothing until the next build.
+
 ### Browse the database — Drizzle Studio
 
 ```bash

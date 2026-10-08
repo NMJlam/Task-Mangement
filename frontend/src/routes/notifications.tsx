@@ -7,7 +7,7 @@ import {
   CircleDollarSign,
   UserRound,
 } from "lucide-react";
-import { useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,12 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
 export function NotificationsPage() {
   const notifications = useNotifications();
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const { reload } = notifications;
+  // The shell's feed polls on its own, but a reader opening the Inbox should
+  // not wait for the next tick to see what arrived since.
+  useEffect(() => {
+    reload();
+  }, [reload]);
   const items =
     notifications.state.status === "ok"
       ? notifications.state.items.filter((item) => !unreadOnly || !item.readAt)
@@ -38,10 +44,10 @@ export function NotificationsPage() {
         actions={
           <Button
             variant="outline"
-            disabled={unreadCount === 0 || Boolean(notifications.busy)}
+            disabled={unreadCount === 0}
             onClick={() => void notifications.markAllRead()}
           >
-            {notifications.busy === "all" ? "Marking…" : "Mark All Read"}
+            Mark All Read
           </Button>
         }
       />
@@ -96,7 +102,6 @@ export function NotificationsPage() {
               <NotificationRow
                 key={notification.id}
                 notification={notification}
-                busy={notifications.busy === notification.id}
                 onRead={() => void notifications.markRead(notification)}
               />
             ))}
@@ -122,11 +127,9 @@ export function NotificationsPage() {
 
 function NotificationRow({
   notification,
-  busy,
   onRead,
 }: {
   notification: Notification;
-  busy: boolean;
   onRead: () => void;
 }) {
   const Icon = notificationIcon(notification.kind);
@@ -177,8 +180,8 @@ function NotificationRow({
         </time>
       </div>
       {unread && (
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onRead}>
-          {busy ? "Marking…" : "Mark Read"}
+        <Button variant="ghost" size="sm" onClick={onRead}>
+          Mark Read
         </Button>
       )}
     </article>
