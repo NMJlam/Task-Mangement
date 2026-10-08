@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { FinancePage } from "./finance";
@@ -27,6 +27,7 @@ const eventId = "018f3a4b-0000-7000-8000-000000000009";
 describe("FinancePage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     viewer.role = "treasurer";
   });
 
@@ -274,6 +275,107 @@ describe("FinancePage", () => {
 
     await screen.findByText("Printing");
     expect(screen.queryByRole("button", { name: /unpaid/i })).not.toBeInTheDocument();
+  });
+
+  describe("staying live", () => {
+    const decider = "018f3a4b-0000-7000-8000-000000000004";
+    const approvedRow = (status: string) =>
+      expense({ status, decider, decidedAt: "2026-09-19T00:00:00.000Z" });
+    const pollOnce = () =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+    it("picks up a change someone else made, without a reload", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let status = "pending";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) =>
+          Promise.resolve(
+            String(input).startsWith("/api/budget")
+              ? response({ budget: budget() })
+              : response({ expenses: [approvedRow(status)], total: 1 }),
+          ),
+        ),
+      );
+
+      renderPage();
+      await screen.findByRole("button", { name: "Approve Printing" });
+
+      // Another finance user approves it elsewhere; this tab is left alone.
+      status = "approved";
+      await pollOnce();
+
+      expect(await screen.findByRole("button", { name: "Mark Printing paid" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Approve Printing" })).not.toBeInTheDocument();
+    });
+
+    it("re-reads every row already on screen, not just the first page", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const first = Array.from({ length: 25 }, (_, index) =>
+        expense({ id: `018f3a4b-0000-7000-8000-0000000001${String(index).padStart(2, "0")}` }),
+      );
+      const fetchMock = stubFetch({
+        expenses: { expenses: first, total: 30 },
+        more: response({
+          expenses: [expense({ id: "018f3a4b-0000-7000-8000-000000000200", description: "Venue" })],
+          total: 30,
+        }),
+      });
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText("Showing 25 of 30")).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("button", { name: "Load More" }));
+      await waitFor(() => expect(screen.getByText("Showing 26 of 30")).toBeInTheDocument());
+
+      fetchMock.mockClear();
+      await pollOnce();
+
+      // Both halves refresh, and the ledger asks for all 26 rows — a poll for
+      // the first 25 would quietly drop the one just paged in.
+      expect(fetchMock).toHaveBeenCalledWith("/api/budget", expect.anything());
+      expect(fetchMock).toHaveBeenCalledWith("/api/expenses?limit=26", expect.anything());
+    });
+
+    it("does not let a poll that started before an action overwrite its result", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let holdLedger = false;
+      let releasePoll: (() => void) | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (init?.method === "POST") {
+            return Promise.resolve(
+              response({ expense: approvedRow("approved"), budget: budget() }),
+            );
+          }
+          if (url.startsWith("/api/budget")) return Promise.resolve(response({ budget: budget() }));
+          // The poll's ledger read is held open, carrying the pre-approval row.
+          if (holdLedger) {
+            return new Promise((resolve) => {
+              releasePoll = () => resolve(response({ expenses: [expense()], total: 1 }));
+            });
+          }
+          return Promise.resolve(response({ expenses: [expense()], total: 1 }));
+        }),
+      );
+
+      renderPage();
+      await screen.findByRole("button", { name: "Approve Printing" });
+
+      holdLedger = true;
+      await pollOnce();
+      // The user approves while that older read is still in flight...
+      fireEvent.click(screen.getByRole("button", { name: "Approve Printing" }));
+      expect(await screen.findByRole("button", { name: "Mark Printing paid" })).toBeInTheDocument();
+
+      // ...and when it finally lands, it is older than the screen and is dropped.
+      await act(async () => releasePoll?.());
+      expect(screen.getByRole("button", { name: "Mark Printing paid" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Approve Printing" })).not.toBeInTheDocument();
+    });
   });
 
   it("downloads the budget summary as CSV from the Spent card", async () => {
