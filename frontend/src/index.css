@@ -282,3 +282,36 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The `Panel` frame (components/common/panel.tsx): a box whose top border is a
+   row of content. The row is `--panel-rule` tall; its lines and the box's sides
+   start at the row's midline, so the corners meet and the title sits IN the
+   border, as a TUI draws it. The surface starts at that midline too, so the
+   title straddles the page and the panel the way a terminal legend does. */
+@layer components {
+  .panel {
+    --panel-rule: 1.5rem;
+    position: relative;
+    isolation: isolate;
+  }
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: calc(var(--panel-rule) / 2) 0 0;
+    z-index: -1;
+    border: 1px solid var(--border);
+    border-top: 0;
+    background: var(--card);
+  }
+  .panel-rule {
+    display: flex;
+    align-items: center;
+    height: var(--panel-rule);
+  }
+  .panel-line {
+    align-self: flex-start;
+    height: 1px;
+    margin-top: calc(var(--panel-rule) / 2);
+    background: var(--border);
+  }
+}
