@@ -15,6 +15,7 @@ import {
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { StatusLine } from "@/components/layout/status-line";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
 import { cn } from "@/lib/utils";
@@ -90,7 +91,9 @@ export function AppShell({
           </div>
         </aside>
 
-        <div className="min-w-0">
+        {/* A full-height column, so the status line sits at the bottom of a
+            short page and sticks there on a long one. */}
+        <div className="flex min-h-svh min-w-0 flex-col">
           {/* Opaque, not translucent-with-blur: a terminal does not frost what
               is behind its chrome. */}
           <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background px-4 py-3 lg:hidden">
@@ -118,10 +121,11 @@ export function AppShell({
             // No focus outline here on purpose: this is a skip-link target, and
             // an outline drawn around the whole main region reads as a bug. The
             // global `:focus-visible` rule in `index.css` covers everything else.
-            className="min-w-0 focus:outline-none"
+            className="min-w-0 flex-1 focus:outline-none"
           >
             {children}
           </div>
+          <StatusLine member={member} />
         </div>
       </div>
     </>

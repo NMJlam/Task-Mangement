@@ -81,3 +81,11 @@ it("shows no badge on an empty inbox, and caps a large one", () => {
   expect(screen.getAllByRole("link", { name: "Inbox, 150 unread" })).toHaveLength(2);
   expect(screen.getAllByText("99+")).toHaveLength(2);
 });
+
+it("pins a status line under the page, with the unread count", () => {
+  renderShell(4);
+
+  const line = screen.getByRole("contentinfo", { name: "Status line" });
+  expect(line).toHaveTextContent("~/events$");
+  expect(line).toHaveTextContent("4 unread");
+});
