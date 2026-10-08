@@ -5,7 +5,7 @@ import {
   type EventStatus,
   type UpdateEvent,
 } from "@ctp/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiErrorMessage } from "@/lib/api-error";
 import type { EventDates, EventDatesSave } from "@/lib/event-dates";
 
@@ -24,42 +24,66 @@ type EventState =
  */
 export type EventStatusSave = { ok: true; status: EventStatus } | { ok: false; messages: string[] };
 
+/** One read of the event row. Never throws: a failure is a state, as on load. */
+async function readEvent(id: string): Promise<EventState> {
+  try {
+    // `channel` is asked for by name — `channelId` is absent without it, and the
+    // Thread tab has nothing to read. `tasks` is NOT: the Tasks tab reads
+    // `/api/tasks?eventId=`, and the summary counts come from this row.
+    const res = await fetch(`/api/events/${id}?include=channel`, { credentials: "include" });
+    if (res.status === 404) return { status: "not_found" };
+    if (!res.ok) throw new Error("Failed to load event");
+    const parsed = eventResponseSchema.parse(await res.json());
+    return { status: "ok", event: parsed.event, warnings: parsed.warnings };
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 /** ViewModel for a single event (GET /api/events/:id). */
 export function useEvent(id: string | undefined) {
   const [state, setState] = useState<EventState>({ status: "loading" });
   const [busy, setBusy] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
+  // Bumped by every read and every write that lands. A re-read applies only if
+  // nothing has happened since it began: a later read supersedes it, and a
+  // write's own answer is newer than whatever the read was told.
+  const revision = useRef(0);
 
   useEffect(() => {
     if (!id) return;
-    let active = true;
+    const mine = ++revision.current;
     setState({ status: "loading" });
-
-    // `channel` is asked for by name — `channelId` is absent without it, and the
-    // Thread tab has nothing to read. `tasks` is NOT: the Tasks tab reads
-    // `/api/tasks?eventId=`, and the summary counts come from this row.
-    fetch(`/api/events/${id}?include=channel`, { credentials: "include" })
-      .then(async (res) => {
-        if (res.status === 404) return { status: "not_found" as const };
-        if (!res.ok) throw new Error("Failed to load event");
-        const parsed = eventResponseSchema.parse(await res.json());
-        return { status: "ok" as const, event: parsed.event, warnings: parsed.warnings };
-      })
-      .then((next) => {
-        if (active) setState(next);
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setState({
-            status: "error",
-            message: err instanceof Error ? err.message : "Unknown error",
-          });
-        }
-      });
-
+    void readEvent(id).then((next) => {
+      if (revision.current === mine) setState(next);
+    });
     return () => {
-      active = false;
+      // A switch to another event invalidates this one's read.
+      revision.current += 1;
     };
+  }, [id]);
+
+  /**
+   * Re-reads the row in place — the task counts, the overdue count, the budget
+   * figures — for a page that has just changed what they count. Quiet: the page
+   * stays on screen while it runs, and a re-read that fails keeps the page the
+   * reader is using rather than replacing it with an error.
+   */
+  const reload = useCallback(() => {
+    if (!id) return;
+    const mine = ++revision.current;
+    void readEvent(id).then((next) => {
+      if (revision.current !== mine) return;
+      setState((previous) =>
+        next.status === "ok"
+          ? // The warnings belonged to the write that raised them; a re-read
+            // carries none, so it must not clear them either.
+            { ...next, warnings: previous.status === "ok" ? previous.warnings : undefined }
+          : previous.status === "ok"
+            ? previous
+            : next,
+      );
+    });
   }, [id]);
 
   /**
@@ -74,6 +98,7 @@ export function useEvent(id: string | undefined) {
       const res = await fetch(`/api/events/${id}`, { method: "DELETE", credentials: "include" });
       // 204 No Content — there is no body to parse.
       if (!res.ok) throw new Error("Failed to cancel the event");
+      revision.current += 1;
       setState((previous) =>
         previous.status === "ok"
           ? { ...previous, event: { ...previous.event, status: "cancelled" } }
@@ -118,6 +143,7 @@ export function useEvent(id: string | undefined) {
           return { ok: false, message: apiErrorMessage(body) ?? "Failed to update the event" };
         }
         const parsed = eventResponseSchema.parse(body);
+        revision.current += 1;
         setState({ status: "ok", event: parsed.event, warnings: parsed.warnings });
         return { ok: true, warnings: parsed.warnings ?? [] };
       } catch {
@@ -159,6 +185,7 @@ export function useEvent(id: string | undefined) {
         const body: unknown = await response.json().catch(() => null);
         if (response.ok) {
           const parsed = changeEventStatusResponseSchema.parse(body);
+          revision.current += 1;
           setState((previous) =>
             previous.status === "ok"
               ? {
@@ -191,5 +218,14 @@ export function useEvent(id: string | undefined) {
     [id],
   );
 
-  return { state, cancelEvent, updateEvent, updateDates, changeStatus, busy, mutationError };
+  return {
+    reload,
+    state,
+    cancelEvent,
+    updateEvent,
+    updateDates,
+    changeStatus,
+    busy,
+    mutationError,
+  };
 }

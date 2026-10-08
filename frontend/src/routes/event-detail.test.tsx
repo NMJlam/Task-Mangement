@@ -257,6 +257,76 @@ describe("EventDetailPage", () => {
     );
   });
 
+  /**
+   * Delivery Progress and the risk verdict come from the event's own reads, not
+   * from the board, so a move used to leave them showing the page's first load
+   * until the reader left the event and came back.
+   */
+  it("re-reads delivery progress and risk once a task move lands", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fetchMock = stubEvent();
+    const answer = fetchMock.getMockImplementation()!;
+    let moved = false;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === `/api/tasks/${eventTask.id}/status` && init?.method === "PATCH") {
+        moved = true;
+        return Promise.resolve(
+          ok({ task: { ...eventTask, status: "done", completedAt: "2026-06-02T00:00:00.000Z" } }),
+        );
+      }
+      if (moved && url === `/api/events/${EVENT_ID}?include=channel`) {
+        return Promise.resolve(
+          ok({
+            event: {
+              ...eventFixture,
+              taskCounts: { todo: 0, inProgress: 0, blocked: 0, done: 1 },
+              overdueCount: 0,
+            },
+          }),
+        );
+      }
+      if (moved && url.includes("/progress")) {
+        return Promise.resolve(
+          ok({
+            ...progressFixture,
+            percentComplete: 100,
+            overdueCount: 0,
+            risk: "on_track",
+            riskReasons: [],
+          }),
+        );
+      }
+      return answer(url, init);
+    });
+    renderDetail("?tab=tasks");
+    await screen.findByText("Confirm lighting");
+
+    act(() => {
+      dnd.onDragEnd?.({
+        canceled: false,
+        operation: {
+          source: new dnd.SortableFake({
+            id: eventTask.id,
+            index: 0,
+            group: "todo",
+            data: { title: "Confirm lighting", status: "todo" },
+          }),
+          target: { id: "done" },
+        },
+      });
+    });
+    await waitFor(() => expect(moved).toBe(true));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("progressbar", { name: "Tasks complete" })).toHaveAttribute(
+        "aria-valuenow",
+        "100",
+      ),
+    );
+    expect(await screen.findByText("On Track")).toBeInTheDocument();
+  });
+
   // The event Tasks tab now wires the same shared dialog mutations as /tasks.
   it("edits an event task's description and priority in place", async () => {
     const user = userEvent.setup({ delay: null });
