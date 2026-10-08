@@ -9,7 +9,7 @@ import {
 import { useRef, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
-import { MemberTeams, staffableTeams } from "@/components/members/member-teams";
+import { canSetLead, MemberTeams, staffableTeams } from "@/components/members/member-teams";
 import { RoleChangeDialog, roleLabel } from "@/components/members/role-change-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMe } from "@/hooks/use-me";
@@ -33,6 +33,11 @@ export function MembersPage() {
   const items = members.state.status === "ok" ? members.state.items : [];
   const teamItems = teams.state.status === "ok" ? teams.state.items : undefined;
   const editableTeams = teamItems && me.status === "ok" ? staffableTeams(teamItems, me.user) : [];
+  const canLead = me.status === "ok" && canSetLead(me.user);
+  const nameOf = (id: string) => {
+    const found = items.find((item) => item.id === id);
+    return found ? found.name || found.email : "Former Member";
+  };
 
   async function confirmRoleChange() {
     if (!pending) return;
@@ -114,6 +119,15 @@ export function MembersPage() {
                 setTeamTarget(member.id);
                 void teams.setMembership(team, member.id, on);
               }}
+              onTeamLead={
+                canLead
+                  ? (team, lead) => {
+                      setTeamTarget(member.id);
+                      void teams.setLead(team, lead ? member.id : null);
+                    }
+                  : undefined
+              }
+              nameOf={nameOf}
             />
           ))}
         </section>
@@ -133,6 +147,8 @@ function MemberCard({
   teamsBusy,
   teamsError,
   onTeamToggle,
+  onTeamLead,
+  nameOf,
 }: {
   member: RosterMember;
   editable: boolean;
@@ -145,8 +161,20 @@ function MemberCard({
   teamsBusy: string | undefined;
   teamsError: string | undefined;
   onTeamToggle: (team: TeamWithMembers, member: boolean) => void;
+  onTeamLead: ((team: TeamWithMembers, lead: boolean) => void) | undefined;
+  nameOf: (id: string) => string;
 }) {
   const name = member.name || member.email;
+  // Read off the teams once they load, not the roster's `portfolio`: the roster
+  // is a snapshot from page load, so a lead set here would not show until a
+  // refresh. It also names every team the member leads, where the roster's
+  // field carries only one.
+  const portfolio = teams
+    ? teams
+        .filter((team) => team.lead === member.id)
+        .map((team) => team.name)
+        .join(", ")
+    : member.portfolio;
 
   return (
     <Card className="gap-5 shadow-none">
@@ -189,7 +217,7 @@ function MemberCard({
             )}
           </dd>
           <dt className="text-muted-foreground">Portfolio</dt>
-          <dd className="text-right">{member.portfolio || "—"}</dd>
+          <dd className="text-right">{portfolio || "—"}</dd>
           <dt className="text-muted-foreground">Teams</dt>
           <dd className="text-right">
             {teams ? (
@@ -201,6 +229,8 @@ function MemberCard({
                 busy={teamsBusy}
                 error={teamsError}
                 onToggle={onTeamToggle}
+                onLead={onTeamLead}
+                nameOf={nameOf}
               />
             ) : (
               <span className="tabular-nums">{member.teamIds.length}</span>
