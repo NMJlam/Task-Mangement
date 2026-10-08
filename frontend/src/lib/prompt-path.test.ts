@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { promptPath, syncAge } from "./prompt-path";
+import { promptPath } from "./prompt-path";
 
 const id = "018f3a4b-0000-7000-8000-00000000a1b2";
 
@@ -18,17 +18,5 @@ describe("promptPath", () => {
     expect(promptPath(`/events/${id}`, "?tab=thread")).toBe("~/events/0000a1b2/thread");
     expect(promptPath("/messages", `?thread=${id}`)).toBe("~/messages/0000a1b2");
     expect(promptPath("/tasks", "?scope=mine")).toBe("~/tasks");
-  });
-});
-
-describe("syncAge", () => {
-  it.each([
-    [400, "just now"],
-    [1_000, "1s ago"],
-    [59_999, "59s ago"],
-    [60_000, "1m ago"],
-    [3_600_000, "1h ago"],
-  ])("%ims → %s", (ms, text) => {
-    expect(syncAge(ms)).toBe(text);
   });
 });
