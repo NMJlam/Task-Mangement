@@ -127,6 +127,117 @@
   --scrim: rgb(0 0 0 / 0.72);
 }
 
+/* ---------------------------------------------------------------------------
+   Terminal palettes beyond light and dark, chosen in Settings. Each is a dark
+   theme, so `lib/theme.ts` sets the `dark` class too and names the palette in
+   `data-theme`; `:root[data-theme=…]` outranks `.dark`, so these tokens win.
+   `--screen*` is left alone: the login screen is a fixed terminal surface in
+   every theme.
+--------------------------------------------------------------------------- */
+/* Amber phosphor: a VT220 in amber. Monochrome, so ink, the inverse-video fill and
+   the accent are all the same amber family; the accent is near-white, as a
+   phosphor's brightest dot is. Every pair measured in docs/accessibility.md. */
+:root[data-theme="amber"] {
+  color-scheme: dark;
+
+  --background: #120d05;
+  --foreground: #ffb54d;
+  --card: #1a1408;
+  --card-foreground: #ffb54d;
+  --popover: #1a1408;
+  --popover-foreground: #ffb54d;
+  --primary: #ffb54d;
+  --primary-foreground: #120d05;
+  --secondary: #1a1408;
+  --secondary-foreground: #ffb54d;
+  --muted: #1a1408;
+  --muted-foreground: #d29a45;
+  --accent: #271d0c;
+  --accent-foreground: #ffb54d;
+  --destructive: #ff8a6b;
+  --destructive-foreground: #120d05;
+  --border: #3a2c14;
+  --input: #9a7438;
+  --ring: #fff0d1;
+
+  --today: #ff8a6b;
+  --today-foreground: #120d05;
+
+  --ok: #b8d96a;
+  --warn: #ffd27a;
+  --danger: #ff8a6b;
+
+  --scrim: rgb(0 0 0 / 0.72);
+}
+/* Green phosphor: the classic green-screen. The accent is a pale bright green,
+   and `ok` shares the ink's own green. Every pair measured in docs/accessibility.md. */
+:root[data-theme="green"] {
+  color-scheme: dark;
+
+  --background: #03110a;
+  --foreground: #5dfc8d;
+  --card: #071a10;
+  --card-foreground: #5dfc8d;
+  --popover: #071a10;
+  --popover-foreground: #5dfc8d;
+  --primary: #5dfc8d;
+  --primary-foreground: #03110a;
+  --secondary: #071a10;
+  --secondary-foreground: #5dfc8d;
+  --muted: #071a10;
+  --muted-foreground: #46c873;
+  --accent: #0d2617;
+  --accent-foreground: #5dfc8d;
+  --destructive: #ff8f85;
+  --destructive-foreground: #03110a;
+  --border: #183a25;
+  --input: #2f8a52;
+  --ring: #dcffe6;
+
+  --today: #ff8f85;
+  --today-foreground: #03110a;
+
+  --ok: #5dfc8d;
+  --warn: #ffd27a;
+  --danger: #ff8f85;
+
+  --scrim: rgb(0 0 0 / 0.72);
+}
+/* Gruvbox (dark): the well-known warm retro scheme, whose orange keeps the
+   app's accent hue. Every pair measured in docs/accessibility.md. */
+:root[data-theme="gruvbox"] {
+  color-scheme: dark;
+
+  --background: #282828;
+  --foreground: #ebdbb2;
+  --card: #32302f;
+  --card-foreground: #ebdbb2;
+  --popover: #32302f;
+  --popover-foreground: #ebdbb2;
+  --primary: #ebdbb2;
+  --primary-foreground: #282828;
+  --secondary: #32302f;
+  --secondary-foreground: #ebdbb2;
+  --muted: #32302f;
+  --muted-foreground: #bdae93;
+  --accent: #3c3836;
+  --accent-foreground: #ebdbb2;
+  --destructive: #fb6b5b;
+  --destructive-foreground: #282828;
+  --border: #504945;
+  --input: #928374;
+  --ring: #fe8019;
+
+  --today: #fb6b5b;
+  --today-foreground: #282828;
+
+  --ok: #b8bb26;
+  --warn: #fabd2f;
+  --danger: #fb6b5b;
+
+  --scrim: rgb(0 0 0 / 0.72);
+}
+
 /* Map the tokens above into Tailwind's theme so `bg-background`,
    `text-muted-foreground`, `rounded-lg`, `font-display` etc. resolve. */
 @theme inline {
