@@ -6,12 +6,9 @@ import {
 } from "./notification.js";
 
 describe("notification schemas", () => {
-  it("accepts known kinds", () => {
+  it("accepts known kinds and rejects unknown ones", () => {
     expect(notificationKindSchema.safeParse("mention").success).toBe(true);
     expect(notificationKindSchema.safeParse("expense_submitted").success).toBe(true);
-  });
-
-  it("rejects unknown kinds", () => {
     expect(notificationKindSchema.safeParse("task_deleted").success).toBe(false);
   });
 });
@@ -28,11 +25,8 @@ describe("notificationSchema", () => {
     createdAt: new Date().toISOString(),
   };
 
-  it("accepts a row with no deep-link target", () => {
+  it("accepts a row with or without a deep-link target", () => {
     expect(notificationSchema.safeParse(base).success).toBe(true);
-  });
-
-  it("accepts a row with a deep-link target", () => {
     expect(
       notificationSchema.safeParse({
         ...base,

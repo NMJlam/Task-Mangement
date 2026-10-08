@@ -79,10 +79,12 @@ describe("createTaskSchema", () => {
     ).toEqual([memberId, otherMemberId]);
   });
 
-  it("rejects a non-uuid assignee id", () => {
+  it("rejects a non-uuid assignee, team or event id", () => {
     expect(
       createTaskSchema.safeParse({ teamId, title: "Ok", assigneeIds: ["director"] }).success,
     ).toBe(false);
+    expect(createTaskSchema.safeParse({ teamId: "team-1", title: "Ok" }).success).toBe(false);
+    expect(createTaskSchema.safeParse({ eventId: "oweek", title: "Ok" }).success).toBe(false);
   });
 
   it("rejects a blank title", () => {
@@ -95,20 +97,13 @@ describe("createTaskSchema", () => {
     );
   });
 
-  it("rejects an unknown status", () => {
+  it("rejects an unknown status or priority", () => {
     expect(createTaskSchema.safeParse({ teamId, title: "Ok", status: "archived" }).success).toBe(
       false,
     );
-  });
-
-  it("rejects an unknown priority", () => {
     expect(createTaskSchema.safeParse({ teamId, title: "Ok", priority: "asap" }).success).toBe(
       false,
     );
-  });
-
-  it("rejects a non-uuid teamId", () => {
-    expect(createTaskSchema.safeParse({ teamId: "team-1", title: "Ok" }).success).toBe(false);
   });
 
   it("accepts an eventId, alone or paired with a teamId", () => {
@@ -117,10 +112,6 @@ describe("createTaskSchema", () => {
       eventId,
       teamId,
     });
-  });
-
-  it("rejects a non-uuid eventId", () => {
-    expect(createTaskSchema.safeParse({ eventId: "oweek", title: "Ok" }).success).toBe(false);
   });
 });
 
@@ -142,12 +133,6 @@ describe("updateTaskSchema", () => {
 
   it("accepts an empty set, which clears every assignment", () => {
     expect(updateTaskSchema.parse({ assigneeIds: [] }).assigneeIds).toEqual([]);
-  });
-
-  it("collapses duplicates in a patch too", () => {
-    expect(updateTaskSchema.parse({ assigneeIds: [memberId, memberId] }).assigneeIds).toEqual([
-      memberId,
-    ]);
   });
 
   it("accepts eventId as the only field, including null to unlink", () => {

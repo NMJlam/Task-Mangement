@@ -9,11 +9,8 @@ const user = {
 };
 
 describe("authUserSchema", () => {
-  it("accepts a membership identity", () => {
+  it("accepts a membership identity, and rejects one with an invalid role", () => {
     expect(authUserSchema.safeParse(user).success).toBe(true);
-  });
-
-  it("rejects an invalid role", () => {
     expect(authUserSchema.safeParse({ ...user, role: "admin" }).success).toBe(false);
   });
 });
