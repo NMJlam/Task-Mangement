@@ -393,15 +393,24 @@ export function EventDetailPage() {
                 kind="event"
                 members={memberItems}
                 selfId={selfId}
+                // A cancelled event's thread is a read-only archive, and Messages
+                // does not list it, so there is neither a box nor a way there.
+                readOnly={
+                  event.status === "cancelled"
+                    ? "This event was cancelled, so its thread is read-only."
+                    : undefined
+                }
                 titleAction={
                   // The way back to the same conversation among the others,
                   // mirroring Messages' "View event".
-                  <Button asChild variant="outline" size="xs">
-                    <Link to={`/messages?thread=${event.channelId}`}>
-                      <MessageSquare aria-hidden="true" />
-                      Open in Messages
-                    </Link>
-                  </Button>
+                  event.status !== "cancelled" && (
+                    <Button asChild variant="outline" size="xs">
+                      <Link to={`/messages?thread=${event.channelId}`}>
+                        <MessageSquare aria-hidden="true" />
+                        Open in Messages
+                      </Link>
+                    </Button>
+                  )
                 }
                 className="min-h-[36rem] overflow-hidden rounded-xl border bg-card"
               />
