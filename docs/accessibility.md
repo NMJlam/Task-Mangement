@@ -299,6 +299,28 @@ None adds a colour pair: each uses tokens already measured above.
   "offline · retrying" is `danger` on `card`. The `$` prompt and the `●` unread
   marker are `ring` and decorative.
 
+- **Loading lines** (`LoadingLine`). A `role="status"` whose label, "Loading
+  Members…", is what a screen reader announces. The `| / - \` spinner beside it
+  is `aria-hidden`, and pure ASCII: braille and block spinners come from a taller
+  fallback font on Windows, as `░` once did. It stands still under
+  `prefers-reduced-motion`.
+- **Log tags** (`LogLine`, toasts). `[err]` and `[ok]` before a message are
+  `aria-hidden`, and the message keeps its own words: an error is still an
+  alert, and a success still a status. Toasts carry the same tags in place of
+  icons.
+- **Shell empty states** (`ShellEmpty`). The `$ ls tasks/` prompt line is
+  `aria-hidden` decoration in `muted-foreground`, and the empty message beneath
+  it reads exactly as before.
+- **The ASCII wordmark** (`AsciiWordmark`, the sidebar and the login screen). A
+  `role="img"` named "MAC", so its slashes and bars are never read out. It is
+  pure ASCII, so the art lines up in any monospace font.
+- **The ruled stat grid** (the Overview's "At a glance"). A definition list,
+  each tiny uppercase label (`muted-foreground`, 11px) paired with its figure.
+  The 1px rules are `--border` hairlines that group content.
+- **The login dither.** A decorative dot pattern of the screen's ink at 14%,
+  masked so it fades out before reaching any text. Forced colours drop it with
+  the other background images.
+
 ## ⚠️ Re-run this after any palette change
 
 These numbers are current for the terminal palette. Recompute them whenever a
