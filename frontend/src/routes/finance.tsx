@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { StatusBadge } from "@/components/common/status-badge";
 import { TextMeter } from "@/components/common/text-meter";
 import { Button } from "@/components/ui/button";
@@ -245,8 +246,8 @@ export function FinancePage() {
         )}
         {finance.expenses.status === "ok" && finance.expenses.items.length === 0 && (
           <Card className="border-dashed shadow-none">
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              No expenses have been logged yet.
+            <CardContent className="py-2">
+              <ShellEmpty command="ls expenses/" message={"No expenses have been logged yet."} />
             </CardContent>
           </Card>
         )}

@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useRef, useState } from "react";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { TaskCard } from "@/components/tasks/task-card";
 import { TaskDetailDialog } from "@/components/tasks/task-detail-dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -190,8 +191,8 @@ export function TaskBoard({
   if (tasks.length === 0) {
     return (
       <Card className="border-dashed shadow-none">
-        <CardContent className="py-12 text-center text-sm text-muted-foreground">
-          {emptyMessage}
+        <CardContent className="py-2">
+          <ShellEmpty command="ls tasks/" message={emptyMessage} />
         </CardContent>
       </Card>
     );

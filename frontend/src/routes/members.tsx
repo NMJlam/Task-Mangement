@@ -9,6 +9,7 @@ import {
 import { useRef, useState } from "react";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
+import { ShellEmpty } from "@/components/common/shell-empty";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { canSetLead, MemberTeams, staffableTeams } from "@/components/members/member-teams";
 import { RoleChangeDialog, roleLabel } from "@/components/members/role-change-dialog";
@@ -89,8 +90,8 @@ export function MembersPage() {
       )}
       {members.state.status === "ok" && items.length === 0 && (
         <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No club members were found.
+          <CardContent className="py-2">
+            <ShellEmpty command="ls members/" message={"No club members were found."} />
           </CardContent>
         </Card>
       )}
