@@ -88,24 +88,21 @@ it("names the time of the last sync once the feed falls behind", () => {
   expect(screen.getByRole("contentinfo")).toHaveTextContent(/last sync \d{1,2}:\d{2}/);
 });
 
-it("says connecting before the first read", () => {
-  render(
+it("says connecting before the first read, and offline once the latest read failed", () => {
+  const { rerender } = render(
     <Shell value={feed({})}>
       <StatusLine member={member} />
     </Shell>,
   );
+  const line = screen.getByRole("contentinfo");
+  expect(line).toHaveTextContent("connecting…");
 
-  expect(screen.getByRole("contentinfo")).toHaveTextContent("connecting…");
-});
-
-it("says offline when the latest read failed, not how long ago the last good one was", () => {
-  render(
+  // Offline wins over a good read from before: it is the latest that counts.
+  rerender(
     <Shell value={feed({ syncedAt: new Date(), stale: true })}>
       <StatusLine member={member} />
     </Shell>,
   );
-
-  const line = screen.getByRole("contentinfo");
   expect(line).toHaveTextContent("offline · retrying");
   expect(line).not.toHaveTextContent("synced");
 });

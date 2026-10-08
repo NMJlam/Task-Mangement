@@ -344,12 +344,17 @@ describe("MessagesPage", () => {
     expect(box).toHaveValue("");
   });
 
-  it("links an event's thread to the Thread tab of that event", async () => {
+  it("links an event's thread to that event's Thread tab, and a group to nothing", async () => {
     const eventThread = thread("018f3a4b-0000-7000-8000-0000000000a1", "Winter Showcase");
+    const groupThread = {
+      ...thread("018f3a4b-0000-7000-8000-0000000000b2", "Logistics"),
+      kind: "group",
+      eventId: null,
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string) => {
-        if (input === "/api/threads") return response({ threads: [eventThread] });
+        if (input === "/api/threads") return response({ threads: [eventThread, groupThread] });
         if (input === "/api/members") return response({ members: [] });
         return response({ messages: [], nextCursor: null });
       }),
@@ -361,30 +366,7 @@ describe("MessagesPage", () => {
       "href",
       `/events/${eventThread.eventId}?tab=thread`,
     );
-  });
-
-  it("offers no event link on a conversation that is not an event's", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string) => {
-        if (input === "/api/threads") {
-          return response({
-            threads: [
-              {
-                ...thread("018f3a4b-0000-7000-8000-0000000000b2", "Logistics"),
-                kind: "group",
-                eventId: null,
-              },
-            ],
-          });
-        }
-        if (input === "/api/members") return response({ members: [] });
-        return response({ messages: [], nextCursor: null });
-      }),
-    );
-
-    renderPage();
-
+    fireEvent.click(screen.getByRole("button", { name: /logistics/i }));
     await screen.findByRole("heading", { name: "Logistics" });
     expect(screen.queryByRole("link", { name: "View event" })).not.toBeInTheDocument();
   });

@@ -2,20 +2,11 @@ import { describe, expect, it } from "vitest";
 import { budgetSummaryToCsv, escapeCsvField, toCsvRow } from "./csv";
 
 describe("escapeCsvField", () => {
-  it("leaves a plain field alone", () => {
+  it("leaves a plain field alone, and quotes one with a comma, a quote or a newline", () => {
     expect(escapeCsvField("Printing")).toBe("Printing");
     expect(escapeCsvField(12.5)).toBe("12.5");
-  });
-
-  it("quotes a field containing a comma", () => {
     expect(escapeCsvField("Venue, deposit")).toBe('"Venue, deposit"');
-  });
-
-  it("quotes and doubles internal quotes", () => {
     expect(escapeCsvField('The "big" event')).toBe('"The ""big"" event"');
-  });
-
-  it("quotes a field containing a newline", () => {
     expect(escapeCsvField("Line one\nLine two")).toBe('"Line one\nLine two"');
   });
 });
@@ -53,14 +44,10 @@ describe("budgetSummaryToCsv", () => {
     expect(lines[1]).toBe("100.00,50.00,12.50,7.50,50.00,at_risk");
   });
 
-  it("includes an allocation-by-event section", () => {
-    expect(budgetSummaryToCsv(summary)).toContain(
-      "Event,Allocated,Committed,Spent\nSemester Hackathon,25.00,30.00,10.00",
-    );
-  });
-
-  it("includes a spend-by-category section", () => {
-    expect(budgetSummaryToCsv(summary)).toContain("Category,Committed,Spent\ncatering,12.50,7.50");
+  it("includes the allocation-by-event and spend-by-category sections", () => {
+    const csv = budgetSummaryToCsv(summary);
+    expect(csv).toContain("Event,Allocated,Committed,Spent\nSemester Hackathon,25.00,30.00,10.00");
+    expect(csv).toContain("Category,Committed,Spent\ncatering,12.50,7.50");
   });
 
   it("omits a section entirely when its list is empty", () => {

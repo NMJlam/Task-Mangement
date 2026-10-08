@@ -87,23 +87,6 @@ describe("FinancePage", () => {
     expect(meter.querySelector('[data-run="on"]')).toHaveAttribute("data-cells", "1");
   });
 
-  it("nests the money tiles under the Club budget heading", async () => {
-    stubFetch({});
-    renderPage();
-
-    await screen.findByRole("heading", { level: 2, name: "Club budget" });
-    for (const name of ["Budget", "Allocated", "Available", "Committed", "Spent"]) {
-      expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
-    }
-  });
-
-  it("puts Log Expense under a real heading", async () => {
-    stubFetch({});
-    renderPage();
-
-    expect(await screen.findByRole("region", { name: "Log Expense" })).toBeInTheDocument();
-  });
-
   it("renders the budget fields the endpoint returns", async () => {
     stubFetch({});
 
@@ -132,6 +115,14 @@ describe("FinancePage", () => {
     const byCategory = screen.getByRole("region", { name: /spend by category/i });
     expect(within(byCategory).getByText("catering")).toBeInTheDocument();
     expect(within(byCategory).getByText("$12.50")).toBeInTheDocument();
+
+    // The money tiles sit under the "Club budget" h2 as h3s, not as sibling
+    // h2s, and Log Expense has a heading of its own.
+    expect(screen.getByRole("heading", { level: 2, name: "Club budget" })).toBeInTheDocument();
+    for (const name of ["Budget", "Allocated", "Available", "Committed", "Spent"]) {
+      expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("region", { name: "Log Expense" })).toBeInTheDocument();
   });
 
   it("pages the ledger and says how much of it is on screen", async () => {
