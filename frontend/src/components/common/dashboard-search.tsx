@@ -81,19 +81,19 @@ export function DashboardSearch({
         <Button variant="outline" aria-keyshortcuts="Meta+K Control+K">
           <Search aria-hidden="true" />
           Search
-          <kbd className="hidden rounded border bg-secondary px-1.5 py-0.5 font-sans text-[0.625rem] text-muted-foreground sm:inline">
+          <kbd className="hidden rounded-none border bg-secondary px-1.5 py-0.5 text-[0.625rem] text-muted-foreground sm:inline">
             ⌘ K
           </kbd>
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-foreground/25 backdrop-blur-xs" />
-        <Dialog.Content className="fixed top-[15%] left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border bg-card shadow-xl">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim" />
+        <Dialog.Content className="fixed top-[15%] left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border bg-card">
           <Dialog.Title className="sr-only">Search Club Workspace</Dialog.Title>
           <Dialog.Description className="sr-only">
             Search tasks, events, and club members.
           </Dialog.Description>
-          <div className="flex items-center gap-3 border-b px-4 focus-within:ring-3 focus-within:ring-ring/50 focus-within:ring-inset">
+          <div className="flex items-center gap-3 border-b px-4 focus-within:ring-inset">
             <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <label htmlFor="dashboard-search" className="sr-only">
               Search Club Workspace
@@ -132,9 +132,9 @@ export function DashboardSearch({
                   key={result.id}
                   to={result.to}
                   onClick={() => changeOpen(false)}
-                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 hover:bg-secondary focus-visible:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 hover:bg-accent focus-visible:bg-accent"
                 >
-                  <span className="rounded-md bg-secondary p-2 text-muted-foreground">
+                  <span className="bg-accent p-2 text-muted-foreground">
                     <Icon aria-hidden="true" className="size-4" />
                   </span>
                   <span className="min-w-0">

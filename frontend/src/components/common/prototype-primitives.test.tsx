@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PageHeader } from "./page-header";
-import { StatusBadge, statusStyles } from "./status-badge";
+import { StatusBadge, statusStyles, toneChip, toneText } from "./status-badge";
 import { UserAvatar } from "./user-avatar";
 
 describe("prototype primitives", () => {
@@ -25,22 +25,29 @@ describe("prototype primitives", () => {
    * tinted badge shipped with `dark:bg-*-950` and no `dark:text-*`, leaving
    * `-700`/`-800` text on a near-black tint at 2.1–2.8:1 against AA's 4.5:1.
    *
-   * Asserted over the whole map rather than a sample, because the failure mode
-   * is one entry being added later without its dark half — and the axe e2e scan
-   * cannot catch it, since a `dark:` class is inert in a light-mode page.
+   * The tint pairs are gone - a status is now coloured text from a THEME TOKEN,
+   * and `index.css` defines every token in both themes - so the shape that
+   * failed can no longer be written. What can regress is a hand-added Tailwind
+   * palette class (`bg-emerald-50`), which reintroduces a per-theme colour that
+   * axe cannot see in a light-mode page. That is what this asserts over, for
+   * every status, because the failure mode is one entry added later.
    */
-  it("pairs every dark background tint with a dark foreground (WCAG AA, R13)", () => {
-    const tinted = Object.entries(statusStyles).filter(([, style]) =>
-      style.className.includes("dark:bg-"),
-    );
-    // Guards the guard: a refactor that renamed the tint classes would otherwise
-    // leave this test passing over an empty list.
-    expect(tinted.length).toBe(10);
+  it("colours every status from a theme token, never the Tailwind palette (WCAG AA, R13)", () => {
+    const paletteColour =
+      /\b(?:emerald|amber|red|green|yellow|orange|rose|indigo|violet|sky|blue|teal|stone|zinc|slate|gray|neutral)-[0-9]/;
 
-    for (const [status, style] of tinted) {
-      expect(style.className, `${status} has a dark background with no dark text colour`).toMatch(
-        /dark:text-/,
-      );
+    // Guards the guard: a refactor that emptied the vocabulary would otherwise
+    // leave this passing over nothing.
+    expect(Object.keys(statusStyles)).toHaveLength(15);
+
+    for (const [status, style] of Object.entries(statusStyles)) {
+      const classes = [toneText[style.tone], toneChip[style.tone]];
+      for (const className of classes) {
+        expect(className, `${status} must not name a Tailwind palette colour`).not.toMatch(
+          paletteColour,
+        );
+        expect(className, `${status} must not carry a dark: half`).not.toMatch(/dark:/);
+      }
     }
   });
 });
