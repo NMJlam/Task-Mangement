@@ -30,12 +30,9 @@ const expense = {
 } as const;
 
 describe("expense schemas", () => {
-  it("accepts known statuses and categories", () => {
+  it("accepts known statuses and categories, and rejects unknown ones", () => {
     expect(expenseStatusSchema.safeParse("approved").success).toBe(true);
     expect(expenseCategorySchema.safeParse("catering").success).toBe(true);
-  });
-
-  it("rejects unknown statuses and categories", () => {
     expect(expenseStatusSchema.safeParse("refunded").success).toBe(false);
     expect(expenseCategorySchema.safeParse("Food").success).toBe(false);
   });

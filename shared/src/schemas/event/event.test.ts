@@ -10,11 +10,8 @@ import {
 } from "./event.js";
 
 describe("eventStatusSchema", () => {
-  it("accepts known statuses", () => {
+  it("accepts known statuses and rejects unknown ones", () => {
     expect(eventStatusSchema.safeParse("cancelled").success).toBe(true);
-  });
-
-  it("rejects unknown statuses", () => {
     expect(eventStatusSchema.safeParse("deleted").success).toBe(false);
   });
 });
@@ -87,11 +84,8 @@ describe("eventStatusTransitions", () => {
     );
   });
 
-  it("never targets cancelled — DELETE owns that state", () => {
-    const targets = Object.values(eventStatusTransitions).flat();
-    expect(targets).not.toContain("cancelled");
-  });
-
+  // The endpoint refuses `cancelled` (DELETE owns it), so this also keeps
+  // every edge from targeting it.
   it("keeps every edge inside the vocabulary the status endpoint accepts", () => {
     for (const targets of Object.values(eventStatusTransitions)) {
       for (const target of targets) {

@@ -9,12 +9,9 @@ const member = {
 };
 
 describe("member schemas", () => {
-  it("accepts a member and role change", () => {
+  it("accepts a member and a role change, and rejects mismatched or unknown roles", () => {
     expect(memberSchema.safeParse(member).success).toBe(true);
     expect(changeMemberRoleSchema.safeParse({ role: "president" }).success).toBe(true);
-  });
-
-  it("rejects mismatched and unknown roles", () => {
     expect(memberSchema.safeParse({ ...member, tier: 4 }).success).toBe(false);
     expect(changeMemberRoleSchema.safeParse({ role: "admin" }).success).toBe(false);
   });
