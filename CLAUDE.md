@@ -73,8 +73,8 @@ Accounts may exist without membership. `db:seed` is idempotent.
 ## Conventions
 
 - **Stub markers:** unfinished logic carries `TODO(Rn)` naming the requirement it
-  implements (e.g. `TODO(R7)`), or `TODO(theme)` / `TODO(Vercel path)` for the
-  known follow-ups. Grep these to find open work.
+  implements (e.g. `TODO(R7)`), or `TODO(Vercel path)` for the known deploy
+  follow-up. Grep these to find open work.
 - **shadcn-first:** always prefer a shadcn/Radix component over a hand-rolled
   one — that's where keyboard nav + ARIA (R14, US-21) come from. If you must hand-
   roll an interactive element, justify it in the PR and add keyboard handling.
@@ -82,8 +82,13 @@ Accounts may exist without membership. `db:seed` is idempotent.
 - **ViewModel layer:** data-fetching/state lives in `frontend/src/hooks/` (MVVM);
   `routes/` components stay declarative.
 - **Theme:** colours are CSS variables in `frontend/src/index.css` (Tailwind v4
-  `@theme`). `TODO(theme)` marks the MAC palette swap; re-run the contrast check
-  in `docs/accessibility.md` after any change.
+  `@theme`), one palette in two directions — light and dark both define every
+  token, so no colour carries a `dark:` half. The look is a terminal: all-sharp
+  corners, hairline rules, monospace throughout, Departure Mono (vendored, SIL
+  OFL — see `docs/stack-versions.md`) for display type. There is no filled brand
+  colour: `--primary` is inverse video and `--ring` is the single accent, used
+  for focus, markers and status. Re-run the contrast check in
+  `docs/accessibility.md` after any change.
 
 ## The one command
 

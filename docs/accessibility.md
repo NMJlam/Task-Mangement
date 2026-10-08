@@ -12,9 +12,10 @@ Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
     at it with `E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD`. Without both the
     scans **skip** with that reason rather than failing — a machine with no dev
     member cannot answer the question, and a scan that silently covered only the
-    login page would be worse than one that says it did not run. A role of lead
-    or above is worth using: it renders the tier-gated controls (status
-    transitions, New Event) that a tier-0 member never sees.
+    login page would be worse than one that says it did not run. Use `officer` or
+    `lead`: a **tier-2 office that is not `officer`** renders the self-demotion
+    overlay on every navigation, and an open modal is what the event-page scan
+    waits past — `president` fails it for a fixture reason, not a contrast one.
   - `axe` checks the rendered DOM, so a route still on its skeleton passes
     trivially. Each scan waits for `main` before analysing.
 - **Radix primitives**: every interactive control comes from shadcn/Radix, which
@@ -44,27 +45,53 @@ Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
 ## Contrast table
 
 WCAG 2.1 AA requires **≥ 4.5:1** for normal body text. Ratios computed from the
-oklch tokens in `frontend/src/index.css` (converted oklch → linear sRGB → WCAG
-relative luminance). Light theme:
+hex tokens in `frontend/src/index.css` (sRGB → relative luminance →
+`(L1+0.05)/(L2+0.05)`).
+
+The palette is one system in two directions. Every token is defined in both
+`:root` and `.dark`, so a pair cannot be "half-migrated" the way the old
+`bg-emerald-50` / `dark:bg-emerald-950` tints could — that failure is recorded
+below and is now unrepresentable.
+
+Light theme — page `#fcfbf9`, panel `#f5f3ef`, ink `#14140f`, muted `#5d5b53`,
+accent `#cc3700`:
 
 | Token pair                                | Ratio   | AA (4.5:1) |
 | ----------------------------------------- | ------- | ---------- |
-| `foreground` on `background`              | 16.34:1 | ✅ PASS    |
-| `card-foreground` on `card`               | 17.07:1 | ✅ PASS    |
-| `primary-foreground` on `primary`         | 16.34:1 | ✅ PASS    |
-| `secondary-foreground` on `secondary`     | 9.64:1  | ✅ PASS    |
-| `accent-foreground` on `accent`           | 6.44:1  | ✅ PASS    |
-| `muted-foreground` on `background`        | 4.88:1  | ✅ PASS    |
-| `foreground` on `bg-muted/40` tint        | 15.78:1 | ✅ PASS    |
-| `secondary-foreground` on `secondary`     | 9.64:1  | ✅ PASS    |
-| `destructive-foreground` on `destructive` | 4.87:1  | ✅ PASS    |
+| `foreground` on `background`              | 17.86:1 | ✅ PASS    |
+| `card-foreground` on `card`               | 16.67:1 | ✅ PASS    |
+| `primary-foreground` on `primary`         | 17.86:1 | ✅ PASS    |
+| `secondary-foreground` on `secondary`     | 16.67:1 | ✅ PASS    |
+| `accent-foreground` on `accent`           | 15.65:1 | ✅ PASS    |
+| `muted-foreground` on `background`        | 6.58:1  | ✅ PASS    |
+| `muted-foreground` on `card`              | 6.14:1  | ✅ PASS    |
+| `ring` on `background`                    | 4.94:1  | ✅ PASS    |
+| `ring` on `card`                          | 4.61:1  | ✅ PASS    |
+| `background` on `ring` (`::selection`)    | 4.94:1  | ✅ PASS    |
+| `destructive-foreground` on `destructive` | 6.32:1  | ✅ PASS    |
 | `today-foreground` on `today`             | 5.66:1  | ✅ PASS    |
 
-### Adjustment made
+Dark theme — page `#12120f`, panel `#1b1b17`, ink `#f2f1ec`, muted `#a3a099`,
+accent `#ff6b3d`:
 
-The FE prototype's `muted` text was darkened from `#78766f` (**4.35:1**) to
-`#706e68` (**4.88:1**) so normal copy clears AA. `destructive` passes at
-**4.87:1**; both pairs should be re-checked after any palette change.
+| Token pair                                | Ratio   | AA (4.5:1) |
+| ----------------------------------------- | ------- | ---------- |
+| `foreground` on `background`              | 16.59:1 | ✅ PASS    |
+| `card-foreground` on `card`               | 15.27:1 | ✅ PASS    |
+| `primary-foreground` on `primary`         | 16.59:1 | ✅ PASS    |
+| `secondary-foreground` on `secondary`     | 15.27:1 | ✅ PASS    |
+| `accent-foreground` on `accent`           | 14.14:1 | ✅ PASS    |
+| `muted-foreground` on `background`        | 7.19:1  | ✅ PASS    |
+| `muted-foreground` on `card`              | 6.62:1  | ✅ PASS    |
+| `ring` on `background`                    | 6.63:1  | ✅ PASS    |
+| `ring` on `card`                          | 6.11:1  | ✅ PASS    |
+| `background` on `ring` (`::selection`)    | 6.63:1  | ✅ PASS    |
+| `destructive-foreground` on `destructive` | 9.16:1  | ✅ PASS    |
+
+**`ring` is the thinnest meaningful pair in light mode (4.61:1 on a panel).** It
+is the accent: the focus outline, the active-nav marker bar and the tab
+underline, plus the `accent` status tone. Do not put it on `--accent` — the
+hover wash measures **4.32:1** there and would fail.
 
 The calendar's current day is `today`, a red of its own rather than
 `destructive`. Its date badge is `today-foreground` on `today`: white on
@@ -73,89 +100,107 @@ dark. Only the badge is red; the cell is not tinted, because a tint would thin
 `muted-foreground` inside it. Today also carries `aria-current="date"`, so the
 red is not the only signal.
 
-`muted-foreground` has so little headroom that it must never be faded further.
-The calendar's adjacent-month day cells are tinted with `bg-muted/40` (over
-`background` that is **#f6f6f5**) instead of dimmed: the day number stays at
-**15.78:1**. Fading the text to 60% opacity, as the shadcn `react-day-picker`
-wrapper does by default, measures **2.38:1** and would fail AA — its outside
-days and this grid's cells both carry full-strength colour as a result. Event
-chips on `secondary` use `secondary-foreground` (**9.64:1**) rather than
-`muted-foreground` (**4.51:1**), which is the thinnest pair in the palette.
+### Non-text contrast (1.4.11)
 
-### Status tints (Tailwind palette, not app tokens)
+| Boundary                      | Light     | Dark      |
+| ----------------------------- | --------- | --------- |
+| `--input` vs the page         | 3.25:1 ✅ | 3.50:1 ✅ |
+| `--input` vs a panel (`card`) | 3.03:1 ✅ | 3.22:1 ✅ |
 
-`StatusBadge` and (since the calendar's chips took the same mapping) the event
-chips render text on Tailwind palette tints. Those pairs are not among the oklch
-tokens above, so they are measured separately — same method:
+`--input` is deliberately darker than `--border` for this reason: a hairline
+(`--border`, 1.27:1 light) groups panels, which 1.4.11 does not cover, whereas a
+field boundary has to be perceivable on its own. Outlined buttons keep the
+hairline and are identified by their label; the boundary goes to full ink on
+hover and to `ring` on focus.
 
-| Status                                         | Pair (light → dark)                        | Light     | Dark       |
-| ---------------------------------------------- | ------------------------------------------ | --------- | ---------- |
-| `planning`, `approved`, `in_progress`          | `accent-foreground` on `accent`            | 6.44:1 ✅ | token pair |
-| `wrapped`, `todo`                              | `secondary-foreground` on `secondary`      | 9.64:1 ✅ | token pair |
-| `live`, `paid`, `done`, `on_track`             | `emerald-700/50` → `emerald-300` on `-950` | 5.27:1 ✅ | 9.94:1 ✅  |
-| `pending`, `at_risk`                           | `amber-800/50` → `amber-200` on `-950`     | 6.84:1 ✅ | 12.03:1 ✅ |
-| `cancelled`, `rejected`, `blocked`, `critical` | `red-700/50` → `red-300` on `-950`         | 5.92:1 ✅ | 8.51:1 ✅  |
+## Status colour
 
-Both modes now clear AA on all five rows.
+`common/status-badge.tsx` owns the vocabulary; the calendar's chips colour
+themselves from the same map, so a chip and the badge behind it cannot disagree
+about the same row. A status is coloured **text on a panel**, never a filled
+pill, and the colour comes from `--ok` / `--warn` / `--danger` / `--ring`, which
+both themes define:
 
-**This was a real failure, fixed rather than recorded.** The three tinted rows
-shipped with `dark:bg-*-950` and no `dark:text-*`, leaving the light `-700`/`-800`
-text on a near-black tint at **2.71:1**, **2.11:1** and **2.50:1** — all under
-AA's 4.5:1, across `StatusBadge` and the calendar chips that share its mapping.
-Adding the dark foregrounds also lifts every pair past AAA (7:1).
+| Tone               | Statuses                               | Light on card | Dark on card |
+| ------------------ | -------------------------------------- | ------------- | ------------ |
+| `ok` (green)       | live, paid, done, on_track             | 5.96:1 ✅     | 9.27:1 ✅    |
+| `warn` (amber)     | pending, at_risk                       | 5.71:1 ✅     | 10.39:1 ✅   |
+| `danger` (red)     | cancelled, rejected, blocked, critical | 5.90:1 ✅     | 8.43:1 ✅    |
+| `ring` (accent)    | planning, approved, in_progress        | 4.61:1 ✅     | 6.11:1 ✅    |
+| `muted-foreground` | wrapped, todo                          | 6.14:1 ✅     | 6.62:1 ✅    |
 
-Two things kept it hidden, both now closed:
+The calendar needs a chip that holds two lines of its own text, so it takes the
+same tone as a **wash** and sets the text in ink rather than in the tone colour:
 
-1. **The axe scans ran light-mode only**, where a `dark:` class is inert. `e2e/a11y.spec.ts` now scans each page twice, setting `localStorage.theme = "dark"`
-   before the second pass.
-2. **Nothing asserted the pairing.** `statusStyles` is now built from a named
-   `tints` map, and `prototype-primitives.test.tsx` asserts that all ten tinted
-   entries carry a `dark:text-*` — a unit-level guard, because a `dark:` class
-   that is never rendered is invisible to axe either way.
+| Chip wash (15% tone over `card`) | Light wash | Ink on it  | Dark wash | Ink on it  |
+| -------------------------------- | ---------- | ---------- | --------- | ---------- |
+| `ok`                             | `#d2dfd4`  | 13.41:1 ✅ | `#25372b` | 11.19:1 ✅ |
+| `warn`                           | `#e5dbcb`  | 13.48:1 ✅ | `#3c3423` | 10.87:1 ✅ |
+| `danger`                         | `#ebd4d0`  | 13.07:1 ✅ | `#3d2e29` | 11.45:1 ✅ |
+| `ring` (accent)                  | `#efd7cb`  | 13.42:1 ✅ | `#3d271d` | 12.33:1 ✅ |
 
-Recompute these after the MAC palette swap; the method is unchanged.
+Ink-on-wash is the rule for every tone, and that is a measurement, not a style
+preference: the tone colour on its own wash holds for green (4.80:1), amber
+(4.62:1) and red (4.63:1) but **fails for the accent at 3.71:1**. One rule that
+holds for all five tones beats a rule with an exception nobody would remember.
+The chip's status is in its accessible name, so the wash is decoration rather
+than the only carrier of the value.
 
-### Faded text on an inverting panel (login)
+### The failure this replaced
 
-The dark-mode scan found this on its first run, which is the case for adding it.
+The three tinted rows used to render Tailwind palette tints — `bg-emerald-50`
+with `dark:bg-emerald-950` and no `dark:text-*` — leaving light `-700`/`-800`
+text on a near-black tint at **2.71:1**, **2.11:1** and **2.50:1** across
+`StatusBadge` and the calendar chips that shared its mapping. Two things hid it,
+both now closed: the axe scans ran light-mode only (they now scan each page
+twice, setting `localStorage.theme = "dark"` before the second pass), and
+nothing asserted the pairing. `prototype-primitives.test.tsx` now asserts that
+**no status resolves to a Tailwind palette colour and none carries a `dark:`
+half** — a unit-level guard, because a `dark:` class is invisible to axe either
+way.
 
-`--primary` **inverts between themes** — a near-black panel with near-white text
-in light mode (`#1c1c1a` / `#fafaf9`), a near-white panel with near-black text in
-dark (`#ececef` / `#16161a`). So a `text-primary-foreground/NN` that reads
-comfortably in light mode is **weaker** in dark, not stronger, and the usual
-intuition that dark mode is the forgiving one is exactly backwards here.
+## The terminal screen panel (login)
 
-Measured on the login panel, blended against `--primary` in each theme:
+The login page's brand half is a terminal screen, not a page section: it keeps
+the **same dark colour in both themes** (`--screen` `#14140f`). The previous
+split screen used `bg-primary`, which inverts — in dark mode the "dark" panel
+came out near-white, and a `/NN` faded text that read comfortably in light was
+_weaker_ in dark, not stronger. The usual intuition that dark mode is the
+forgiving one is exactly backwards for an inverting panel.
 
-| Opacity | Light    | Dark     | Used by                      |
-| ------- | -------- | -------- | ---------------------------- |
-| `/50`   | 5.00 ✅  | **3.29** | club name (footer)           |
-| `/60`   | 6.61 ✅  | **4.46** | "One calm workspace" eyebrow |
-| `/65`   | 7.54 ✅  | 5.24 ✅  | "Club Operations"            |
-| `/70`   | 8.54 ✅  | 6.18 ✅  | body copy                    |
-| `/80`   | 10.79 ✅ | 8.65 ✅  | feature list                 |
+Measuring against a fixed colour instead of an inverting one is what makes these
+floors hold twice over. `screen-foreground` (`#f2f1ec`) on `--screen` is
+**16.34:1**, and the faded scale is:
 
-Both failing rows were raised to `/65`, which is now the **floor for faded text
-on this panel**. Note `/60` at 4.46:1 — under AA by 0.04, close enough that axe
-reported only the `/50` node; it was found by measuring the whole scale rather
-than by fixing what the scanner pointed at.
+| Opacity | Ratio   | Used by                    |
+| ------- | ------- | -------------------------- |
+| `/50`   | 4.80:1  | floor, nothing sits here   |
+| `/60`   | 6.46:1  | club name (footer)         |
+| `/65`   | 7.38:1  | "Club Operations", eyebrow |
+| `/70`   | 8.39:1  | body copy                  |
+| `/80`   | 10.69:1 | feature list               |
 
-`text-muted-foreground/40` on the calendar's **disabled** day buttons is left
-alone: disabled controls are exempt from 1.4.3, and axe skips them.
+The accent cannot be used for text on the screen: `--ring` in light mode
+(`#cc3700`) measures **3.62:1** on `#14140f`. `--screen-accent` (`#ff6b3d`, the
+dark direction's orange) is fixed at **6.53:1** for the check glyphs there.
 
-⚠️ **The signed-in pages have not been scanned in dark mode yet.** Those scans
-skip without `E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD`, which CI does not set,
-so only the login page has been through both themes. Expect the first
-credentialed run to find more, the same way this one did.
+## Faded text elsewhere
 
-Chips are otherwise colour-neutral where it matters: the chip body takes the
-status tint and both its lines **inherit** that colour, so no unchecked pair is
-introduced, and hover is a ring rather than a background swap for the same
-reason. The chip's status is also in its accessible name, so the tint is
-decoration rather than the only carrier of the value.
+- `muted-foreground` has the least headroom of the neutral pairs (4.61:1 for
+  `ring`, 6.14:1 for itself on a panel). It must never be faded further.
+- The calendar's adjacent-month day cells are tinted with `bg-foreground/5`
+  instead of dimmed, so the day number keeps its full-strength colour. Fading the
+  text to 60% opacity, as the shadcn `react-day-picker` wrapper does by default,
+  measures **2.38:1** and would fail AA — its outside days and this grid's cells
+  both carry full-strength colour as a result.
+- `text-muted-foreground/40` on the calendar's **disabled** day buttons is left
+  alone: disabled controls are exempt from 1.4.3, and axe skips them.
 
-### ⚠️ Re-run this after the theme swap
+## ⚠️ Re-run this after any palette change
 
-These numbers are for the FE prototype palette. Recompute them whenever the
-palette changes; `muted-foreground` and `destructive-foreground` have the least
-headroom. The method is sRGB → relative luminance → `(L1+0.05)/(L2+0.05)`.
+These numbers are current for the terminal palette. Recompute them whenever a
+token in `frontend/src/index.css` moves; `ring`, `muted-foreground` and
+`destructive-foreground` have the least headroom. The method is sRGB → relative
+luminance → `(L1+0.05)/(L2+0.05)`, and the scans are the other half of the
+evidence: `E2E_MEMBER_EMAIL=… E2E_MEMBER_PASSWORD=… npx playwright test
+e2e/a11y.spec.ts` — 12 scans, six pages in both themes, 0 violations.
