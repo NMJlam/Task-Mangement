@@ -60,6 +60,24 @@ describe("FinancePage", () => {
    * `getBudgetSummary` and were parsed and thrown away by this page — half of
    * what the endpoint returns had nowhere to appear.
    */
+  it("draws each event's budget use as a meter, over budget in words", async () => {
+    stubFetch({});
+    renderPage();
+
+    const meter = await screen.findByRole("progressbar", {
+      name: "Semester Hackathon budget used",
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "100");
+    expect(meter).toHaveAttribute("aria-valuetext", "120% used, over budget");
+  });
+
+  it("puts Log Expense under a real heading", async () => {
+    stubFetch({});
+    renderPage();
+
+    expect(await screen.findByRole("region", { name: "Log Expense" })).toBeInTheDocument();
+  });
+
   it("renders the budget fields the endpoint returns", async () => {
     stubFetch({});
 
@@ -68,9 +86,8 @@ describe("FinancePage", () => {
     // availableCents — budget minus allocations, not derivable from the four
     // cards the page used to show. Scoped to its own card: `Allocated` happens
     // to hold the same amount, so a bare text match would pass on the wrong one.
-    await waitFor(() => expect(screen.getByText("Available")).toBeInTheDocument());
-    const available = screen.getByText("Available").parentElement;
-    expect(within(available!).getByText("$50.00")).toBeInTheDocument();
+    const available = await screen.findByRole("region", { name: "Available" });
+    expect(within(available).getByText("$50.00")).toBeInTheDocument();
 
     // risk, as the same badge an event's health strip uses
     expect(screen.getByText("At Risk")).toBeInTheDocument();
