@@ -2,6 +2,7 @@ import { can, type BudgetSummary, type Expense, type ExpenseCategory } from "@ct
 import { ArrowDownToLine } from "lucide-react";
 import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -78,9 +79,7 @@ export function FinancePage() {
         </p>
       )}
       {finance.budget.status === "loading" && (
-        <p className="mt-8 text-sm text-muted-foreground" role="status">
-          Loading Finance Data…
-        </p>
+        <LoadingLine label="Loading Finance Data…" className="mt-8" />
       )}
 
       {summary && (
@@ -238,11 +237,7 @@ export function FinancePage() {
           )}
         </div>
 
-        {finance.expenses.status === "loading" && (
-          <p className="text-sm text-muted-foreground" role="status">
-            Loading Expenses…
-          </p>
-        )}
+        {finance.expenses.status === "loading" && <LoadingLine label="Loading Expenses…" />}
         {finance.expenses.status === "error" && (
           <p className="text-sm text-destructive" role="alert">
             Couldn&apos;t load expenses: {finance.expenses.message}. Refresh the page to try again.

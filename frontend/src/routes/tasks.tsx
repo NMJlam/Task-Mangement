@@ -7,6 +7,7 @@ import {
 import { ListPlus, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { statusStyles } from "@/components/common/status-badge";
 import { TaskBoard } from "@/components/tasks/task-board";
@@ -210,11 +211,7 @@ export function TasksPage() {
           .
         </p>
       )}
-      {tasks.state.status === "loading" && (
-        <p className="mt-8 text-sm text-muted-foreground" role="status">
-          Loading Tasks…
-        </p>
-      )}
+      {tasks.state.status === "loading" && <LoadingLine label="Loading Tasks…" className="mt-8" />}
       {tasks.state.status === "error" && (
         <p className="mt-8 text-sm text-destructive" role="alert">
           Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.

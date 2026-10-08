@@ -11,6 +11,7 @@ import {
 import { useCallback, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -312,9 +313,7 @@ export function EventDetailPage() {
                 {progress.status === "ok" ? (
                   <EventRiskPanel progress={progress.progress} />
                 ) : progress.status === "loading" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Loading Risk…
-                  </p>
+                  <LoadingLine label="Loading Risk…" />
                 ) : (
                   // Deliberately soft: a missing verdict must not read as though
                   // the event itself failed to load.
@@ -355,11 +354,7 @@ export function EventDetailPage() {
               {tasks.mutationError}. Try again.
             </p>
           )}
-          {tasks.state.status === "loading" && (
-            <p className="text-sm text-muted-foreground" role="status">
-              Loading Tasks…
-            </p>
-          )}
+          {tasks.state.status === "loading" && <LoadingLine label="Loading Tasks…" />}
           {tasks.state.status === "error" && (
             <p className="text-sm text-destructive" role="alert">
               Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.

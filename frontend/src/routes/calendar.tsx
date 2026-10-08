@@ -11,6 +11,7 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge, statusStyles, toneChip } from "@/components/common/status-badge";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
@@ -375,11 +376,7 @@ export function CalendarPage() {
               {notice.text}
             </p>
           )}
-          {calendar.state.status === "loading" && (
-            <p className="text-sm text-muted-foreground" role="status">
-              Loading the Calendar…
-            </p>
-          )}
+          {calendar.state.status === "loading" && <LoadingLine label="Loading the Calendar…" />}
           {calendar.state.status === "error" && (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-sm text-destructive">
@@ -836,11 +833,7 @@ function EventOverview({
 
   return (
     <>
-      {state.status === "loading" && (
-        <p className="text-sm text-muted-foreground" role="status">
-          Loading event…
-        </p>
-      )}
+      {state.status === "loading" && <LoadingLine label="Loading event…" />}
       {state.status === "not_found" && (
         <p className="text-sm text-muted-foreground" role="alert">
           This event could not be found. It may have been cancelled.

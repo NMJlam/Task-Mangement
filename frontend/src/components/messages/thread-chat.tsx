@@ -2,6 +2,7 @@ import type { Message, RosterMember, Thread } from "@ctp/shared";
 import { splitMentions } from "@ctp/shared";
 import { Paperclip, Search, Send, X } from "lucide-react";
 import { useId, type ReactNode } from "react";
+import { LoadingLine } from "@/components/common/loading-line";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { MentionTextarea } from "@/components/messages/mention-textarea";
 import { Button } from "@/components/ui/button";
@@ -97,9 +98,7 @@ export function ThreadChat({
 
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite">
         {(messages.state.status === "idle" || messages.state.status === "loading") && (
-          <p className="text-sm text-muted-foreground" role="status">
-            Loading Messages…
-          </p>
+          <LoadingLine label="Loading Messages…" />
         )}
         {messages.state.status === "error" && (
           <p className="text-sm text-destructive" role="alert">
