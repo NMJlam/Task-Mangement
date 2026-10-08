@@ -12,7 +12,6 @@ import { NotificationsProvider, type NotificationsValue } from "@/hooks/use-noti
 function feed(unreadCount: number): NotificationsValue {
   return {
     state: { status: "ok", items: [], unreadCount, loaded: 0, hasMore: false },
-    busy: undefined,
     loadingMore: false,
     mutationError: undefined,
     loadMore: vi.fn().mockResolvedValue(undefined),

@@ -56,8 +56,11 @@ it("summarises the current member’s work and upcoming events", async () => {
     "href",
     `/events/${eventId}`,
   );
-  // Six dashboard reads plus the daily briefing's one.
-  expect(fetchMock).toHaveBeenCalledTimes(7);
+  // Five dashboard reads plus the daily briefing's one. The notification feed
+  // is tallied apart: it polls every second, so a slow run reads it again.
+  const calls = fetchMock.mock.calls.map(([url]) => String(url));
+  expect(calls.filter((url) => !url.startsWith("/api/notifications"))).toHaveLength(6);
+  expect(calls.some((url) => url.startsWith("/api/notifications"))).toBe(true);
 });
 
 it("keeps an activity outage out of the page-level error banner", async () => {
