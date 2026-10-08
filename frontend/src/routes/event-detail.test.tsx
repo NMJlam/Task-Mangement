@@ -554,20 +554,24 @@ describe("EventDetailPage", () => {
     });
   });
 
-  it("marks the unbuilt tabs as unbuilt rather than empty", async () => {
-    const user = userEvent.setup({ delay: null });
+  /**
+   * File upload (R11) and RSVPs (R4) are deferred, so their placeholder tabs
+   * are gone. A link saved while they existed opens the Overview, not a
+   * tabset with nothing selected.
+   */
+  it("offers only the built tabs, and opens Overview for a tab that no longer exists", async () => {
     stubEvent();
-    renderDetail();
+    renderDetail("?tab=files");
 
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument(),
     );
-
-    await user.click(screen.getByRole("tab", { name: "RSVPs" }));
-    expect(await screen.findByText(/rsvp tracking is not built yet/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("tab", { name: "Files" }));
-    expect(await screen.findByText(/file attachments are not built yet/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Tasks",
+      "Thread",
+    ]);
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("reschedules the event through the shared visual picker", async () => {
