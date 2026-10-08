@@ -1,23 +1,38 @@
-import { can, roleSchema, tierForRole, type Role, type RosterMember } from "@ctp/shared";
+import {
+  can,
+  roleSchema,
+  tierForRole,
+  type Role,
+  type RosterMember,
+  type TeamWithMembers,
+} from "@ctp/shared";
 import { useRef, useState } from "react";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { MemberTeams, staffableTeams } from "@/components/members/member-teams";
 import { RoleChangeDialog, roleLabel } from "@/components/members/role-change-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
+import { useTeams } from "@/hooks/use-teams";
 
 const joinedDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 export function MembersPage() {
   const me = useMe();
   const members = useMembers();
+  const teams = useTeams();
   const [pending, setPending] = useState<{ member: RosterMember; role: Role }>();
+  // The member whose teams were last edited, so a failed write is reported in
+  // that member's editor and not in whichever one opens next.
+  const [teamTarget, setTeamTarget] = useState<string>();
   // This dialog opens from a `<select>`, not a `DialogTrigger`, so Radix cannot
   // restore focus: the select that raised it is remembered and refocused here.
   const opener = useRef<HTMLSelectElement | null>(null);
   const canManage = me.status === "ok" && can(me.user.role, "member:role-change");
   const items = members.state.status === "ok" ? members.state.items : [];
+  const teamItems = teams.state.status === "ok" ? teams.state.items : undefined;
+  const editableTeams = teamItems && me.status === "ok" ? staffableTeams(teamItems, me.user) : [];
 
   async function confirmRoleChange() {
     if (!pending) return;
@@ -91,6 +106,14 @@ export function MembersPage() {
                 opener.current = select;
                 setPending({ member, role });
               }}
+              teams={teamItems}
+              editableTeams={editableTeams}
+              teamsBusy={teams.busy}
+              teamsError={teamTarget === member.id ? teams.mutationError : undefined}
+              onTeamToggle={(team, on) => {
+                setTeamTarget(member.id);
+                void teams.setMembership(team, member.id, on);
+              }}
             />
           ))}
         </section>
@@ -105,12 +128,23 @@ function MemberCard({
   maxTier,
   busy,
   onRoleChange,
+  teams,
+  editableTeams,
+  teamsBusy,
+  teamsError,
+  onTeamToggle,
 }: {
   member: RosterMember;
   editable: boolean;
   maxTier: 0 | 1 | 2;
   busy: boolean;
   onRoleChange: (role: Role, select: HTMLSelectElement) => void;
+  /** `undefined` until the teams load — the roster's count stands in meanwhile. */
+  teams: TeamWithMembers[] | undefined;
+  editableTeams: TeamWithMembers[];
+  teamsBusy: string | undefined;
+  teamsError: string | undefined;
+  onTeamToggle: (team: TeamWithMembers, member: boolean) => void;
 }) {
   const name = member.name || member.email;
 
@@ -157,7 +191,21 @@ function MemberCard({
           <dt className="text-muted-foreground">Portfolio</dt>
           <dd className="text-right">{member.portfolio || "—"}</dd>
           <dt className="text-muted-foreground">Teams</dt>
-          <dd className="text-right tabular-nums">{member.teamIds.length}</dd>
+          <dd className="text-right">
+            {teams ? (
+              <MemberTeams
+                memberId={member.id}
+                memberName={name}
+                teams={teams}
+                editable={editableTeams}
+                busy={teamsBusy}
+                error={teamsError}
+                onToggle={onTeamToggle}
+              />
+            ) : (
+              <span className="tabular-nums">{member.teamIds.length}</span>
+            )}
+          </dd>
           <dt className="text-muted-foreground">Joined</dt>
           <dd className="text-right">
             <time dateTime={member.createdAt.toISOString()}>
