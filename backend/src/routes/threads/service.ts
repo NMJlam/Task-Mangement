@@ -1,6 +1,6 @@
 import type { ChannelKind, Thread, Tier } from "@ctp/shared";
 import { extractMentionedIds } from "@ctp/shared";
-import { and, asc, eq, gte, inArray, lte, max, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, max, not, or, sql, type SQL } from "drizzle-orm";
 import { newId } from "../../db/id.js";
 import {
   appUsers,
@@ -10,7 +10,7 @@ import {
   messages,
   notifications,
 } from "../../db/schema/index.js";
-import { visibleEvents, type Queryable } from "../events/service.js";
+import type { Queryable } from "../events/service.js";
 
 /**
  * Thread rules, framework-free like `routes/events/service.ts`, so the pure
@@ -50,10 +50,14 @@ export function hasMember(userId: string): SQL {
  *   team, event   -> min_tier at or below yours
  *   group, dm, ai -> you have a chan_member row
  *
- * An event thread also needs its event to be visible. Its `min_tier` is copied
- * from the event when `POST /api/events` opens it and `PATCH /api/events/:id`
- * keeps the two in step, but the event stays the authority — and a cancelled
- * event's thread should go with the event.
+ * An event thread also needs its event's tier to be at or below yours. Its
+ * `min_tier` is copied from the event when `POST /api/events` opens it and
+ * `PATCH /api/events/:id` keeps the two in step, but the event stays the
+ * authority.
+ *
+ * A CANCELLED event's thread stays visible, as the event itself does by its
+ * link (`GET /api/events/:id`): it is a read-only archive (`archivedThread`),
+ * kept out of the conversation list and closed to new posts, not a secret.
  */
 export function visibleThreads(viewer: Viewer): SQL {
   return or(
@@ -61,10 +65,28 @@ export function visibleThreads(viewer: Viewer): SQL {
     and(
       eq(channels.kind, "event"),
       lte(channels.minTier, viewer.tier),
-      sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${channels.eventId} AND ${visibleEvents(viewer.tier)})`,
+      sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${channels.eventId} AND ${lte(events.minTier, viewer.tier)})`,
     ),
     and(inArray(channels.kind, [...MEMBERSHIP_KINDS]), hasMember(viewer.id)),
   )!;
+}
+
+/**
+ * An event thread whose event is cancelled: readable, never written to. Read
+ * from the event's status on every request rather than stored on the thread,
+ * so restoring the event (`cancelled -> planning`) reopens its thread, with
+ * its history, without a second write to forget.
+ */
+export function archivedThread(): SQL {
+  return and(
+    eq(channels.kind, "event"),
+    sql`EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${channels.eventId} AND ${events.status} = 'cancelled')`,
+  )!;
+}
+
+/** What the conversation list leaves out: a cancelled event's archived thread. */
+export function listedThreads(): SQL {
+  return not(archivedThread());
 }
 
 /**
@@ -81,13 +103,21 @@ export async function findThread(
   viewer: Viewer,
   where: SQL,
 ): Promise<
-  | { id: string; visible: boolean; kind: ChannelKind; minTier: Tier; eventId: string | null }
+  | {
+      id: string;
+      visible: boolean;
+      archived: boolean;
+      kind: ChannelKind;
+      minTier: Tier;
+      eventId: string | null;
+    }
   | undefined
 > {
   const [thread] = await db
     .select({
       id: channels.id,
       visible: sql<boolean>`${visibleThreads(viewer)}`,
+      archived: sql<boolean>`${archivedThread()}`,
       kind: channels.kind,
       minTier: sql<Tier>`${channels.minTier}`,
       eventId: channels.eventId,

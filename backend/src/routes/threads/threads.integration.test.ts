@@ -262,6 +262,69 @@ describe("/api/threads (integration)", () => {
     });
   });
 
+  /**
+   * A cancelled event is a soft delete: out of the lists, still served by its
+   * link. Its thread follows suit — readable from the event's page as a
+   * read-only archive, kept out of Messages, closed to new posts — and the rule
+   * reads the event's status live, so restoring the event reopens the thread.
+   */
+  describe("a cancelled event's thread", () => {
+    it("can still be read, as an archive", async () => {
+      const officer = await member("officer", "officer");
+      const { thread } = await eventThread({ status: "cancelled" });
+      await db
+        .insert(messages)
+        .values({ id: newId(), channelId: thread.id, author: officer.id, body: "Venue booked." });
+      signIn(officer);
+
+      const response = await request(app).get(`/api/threads/${thread.id}/messages`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.messages.map((m: { body: string }) => m.body)).toEqual([
+        "Venue booked.",
+      ]);
+    });
+
+    it("refuses new messages and task comments", async () => {
+      const officer = await member("officer", "officer");
+      const { event, thread } = await eventThread({ status: "cancelled" });
+      const onEvent = await task({ eventId: event.id });
+      signIn(officer);
+
+      const posted = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: "Still on?" });
+      const commented = await request(app)
+        .post(`/api/tasks/${onEvent.id}/comments`)
+        .send({ body: "Still needed?" });
+
+      expect(posted.status).toBe(409);
+      expect(posted.body.error.code).toBe("THREAD_ARCHIVED");
+      expect(commented.status).toBe(409);
+      expect(commented.body.error.code).toBe("THREAD_ARCHIVED");
+      const stored = await db.select().from(messages).where(eq(messages.channelId, thread.id));
+      expect(stored).toEqual([]);
+    });
+
+    it("opens again, history and all, when the event is restored", async () => {
+      const president = await member("president", "president");
+      const { event, thread } = await eventThread({ status: "cancelled" });
+      signIn(president);
+
+      const restored = await request(app)
+        .patch(`/api/events/${event.id}/status`)
+        .send({ status: "planning" });
+      const posted = await request(app)
+        .post(`/api/threads/${thread.id}/messages`)
+        .send({ body: "Back on." });
+      const listed = await request(app).get("/api/threads");
+
+      expect(restored.status).toBe(200);
+      expect(posted.status).toBe(201);
+      expect(ids(listed.body.threads)).toContain(thread.id);
+    });
+  });
+
   describe("/api/threads/:id/messages", () => {
     it("posts, pages newest first, and searches with LIKE wildcards taken literally", async () => {
       const officer = await member("officer", "officer");

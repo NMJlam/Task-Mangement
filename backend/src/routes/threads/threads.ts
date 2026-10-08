@@ -36,6 +36,7 @@ import {
   escapeLike,
   findThread,
   hasMember,
+  listedThreads,
   listThreads,
   mentionNotifications,
   replyProblem,
@@ -64,6 +65,16 @@ export const threadsRouter = Router();
 
 function threadNotFound(res: Response): void {
   res.status(404).json({ error: { code: "THREAD_NOT_FOUND", message: "Thread not found." } });
+}
+
+/** 409, not 404: the thread is there and readable, it just takes no new posts. */
+function threadArchived(res: Response): void {
+  res.status(409).json({
+    error: {
+      code: "THREAD_ARCHIVED",
+      message: "This event was cancelled, so its thread is read-only.",
+    },
+  });
 }
 
 function taskNotFound(res: Response): void {
@@ -100,10 +111,12 @@ threadsRouter.get(
   async (req, res, next) => {
     try {
       const query = res.locals.validated as ListThreadsQuery;
+      // A cancelled event's thread is reached from its event, not listed here —
+      // the same way the event is out of the events list but served by link.
       const threads = await listThreads(
         getDb(),
         req.user!,
-        query.kind ? eq(channels.kind, query.kind) : undefined,
+        and(listedThreads(), query.kind ? eq(channels.kind, query.kind) : undefined),
       );
       res.status(200).json({ threads } satisfies ThreadListResponse);
     } catch (error) {
@@ -254,6 +267,10 @@ threadsRouter.post(
         threadNotFound(res);
         return;
       }
+      if (thread.archived) {
+        threadArchived(res);
+        return;
+      }
       if (input.parentId) {
         const problem = await parentProblem(thread.id, input.parentId);
         if (problem) {
@@ -382,6 +399,12 @@ async function postToTask(
   // through an event above your tier does.
   if (!thread.visible) {
     taskNotFound(res);
+    return;
+  }
+  // A cancelled event's open tasks stay on the board, but their discussion is
+  // the event's thread, which is now a read-only archive.
+  if (thread.archived) {
+    threadArchived(res);
     return;
   }
   if (values.parentId) {
