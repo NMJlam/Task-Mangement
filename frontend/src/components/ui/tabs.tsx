@@ -25,7 +25,7 @@ function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimi
       // A tab bar, not a segmented control: one hairline under the row, the
       // active tab marked by an accent rule underneath. The old pill-in-a-tray
       // look is a mobile-iOS shape, not a terminal one.
-      className={cn("flex gap-1 overflow-x-auto border-b", className)}
+      className={cn("flex gap-1 border-b", className)}
       {...props}
     />
   );
