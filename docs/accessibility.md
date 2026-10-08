@@ -100,6 +100,69 @@ dark. Only the badge is red; the cell is not tinted, because a tint would thin
 `muted-foreground` inside it. Today also carries `aria-current="date"`, so the
 red is not the only signal.
 
+### Terminal palettes (Settings)
+
+Settings offers three more palettes beside light and dark. Each is a dark theme with a
+full token set, measured with the same method; every pair passes. `--screen*` is shared
+with the other themes, so the login screen's floors above still hold.
+
+Amber phosphor — page `#120d05`, panel `#1a1408`, ink `#ffb54d`, accent `#fff0d1`:
+
+| Pair                                      | Ratio      | Needs |
+| ----------------------------------------- | ---------- | ----- |
+| `foreground` on `background`              | 11.03:1 ✅ | 4.5:1 |
+| `foreground` on `card`                    | 10.43:1 ✅ | 4.5:1 |
+| `muted-foreground` on `background`        | 7.78:1 ✅  | 4.5:1 |
+| `muted-foreground` on `card`              | 7.36:1 ✅  | 4.5:1 |
+| `primary-foreground` on `primary`         | 11.03:1 ✅ | 4.5:1 |
+| `ring` on `card`                          | 16.24:1 ✅ | 4.5:1 |
+| `background` on `ring`                    | 17.17:1 ✅ | 4.5:1 |
+| `destructive-foreground` on `destructive` | 8.38:1 ✅  | 4.5:1 |
+| `today-foreground` on `today`             | 8.38:1 ✅  | 4.5:1 |
+| `ok` on `card`                            | 11.48:1 ✅ | 4.5:1 |
+| `warn` on `card`                          | 12.86:1 ✅ | 4.5:1 |
+| `danger` on `card`                        | 7.93:1 ✅  | 4.5:1 |
+| `input` on `background`                   | 4.54:1 ✅  | 3:1   |
+| `input` on `card`                         | 4.30:1 ✅  | 3:1   |
+
+Green phosphor — page `#03110a`, panel `#071a10`, ink `#5dfc8d`, accent `#dcffe6`:
+
+| Pair                                      | Ratio      | Needs |
+| ----------------------------------------- | ---------- | ----- |
+| `foreground` on `background`              | 14.49:1 ✅ | 4.5:1 |
+| `foreground` on `card`                    | 13.55:1 ✅ | 4.5:1 |
+| `muted-foreground` on `background`        | 8.98:1 ✅  | 4.5:1 |
+| `muted-foreground` on `card`              | 8.39:1 ✅  | 4.5:1 |
+| `primary-foreground` on `primary`         | 14.49:1 ✅ | 4.5:1 |
+| `ring` on `card`                          | 16.74:1 ✅ | 4.5:1 |
+| `background` on `ring`                    | 17.91:1 ✅ | 4.5:1 |
+| `destructive-foreground` on `destructive` | 8.75:1 ✅  | 4.5:1 |
+| `today-foreground` on `today`             | 8.75:1 ✅  | 4.5:1 |
+| `ok` on `card`                            | 13.55:1 ✅ | 4.5:1 |
+| `warn` on `card`                          | 12.67:1 ✅ | 4.5:1 |
+| `danger` on `card`                        | 8.18:1 ✅  | 4.5:1 |
+| `input` on `background`                   | 4.48:1 ✅  | 3:1   |
+| `input` on `card`                         | 4.19:1 ✅  | 3:1   |
+
+Gruvbox — page `#282828`, panel `#32302f`, ink `#ebdbb2`, accent `#fe8019`:
+
+| Pair                                      | Ratio      | Needs |
+| ----------------------------------------- | ---------- | ----- |
+| `foreground` on `background`              | 10.75:1 ✅ | 4.5:1 |
+| `foreground` on `card`                    | 9.57:1 ✅  | 4.5:1 |
+| `muted-foreground` on `background`        | 6.77:1 ✅  | 4.5:1 |
+| `muted-foreground` on `card`              | 6.03:1 ✅  | 4.5:1 |
+| `primary-foreground` on `primary`         | 10.75:1 ✅ | 4.5:1 |
+| `ring` on `card`                          | 5.20:1 ✅  | 4.5:1 |
+| `background` on `ring`                    | 5.84:1 ✅  | 4.5:1 |
+| `destructive-foreground` on `destructive` | 5.16:1 ✅  | 4.5:1 |
+| `today-foreground` on `today`             | 5.16:1 ✅  | 4.5:1 |
+| `ok` on `card`                            | 6.36:1 ✅  | 4.5:1 |
+| `warn` on `card`                          | 7.74:1 ✅  | 4.5:1 |
+| `danger` on `card`                        | 4.60:1 ✅  | 4.5:1 |
+| `input` on `background`                   | 4.02:1 ✅  | 3:1   |
+| `input` on `card`                         | 3.58:1 ✅  | 3:1   |
+
 ### Non-text contrast (1.4.11)
 
 | Boundary                      | Light     | Dark      |
