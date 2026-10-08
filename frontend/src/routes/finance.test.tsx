@@ -219,6 +219,63 @@ describe("FinancePage", () => {
     expect(screen.queryByRole("button", { name: /edit budget/i })).not.toBeInTheDocument();
   });
 
+  it("unmarks a paid expense, returning it to approved", async () => {
+    const paid = expense({
+      status: "paid",
+      decider: "018f3a4b-0000-7000-8000-000000000004",
+      decidedAt: "2026-09-19T00:00:00.000Z",
+      paidAt: "2026-09-20T00:00:00.000Z",
+    });
+    const fetchMock = stubFetch({
+      expenses: { expenses: [paid], total: 1 },
+      post: [
+        response({
+          expense: { ...paid, status: "approved", paidAt: null },
+          budget: { ...budget(), spentCents: 0 },
+        }),
+      ],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mark Printing unpaid" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/expenses/${paid.id}/decision`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ action: "unmark_paid" }),
+        }),
+      ),
+    );
+    // The row flips to the approved state's action, and the unmark control goes.
+    expect(await screen.findByRole("button", { name: "Mark Printing paid" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark Printing unpaid" })).not.toBeInTheDocument();
+  });
+
+  it("offers Unmark Paid only to the finance roles", async () => {
+    viewer.role = "officer";
+    stubFetch({
+      expenses: {
+        expenses: [
+          expense({
+            status: "paid",
+            decider: "018f3a4b-0000-7000-8000-000000000004",
+            decidedAt: "2026-09-19T00:00:00.000Z",
+            paidAt: "2026-09-20T00:00:00.000Z",
+          }),
+        ],
+        total: 1,
+      },
+    });
+
+    renderPage();
+
+    await screen.findByText("Printing");
+    expect(screen.queryByRole("button", { name: /unpaid/i })).not.toBeInTheDocument();
+  });
+
   it("downloads the budget summary as CSV from the Spent card", async () => {
     stubFetch({});
 

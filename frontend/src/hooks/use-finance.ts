@@ -18,6 +18,9 @@ import { apiErrorMessage } from "@/lib/api-error";
  */
 const PAGE_SIZE = 25;
 
+/** Everything `POST /api/expenses/:id/decision` accepts. */
+export type ExpenseAction = "approve" | "reject" | "mark_paid" | "unmark_paid";
+
 type BudgetState =
   | { status: "loading" }
   | { status: "ok"; summary: BudgetSummary }
@@ -186,43 +189,40 @@ export function useFinance() {
     }
   }, []);
 
-  const decide = useCallback(
-    async (expense: Expense, action: "approve" | "reject" | "mark_paid", reason?: string) => {
-      setBusy(true);
-      setMutationError(undefined);
-      try {
-        const response = await fetch(`/api/expenses/${expense.id}/decision`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(action === "reject" ? { action, reason } : { action }),
-        });
-        if (!response.ok) throw new Error(await failure(response, "Failed to update expense"));
-        const result = expenseDecisionResponseSchema.parse(await response.json());
-        // The decision recomputes the whole budget (an approval moves
-        // `committed`, a payment moves `spent`), so the response's summary
-        // replaces ours rather than being patched.
-        setBudget({ status: "ok", summary: result.budget });
-        setExpenses((current) =>
-          current.status === "ok"
-            ? {
-                ...current,
-                items: current.items.map((row) =>
-                  row.id === result.expense.id ? result.expense : row,
-                ),
-              }
-            : current,
-        );
-        return true;
-      } catch (cause) {
-        setMutationError(cause instanceof Error ? cause.message : "Failed to update expense");
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [],
-  );
+  const decide = useCallback(async (expense: Expense, action: ExpenseAction, reason?: string) => {
+    setBusy(true);
+    setMutationError(undefined);
+    try {
+      const response = await fetch(`/api/expenses/${expense.id}/decision`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "reject" ? { action, reason } : { action }),
+      });
+      if (!response.ok) throw new Error(await failure(response, "Failed to update expense"));
+      const result = expenseDecisionResponseSchema.parse(await response.json());
+      // The decision recomputes the whole budget (an approval moves
+      // `committed`, a payment moves `spent`), so the response's summary
+      // replaces ours rather than being patched.
+      setBudget({ status: "ok", summary: result.budget });
+      setExpenses((current) =>
+        current.status === "ok"
+          ? {
+              ...current,
+              items: current.items.map((row) =>
+                row.id === result.expense.id ? result.expense : row,
+              ),
+            }
+          : current,
+      );
+      return true;
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : "Failed to update expense");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   /**
    * Sets the club-wide budget (`PATCH /api/budget`, `budget:manage`). Resolves
