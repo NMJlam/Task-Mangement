@@ -596,15 +596,23 @@ message is a different thing — that's `parentId`, below.
 
 Who sees a thread depends on its `kind`:
 
-| Kind          | Opened by           | You see it when                                                     |
-| ------------- | ------------------- | ------------------------------------------------------------------- |
-| `team`        | `POST /api/teams`   | its `minTier` ≤ yours                                               |
-| `event`       | `POST /api/events`  | its `minTier` ≤ yours **and** you can see the event (not cancelled) |
-| `group`, `dm` | `POST /api/threads` | you're a member                                                     |
-| `ai`          | the assistant       | never — see below                                                   |
+| Kind          | Opened by           | You see it when                                             |
+| ------------- | ------------------- | ----------------------------------------------------------- |
+| `team`        | `POST /api/teams`   | its `minTier` ≤ yours                                       |
+| `event`       | `POST /api/events`  | its `minTier` ≤ yours **and** the event's `minTier` ≤ yours |
+| `group`, `dm` | `POST /api/threads` | you're a member                                             |
+| `ai`          | the assistant       | never — see below                                           |
 
 A thread you can't see is `404 THREAD_NOT_FOUND` on every route below — never
 `403`, which would confirm it exists.
+
+**A cancelled event's thread is a read-only archive.** It follows the event,
+which drops out of lists but is still served by its id. So the thread is left
+out of `GET /api/threads`, but it can still be read, searched, marked read and
+summarised. Posting to it, and commenting or attaching on that event's tasks, is
+`409 THREAD_ARCHIVED`. The rule reads the event's status on every request, so
+restoring the event (`cancelled → planning`) reopens the thread with its
+history.
 
 **`ai` channels are never served here**, not even to their owner: they are
 missing from the list, and reading, posting to or marking one read is `404
