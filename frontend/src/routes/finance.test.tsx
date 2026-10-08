@@ -9,13 +9,14 @@ vi.mock("@/lib/csv", async (importOriginal) => {
   return { ...actual, downloadTextFile: vi.fn() };
 });
 
+const viewer = vi.hoisted(() => ({ role: "treasurer" }));
 vi.mock("@/hooks/use-me", () => ({
   useMe: () => ({
     status: "ok",
     user: {
       id: "018f3a4b-0000-7000-8000-000000000001",
       email: "treasurer@example.com",
-      role: "treasurer",
+      role: viewer.role,
       tier: 2,
     },
   }),
@@ -24,7 +25,10 @@ vi.mock("@/hooks/use-me", () => ({
 const eventId = "018f3a4b-0000-7000-8000-000000000009";
 
 describe("FinancePage", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    viewer.role = "treasurer";
+  });
 
   it("shows the budget, logs an expense, and approves pending claims", async () => {
     const claim = expense();
@@ -155,6 +159,66 @@ describe("FinancePage", () => {
     expect(screen.queryByRole("button", { name: "Load More" })).not.toBeInTheDocument();
   });
 
+  it("lets a president edit the overall club budget", async () => {
+    viewer.role = "president";
+    const fetchMock = stubFetch({
+      patch: [response({ budget: { ...budget(), budgetCents: 25_000, availableCents: 20_000 } })],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit budget/i }));
+    fireEvent.change(screen.getByLabelText(/club budget \(aud\)/i), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save budget" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/budget",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ budgetCents: 25_000 }) }),
+      ),
+    );
+    // The summary the server sent back replaces ours, and the form closes.
+    await waitFor(() => expect(screen.getByText("$250.00")).toBeInTheDocument());
+    expect(screen.queryByLabelText(/club budget \(aud\)/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's refusal beside the field and keeps the form open", async () => {
+    stubFetch({
+      patch: [
+        response(
+          {
+            error: {
+              code: "BUDGET_EXCEEDED",
+              message: "The club budget cannot be lower than current allocations.",
+            },
+          },
+          409,
+        ),
+      ],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit budget/i }));
+    fireEvent.change(screen.getByLabelText(/club budget \(aud\)/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save budget" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The club budget cannot be lower than current allocations.",
+    );
+    expect(screen.getByLabelText(/club budget \(aud\)/i)).toBeInTheDocument();
+  });
+
+  it("offers no budget editor to a role without budget:manage", async () => {
+    viewer.role = "officer";
+    stubFetch({});
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Club budget" });
+    expect(screen.queryByRole("button", { name: /edit budget/i })).not.toBeInTheDocument();
+  });
+
   it("downloads the budget summary as CSV from the Spent card", async () => {
     stubFetch({});
 
@@ -203,11 +267,16 @@ function stubFetch(stubs: {
   expenses?: unknown;
   more?: unknown;
   post?: unknown[];
+  patch?: unknown[];
   budget?: unknown;
 }) {
   const post = [...(stubs.post ?? [])];
+  const patch = [...(stubs.patch ?? [])];
   const fetchMock: Mock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (init?.method === "PATCH") {
+      return Promise.resolve(patch.shift() ?? response({}, 500));
+    }
     if (init?.method === "POST") {
       return Promise.resolve(post.shift() ?? response({}, 500));
     }
