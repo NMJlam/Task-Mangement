@@ -1,5 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
+import { AsciiWordmark } from "@/components/common/ascii-wordmark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
@@ -28,17 +29,9 @@ export function LoginPage() {
        * sits at /60 or above for headroom. See docs/accessibility.md.
        */}
       <section className="relative hidden overflow-hidden border-r border-screen-foreground/15 bg-screen p-12 text-screen-foreground lg:flex lg:flex-col lg:justify-between xl:p-16">
-        <div className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="inline-flex size-9 items-center justify-center bg-screen-foreground font-display text-sm font-bold text-screen"
-          >
-            M
-          </span>
-          <div className="leading-tight">
-            <p className="font-display tracking-[0.04em]">MAC</p>
-            <p className="mt-1 text-xs text-screen-foreground/65">Club Operations</p>
-          </div>
+        <div>
+          <AsciiWordmark className="text-sm text-screen-foreground" />
+          <p className="mt-3 text-xs text-screen-foreground/65">Club Operations</p>
         </div>
 
         <div className="relative z-10 max-w-xl">

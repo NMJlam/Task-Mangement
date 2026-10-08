@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { NavLink } from "react-router-dom";
+import { AsciiWordmark } from "@/components/common/ascii-wordmark";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { StatusLine } from "@/components/layout/status-line";
 import { Button } from "@/components/ui/button";
@@ -133,6 +134,21 @@ export function AppShell({
 }
 
 function Brand({ compact = false }: { compact?: boolean }) {
+  // The sidebar's brand is the ASCII banner; the mobile header has no room for
+  // it and keeps the small mark.
+  if (!compact) {
+    return (
+      <div className="px-2">
+        <AsciiWordmark className="text-[0.5625rem] text-foreground" />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Club Operations
+          {/* One blinking cursor for the whole app, beside the brand: the
+              session is live. Decorative. */}
+          <span aria-hidden="true" className="caret" />
+        </p>
+      </div>
+    );
+  }
   return (
     <div className={cn("flex items-center gap-2.5", !compact && "px-2")}>
       <span
