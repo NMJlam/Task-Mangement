@@ -102,6 +102,10 @@ export function useNotificationsSource() {
   const [state, setState] = useState<NotificationState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
+  // When a read last came back, and whether the latest one failed — what the
+  // status line reports as "synced 2s ago" or "offline".
+  const [syncedAt, setSyncedAt] = useState<Date>();
+  const [stale, setStale] = useState(false);
 
   // At a poll a second, a read can still be on the wire when the next tick
   // fires. Starting another anyway would, on a slow link, have every tick
@@ -125,11 +129,17 @@ export function useNotificationsSource() {
         return notificationListResponseSchema.parse(await response.json());
       })
       .then((page) => {
-        if (!mounted.current || writes.current.open > 0 || writes.current.epoch !== epoch) return;
+        if (!mounted.current) return;
+        // Stamped even when the page is dropped below: a read that overlapped
+        // a mark still proves the feed is reachable.
+        setSyncedAt(new Date());
+        setStale(false);
+        if (writes.current.open > 0 || writes.current.epoch !== epoch) return;
         setState((current) => withFirstPage(current, page));
       })
       .catch((cause: unknown) => {
         if (!mounted.current) return;
+        setStale(true);
         // A poll that fails must not replace a feed the reader can still use
         // with an error — only a cold load has nothing to keep.
         setState((current) =>
@@ -283,7 +293,17 @@ export function useNotificationsSource() {
     if (failed) reload();
   }, [beginWrite, endWrite, reload]);
 
-  return { state, loadingMore, mutationError, loadMore, reload, markRead, markAllRead };
+  return {
+    state,
+    loadingMore,
+    mutationError,
+    syncedAt,
+    stale,
+    loadMore,
+    reload,
+    markRead,
+    markAllRead,
+  };
 }
 
 export type NotificationsValue = ReturnType<typeof useNotificationsSource>;
