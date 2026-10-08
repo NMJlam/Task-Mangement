@@ -180,6 +180,12 @@
   * {
     border-color: var(--border);
   }
+  /* The status line is pinned over the bottom 1.75rem (`h-7`) of the viewport.
+     Without this, a control the browser scrolls "nearest" into view lands under
+     it, focus outline and all; the extra 0.75rem clears the outline's offset. */
+  html {
+    scroll-padding-bottom: calc(1.75rem + 0.75rem);
+  }
   body {
     min-height: 100svh;
     background-color: var(--background);

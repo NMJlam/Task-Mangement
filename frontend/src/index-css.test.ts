@@ -19,6 +19,17 @@ function forcedColorsBlock(): string {
  */
 describe("index.css", () => {
   /**
+   * The status line is pinned over the bottom 1.75rem (`h-7`) of the viewport.
+   * A control the browser scrolls "nearest" into view landed under it, focus
+   * outline and all — 11 of 60 links on a long page in the review's repro.
+   */
+  it("keeps focus scrolled clear of the status line", () => {
+    const rule = /html\s*\{[^}]*scroll-padding-bottom:\s*([^;]+);/.exec(css);
+    expect(rule, "no scroll-padding-bottom on html").not.toBeNull();
+    expect(rule![1]).toContain("1.75rem");
+  });
+
+  /**
    * Windows contrast themes force every background to Canvas and drop
    * gradients, which blanked every meter (an over-budget one included) and
    * erased each panel's top rule while its sides, being borders, stayed.
