@@ -22,10 +22,11 @@ const Toaster = (props: ToasterProps) => (
     }}
     style={
       {
-        "--normal-bg": "var(--popover)",
-        "--normal-text": "var(--popover-foreground)",
+        "--normal-bg": "var(--card)",
+        "--normal-text": "var(--card-foreground)",
         "--normal-border": "var(--border)",
-        "--border-radius": "var(--radius)",
+        // Sonner's own default is a pill-ish radius; the app has none.
+        "--border-radius": "0px",
       } as React.CSSProperties
     }
     {...props}

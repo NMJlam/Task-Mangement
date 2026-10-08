@@ -115,7 +115,7 @@ export function DateTimePicker({
           className={cn(
             "h-9 w-full justify-start font-normal",
             !value && "text-muted-foreground",
-            open && "border-ring ring-3 ring-ring/50",
+            open && "border-ring",
           )}
         >
           <CalendarDays aria-hidden="true" className="text-muted-foreground" />
@@ -134,7 +134,7 @@ export function DateTimePicker({
           // description instead of shifting to stay within it.
           collisionBoundary={portalTarget ?? undefined}
           collisionPadding={12}
-          className="z-50 grid gap-3 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg outline-none"
+          className="z-50 grid gap-3 rounded-lg border bg-popover p-3 text-popover-foreground"
         >
           <Calendar mode="single" selected={day} onSelect={setDay} defaultMonth={day} />
 
