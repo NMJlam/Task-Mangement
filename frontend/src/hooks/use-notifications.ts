@@ -34,7 +34,8 @@ export function pollIntervalFrom(raw: string | undefined): number {
   return Number.isInteger(ms) && ms > 0 ? ms : DEFAULT_POLL_MS;
 }
 
-const POLL_MS = pollIntervalFrom(import.meta.env.VITE_NOTIFICATION_POLL_MS);
+/** The interval in force — the status line judges "keeping up" against it. */
+export const NOTIFICATION_POLL_MS = pollIntervalFrom(import.meta.env.VITE_NOTIFICATION_POLL_MS);
 
 type Feed = {
   status: "ok";
@@ -164,7 +165,7 @@ export function useNotificationsSource() {
     };
   }, [reload]);
 
-  useRevalidate(reload, { intervalMs: POLL_MS });
+  useRevalidate(reload, { intervalMs: NOTIFICATION_POLL_MS });
 
   const beginWrite = useCallback(() => {
     writes.current.open += 1;

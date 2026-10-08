@@ -1,18 +1,25 @@
 import type { AuthUser } from "@ctp/shared";
 import { Link, useLocation } from "react-router-dom";
-import { useNotifications } from "@/hooks/use-notifications";
+import { NOTIFICATION_POLL_MS, useNotifications } from "@/hooks/use-notifications";
 import { useNow } from "@/hooks/use-now";
-import { promptPath, syncAge } from "@/lib/prompt-path";
+import { promptPath } from "@/lib/prompt-path";
 import { cn } from "@/lib/utils";
+
+/** Reads this far apart mean the feed has fallen behind, not merely ticked. */
+const LAG_MS = Math.max(3 * NOTIFICATION_POLL_MS, 5_000);
+
+const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
 /**
  * The shell prompt and modeline, pinned to the bottom of every signed-in page:
  *
- *   jordan.lee@mac:~/events/0000a1b2/thread$        ● 3 unread · synced 2s ago
+ *   jordan.lee@mac:~/events/0000a1b2/thread$            ● 3 unread · synced
  *
- * Deliberately NOT a live region: the age ticks every second, and a status line
- * that announced itself each tick would drown everything else. The unread count
- * is a link to the Inbox; the sidebar badge already announces it in the nav.
+ * The sync state holds still while the feed keeps up: "synced", not a count of
+ * seconds. Text that rewrites itself every second, with no way to pause it, is
+ * moving content under WCAG 2.2.2. Only once reads fall behind does it change,
+ * once, to the time of the last good read. Not a live region either: the
+ * unread count is a link to the Inbox, and the sidebar badge announces it.
  */
 export function StatusLine({ member }: { member: AuthUser }) {
   const location = useLocation();
@@ -44,7 +51,11 @@ export function StatusLine({ member }: { member: AuthUser }) {
         {notifications.stale ? (
           <span className="text-danger">offline · retrying</span>
         ) : notifications.syncedAt ? (
-          <span>synced {syncAge(now.getTime() - notifications.syncedAt.getTime())}</span>
+          now.getTime() - notifications.syncedAt.getTime() > LAG_MS ? (
+            <span>last sync {clock.format(notifications.syncedAt)}</span>
+          ) : (
+            <span>synced</span>
+          )
         ) : (
           <span>connecting…</span>
         )}

@@ -42,10 +42,9 @@ function Shell({ value, children }: { value: NotificationsValue; children: React
 
 afterEach(() => vi.useRealTimers());
 
-it("prints a prompt for the page, the unread count, and how fresh the feed is", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+it("prints a prompt for the page, the unread count, and that the feed is in sync", () => {
   render(
-    <Shell value={feed({ syncedAt: new Date(Date.now() - 3_000) })}>
+    <Shell value={feed({ syncedAt: new Date() })}>
       <StatusLine member={member} />
     </Shell>,
   );
@@ -53,12 +52,40 @@ it("prints a prompt for the page, the unread count, and how fresh the feed is", 
   const line = screen.getByRole("contentinfo", { name: "Status line" });
   expect(line).toHaveTextContent("jordan.lee@mac:~/events/0000a1b2/thread$");
   expect(screen.getByRole("link", { name: /3 unread/ })).toHaveAttribute("href", "/notifications");
-  expect(line).toHaveTextContent("synced 3s ago");
+  expect(line).toHaveTextContent(/synced$/);
+});
+
+/**
+ * WCAG 2.2.2: text that updates itself every second, with no way to pause it,
+ * is moving content. "synced 3s ago … 4s ago" was exactly that. While the feed
+ * keeps up, the line holds still.
+ */
+it("holds its text still while the feed keeps up, rather than counting seconds", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  render(
+    <Shell value={feed({ syncedAt: new Date(Date.now() - 1_000) })}>
+      <StatusLine member={member} />
+    </Shell>,
+  );
+  const line = screen.getByRole("contentinfo", { name: "Status line" });
+  const before = line.textContent;
 
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
   });
-  expect(line).toHaveTextContent("synced 4s ago");
+
+  expect(line.textContent).toBe(before);
+  expect(line).not.toHaveTextContent(/ago/);
+});
+
+it("names the time of the last sync once the feed falls behind", () => {
+  render(
+    <Shell value={feed({ syncedAt: new Date(Date.now() - 60_000) })}>
+      <StatusLine member={member} />
+    </Shell>,
+  );
+
+  expect(screen.getByRole("contentinfo")).toHaveTextContent(/last sync \d{1,2}:\d{2}/);
 });
 
 it("says connecting before the first read", () => {

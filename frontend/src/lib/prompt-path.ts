@@ -23,13 +23,3 @@ export function promptPath(pathname: string, search: string): string {
   }
   return segments.length === 0 ? "~" : `~/${segments.join("/")}`;
 }
-
-/** How long ago a read landed, at the grain a status line needs. */
-export function syncAge(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 1) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.floor(minutes / 60)}h ago`;
-}

@@ -225,10 +225,14 @@ None adds a colour pair: each uses tokens already measured above.
   content, which 1.4.11 does not cover, the same as the cards they replace. The
   title straddles the page and the panel surface, and ink passes on both.
 - **The status line** (a `footer` named "Status line", a contentinfo landmark).
-  It is **deliberately not a live region**: its "synced 2s ago" changes every
-  second, and announcing that would drown everything else. The unread count it
-  shows is a link to the Inbox, and the sidebar's Inbox link already carries the
-  count in its name. The text is `foreground`/`muted-foreground` on `card`, and
+  Its sync state **holds still** while the feed keeps up. It reads "synced",
+  never a count of seconds: text that rewrites itself every second with no way
+  to pause it is moving content under **2.2.2**. Only when reads fall behind
+  (three poll intervals, at least 5s) does it change, once, to "last sync
+  17:03". It is also **not a live region**. The unread count it shows is a
+  link to the Inbox, and the sidebar's Inbox link already carries the count in
+  its name. Focus never hides under it, because `html` has a bottom
+  `scroll-padding` the height of the line plus the focus outline's offset. The text is `foreground`/`muted-foreground` on `card`, and
   "offline · retrying" is `danger` on `card`. The `$` prompt and the `●` unread
   marker are `ring` and decorative.
 
