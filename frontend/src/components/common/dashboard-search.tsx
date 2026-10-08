@@ -93,7 +93,10 @@ export function DashboardSearch({
           <Dialog.Description className="sr-only">
             Search tasks, events, and club members.
           </Dialog.Description>
-          <div className="flex items-center gap-3 border-b px-4 focus-within:ring-inset">
+          {/* The field fills this row, and the dialog clips its overflow, so the
+              app's focus outline (drawn 2px outside a control) is drawn inside
+              the field instead. The results below do the same in their list. */}
+          <div className="flex items-center gap-3 border-b px-4">
             <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <label htmlFor="dashboard-search" className="sr-only">
               Search Club Workspace
@@ -106,7 +109,7 @@ export function DashboardSearch({
               autoComplete="off"
               spellCheck={false}
               placeholder="Search tasks, events, or people…"
-              className="h-14 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              className="h-14 flex-1 border-0 bg-transparent px-0 shadow-none -outline-offset-2"
             />
             <Dialog.Close asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Close search">
@@ -132,7 +135,7 @@ export function DashboardSearch({
                   key={result.id}
                   to={result.to}
                   onClick={() => changeOpen(false)}
-                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 hover:bg-accent focus-visible:bg-accent"
+                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 -outline-offset-2 hover:bg-accent focus-visible:bg-accent"
                 >
                   <span className="bg-accent p-2 text-muted-foreground">
                     <Icon aria-hidden="true" className="size-4" />
