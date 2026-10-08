@@ -134,7 +134,7 @@ frontend/src/
   components/ai/       the assistant: proposal card, create/diff rows, briefing card
   hooks/               the ViewModel layer: data-fetching + state (e.g. use-health.ts)
   lib/                 utilities (e.g. cn() in utils.ts)
-  index.css            Tailwind v4 @theme tokens (the MAC palette swap lands here)
+  index.css            Tailwind v4 @theme tokens — the terminal palette, both themes
 ```
 
 **MVVM split:** `routes/` components stay declarative; anything that fetches or
@@ -391,6 +391,6 @@ New file in `backend/src/db/schema/`, export it from `schema/index.ts`, then
 ## Stub markers
 
 Unfinished logic carries **`TODO(Rn)`** naming the requirement it implements
-(e.g. `TODO(R7)`), or `TODO(theme)` / `TODO(Vercel path)` for known follow-ups.
+(e.g. `TODO(R7)`), or `TODO(Vercel path)` for the known deploy follow-up.
 Grep these to find open work. Testing/reference fixtures (like the
 `/api/example/*` routes) are marked as such and are **not** `R`-numbered.

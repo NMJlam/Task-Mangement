@@ -93,6 +93,24 @@ of jobs, so a `*/5 * * * *` schedule is not possible on a zero-budget plan.
 either an external uptime pinger hitting `/api/cron/warm`, or accept cold starts
 and re-baseline the p95 target.
 
+**⑧ Display font is vendored, not installed (2026-10-08).** The terminal
+direction sets every heading, panel title, the wordmark and the form labels in
+**Departure Mono**, a pixel monospaced face by Helena Zhang. There is no npm
+package for it (`departure-mono` and `@fontsource/departure-mono` are both 404 on
+the registry), so the woff2 is committed at
+`frontend/public/fonts/DepartureMono-Regular.woff2` (22 KB, v1.500, from
+`github.com/rektdeckard/departure-mono`) with its **SIL OFL 1.1** licence beside
+it as `DepartureMono-OFL.txt`. `index.html` preloads it; `index.css` declares the
+single `@font-face` and points `--font-display` at it. OFL permits redistribution
+and requires the licence to travel with the font — do not delete that file.
+
+The same change makes the app **monospace throughout**: `--font-sans` now aliases
+the `--font-mono` stack (`ui-monospace`, SF Mono, Menlo, …), so there is no sans
+face in the frontend at all. That is the direction, not an oversight, and it is
+why `tracking-*` values on headings were dropped: a mono grid does not want
+negative tracking. Nothing else in the stack changed — no new npm dependency,
+no build step, no font plugin.
+
 ## Items that need a live remote to confirm (see §9 of the brief)
 
 These could not be verified locally because no Vercel/Neon remote exists yet:
