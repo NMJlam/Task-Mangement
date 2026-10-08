@@ -7,7 +7,7 @@ import {
   type CreateExpense,
   type Expense,
 } from "@ctp/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidate } from "@/hooks/use-revalidate";
 import { apiErrorMessage } from "@/lib/api-error";
 
@@ -17,6 +17,44 @@ import { apiErrorMessage } from "@/lib/api-error";
  * total, so the end of it is known rather than inferred.
  */
 const PAGE_SIZE = 25;
+
+/** `listExpensesQuerySchema`'s cap on `limit`. */
+const MAX_PAGE = 100;
+
+/**
+ * How often the page re-reads while it is on screen. The budget is one pool
+ * several people act on at once — a payment entered, an expense approved, an
+ * allocation changed from an event page — and without this a tab left open
+ * showed whatever was true when it loaded until someone happened to refocus it.
+ * The same cadence as the thread poll; `useRevalidate` only fires it while the
+ * tab is visible, so a forgotten background tab costs nothing.
+ */
+const POLL_MS = 15_000;
+
+/**
+ * Reads the first `rows` of the ledger, in pages the server will accept.
+ * No `offset` on the first page: it is the plain read this page has always made.
+ */
+function ledgerRequests(rows: number): Promise<Response>[] {
+  return Array.from({ length: Math.ceil(rows / MAX_PAGE) }, (_, page) => {
+    const offset = page * MAX_PAGE;
+    const limit = Math.min(MAX_PAGE, rows - offset);
+    const query = `limit=${limit}${offset > 0 ? `&offset=${offset}` : ""}`;
+    return fetch(`/api/expenses?${query}`, { credentials: "include" });
+  });
+}
+
+/** Pages read a moment apart can overlap if a row was added between them. */
+function uniqueById(items: Expense[]): Expense[] {
+  const seen = new Set<string>();
+  const unique: Expense[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    unique.push(item);
+  }
+  return unique;
+}
 
 /** Everything `POST /api/expenses/:id/decision` accepts. */
 export type ExpenseAction = "approve" | "reject" | "mark_paid" | "unmark_paid";
@@ -65,25 +103,40 @@ export function useFinance() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
   const [generation, setGeneration] = useState(0);
+  // Rows currently on screen, so a refresh can re-read all of them rather than
+  // collapsing a ledger someone has paged down back to its first page.
+  const loadedRef = useRef(PAGE_SIZE);
+  // Bumped whenever the user's own action changes what is on screen. A read
+  // that started before it is older than the screen and must not land on it.
+  const mutations = useRef(0);
+
+  useEffect(() => {
+    if (expenses.status === "ok") loadedRef.current = expenses.loaded;
+  }, [expenses]);
 
   const reload = useCallback(() => setGeneration((current) => current + 1), []);
 
   useEffect(() => {
     let active = true;
+    const rows = Math.max(PAGE_SIZE, loadedRef.current);
+    const mutationsAtStart = mutations.current;
+    // Anything the user did while this read was in flight has already put
+    // fresher state on screen than these responses can; the next poll catches up.
+    const stale = () => !active || mutations.current !== mutationsAtStart;
 
     void (async () => {
-      const [budgetResponse, expenseResponse] = await Promise.allSettled([
+      const [budgetResponse, ledgerResponses] = await Promise.allSettled([
         fetch("/api/budget", { credentials: "include" }),
-        fetch(`/api/expenses?limit=${PAGE_SIZE}`, { credentials: "include" }),
+        Promise.all(ledgerRequests(rows)),
       ]);
-      if (!active) return;
+      if (stale()) return;
 
       // Read separately rather than failing both on one rejection: a budget the
       // treasurer can still read is worth showing even if the ledger errored.
       if (budgetResponse.status === "fulfilled" && budgetResponse.value.ok) {
         const parsed = budgetResponseSchema.parse(await budgetResponse.value.json());
-        if (active) setBudget({ status: "ok", summary: parsed.budget });
-      } else if (active) {
+        if (!stale()) setBudget({ status: "ok", summary: parsed.budget });
+      } else if (!stale()) {
         const message =
           budgetResponse.status === "fulfilled"
             ? await failure(budgetResponse.value, "Failed to load the budget")
@@ -91,21 +144,22 @@ export function useFinance() {
         setBudget((current) => (current.status === "ok" ? current : { status: "error", message }));
       }
 
-      if (expenseResponse.status === "fulfilled" && expenseResponse.value.ok) {
-        const parsed = expenseListResponseSchema.parse(await expenseResponse.value.json());
-        if (active) {
-          setExpenses({
-            status: "ok",
-            items: parsed.expenses,
-            loaded: parsed.expenses.length,
-            total: parsed.total,
-          });
+      if (ledgerResponses.status === "fulfilled" && ledgerResponses.value.every((r) => r.ok)) {
+        const pages = await Promise.all(
+          ledgerResponses.value.map(async (r) => expenseListResponseSchema.parse(await r.json())),
+        );
+        if (!stale()) {
+          const items = uniqueById(pages.flatMap((page) => page.expenses));
+          setExpenses({ status: "ok", items, loaded: items.length, total: pages[0]!.total });
         }
-      } else if (active) {
-        const message =
-          expenseResponse.status === "fulfilled"
-            ? await failure(expenseResponse.value, "Failed to load expenses")
-            : "Failed to load expenses";
+      } else if (!stale()) {
+        const failed =
+          ledgerResponses.status === "fulfilled"
+            ? ledgerResponses.value.find((r) => !r.ok)
+            : undefined;
+        const message = failed
+          ? await failure(failed, "Failed to load expenses")
+          : "Failed to load expenses";
         setExpenses((current) =>
           current.status === "ok" ? current : { status: "error", message },
         );
@@ -117,9 +171,9 @@ export function useFinance() {
     };
   }, [generation]);
 
-  // Someone else's approval should land here without a reload; focus only, since
-  // a ledger is not a feed and a poll would be noise.
-  useRevalidate(reload);
+  // Someone else's approval, payment or allocation lands here without a reload:
+  // on every return to the tab, and on a poll while it stays visible.
+  useRevalidate(reload, { intervalMs: POLL_MS });
 
   /**
    * Appends the next page. The list caps at 25, and before this the 26th claim
@@ -153,6 +207,7 @@ export function useFinance() {
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : "Failed to load more expenses");
     } finally {
+      mutations.current += 1;
       setLoadingMore(false);
     }
   }, [expenses, loadingMore]);
@@ -185,6 +240,7 @@ export function useFinance() {
       setMutationError(cause instanceof Error ? cause.message : "Failed to log expense");
       return false;
     } finally {
+      mutations.current += 1;
       setBusy(false);
     }
   }, []);
@@ -220,6 +276,7 @@ export function useFinance() {
       setMutationError(cause instanceof Error ? cause.message : "Failed to update expense");
       return false;
     } finally {
+      mutations.current += 1;
       setBusy(false);
     }
   }, []);
@@ -251,6 +308,7 @@ export function useFinance() {
     } catch (cause) {
       return cause instanceof Error ? cause.message : "Failed to update the budget";
     } finally {
+      mutations.current += 1;
       setBusy(false);
     }
   }, []);
