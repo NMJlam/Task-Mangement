@@ -71,6 +71,22 @@ describe("FinancePage", () => {
     expect(meter).toHaveAttribute("aria-valuetext", "120% used, over budget");
   });
 
+  it("draws a sliver of spend as a sliver, not an empty bar", async () => {
+    const fixture = budget();
+    stubFetch({
+      budget: {
+        ...fixture,
+        allocations: [{ ...fixture.allocations[0]!, committedCents: 20, allocationCents: 5_000 }],
+      },
+    });
+    renderPage();
+
+    const meter = await screen.findByRole("progressbar", {
+      name: "Semester Hackathon budget used",
+    });
+    expect(meter.querySelector('[data-run="on"]')).toHaveAttribute("data-cells", "1");
+  });
+
   it("puts Log Expense under a real heading", async () => {
     stubFetch({});
     renderPage();
@@ -182,14 +198,21 @@ function renderPage() {
   );
 }
 
-function stubFetch(stubs: { expenses?: unknown; more?: unknown; post?: unknown[] }) {
+function stubFetch(stubs: {
+  expenses?: unknown;
+  more?: unknown;
+  post?: unknown[];
+  budget?: unknown;
+}) {
   const post = [...(stubs.post ?? [])];
   const fetchMock: Mock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (init?.method === "POST") {
       return Promise.resolve(post.shift() ?? response({}, 500));
     }
-    if (url.startsWith("/api/budget")) return Promise.resolve(response({ budget: budget() }));
+    if (url.startsWith("/api/budget")) {
+      return Promise.resolve(response({ budget: stubs.budget ?? budget() }));
+    }
     if (url.includes("offset=")) {
       return Promise.resolve(stubs.more ?? response({ expenses: [], total: 0 }));
     }

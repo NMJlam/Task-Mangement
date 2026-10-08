@@ -32,6 +32,33 @@ describe("EventHealthStrip", () => {
     expect(meter).toHaveAttribute("aria-valuetext", "75% complete");
   });
 
+  it("draws one done task in 250 as a sliver, and 249 in 250 as not yet done", () => {
+    const { unmount } = render(
+      <EventHealthStrip
+        taskCounts={{ todo: 249, inProgress: 0, blocked: 0, done: 1 }}
+        overdueCount={0}
+        budget={zeroBudget}
+      />,
+    );
+    expect(screen.getByRole("progressbar").querySelector('[data-run="on"]')).toHaveAttribute(
+      "data-cells",
+      "1",
+    );
+    unmount();
+
+    render(
+      <EventHealthStrip
+        taskCounts={{ todo: 1, inProgress: 0, blocked: 0, done: 249 }}
+        overdueCount={0}
+        budget={zeroBudget}
+      />,
+    );
+    expect(screen.getByRole("progressbar").querySelector('[data-run="off"]')).toHaveAttribute(
+      "data-cells",
+      "1",
+    );
+  });
+
   it("shows 0% complete with zero tasks, not NaN", () => {
     render(
       <EventHealthStrip
