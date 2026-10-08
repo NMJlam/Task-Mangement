@@ -405,6 +405,8 @@ function MoneyCard({
   return (
     <Panel
       title={label}
+      // Under the "Club budget" h2: five sibling h2s would cut them loose from it.
+      level={3}
       action={
         onDownload && (
           <Button

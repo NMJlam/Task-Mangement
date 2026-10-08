@@ -87,6 +87,16 @@ describe("FinancePage", () => {
     expect(meter.querySelector('[data-run="on"]')).toHaveAttribute("data-cells", "1");
   });
 
+  it("nests the money tiles under the Club budget heading", async () => {
+    stubFetch({});
+    renderPage();
+
+    await screen.findByRole("heading", { level: 2, name: "Club budget" });
+    for (const name of ["Budget", "Allocated", "Available", "Committed", "Spent"]) {
+      expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
+    }
+  });
+
   it("puts Log Expense under a real heading", async () => {
     stubFetch({});
     renderPage();
