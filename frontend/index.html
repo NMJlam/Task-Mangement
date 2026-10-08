@@ -3,8 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#fafaf9" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fcfbf9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12120f" media="(prefers-color-scheme: dark)" />
     <title>Club Task Platform</title>
+    <link
+      rel="preload"
+      href="/fonts/DepartureMono-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script>
+      /*
+       * Paints the stored theme before the first frame. `main.tsx` also applies
+       * it, but that runs after the browser has painted this empty document, so
+       * a dark-mode reader would get a flash of the light page. Same storage
+       * key and same "light unless it says dark" default as `lib/theme.ts`,
+       * wrapped because storage can be off-limits.
+       */
+      (function () {
+        try {
+          if (localStorage.getItem("theme") === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (error) {
+          /* Nothing to remember it in; the app still draws, in light. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,79 +1,134 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Dark mode via the `class` strategy (§4). No toggle is built — out of scope. */
+/* Dark mode via the `class` strategy. `lib/theme.ts` owns the switch and
+   `routes/settings.tsx` is the control; nothing else touches `<html>`. */
 @custom-variant dark (&:is(.dark *));
 
+/* Departure Mono (SIL OFL 1.1, Helena Zhang) - the pixel face the whole
+   display layer is set in. Self-hosted: the licence ships beside it in
+   `public/fonts/`. `font-smoothing: none` on `.pixel` is what keeps the
+   pixels square instead of greying them into mush. */
+@font-face {
+  font-family: "Departure Mono";
+  src: url("/fonts/DepartureMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------------------------------------------------------------------------
+   Palette: a terminal. Two directions of one system, ported from the "paper"
+   family of terminaltui.dev and re-measured for WCAG AA here.
+
+   Conventions that differ from a stock shadcn palette, on purpose:
+
+   - `--card` is a SURFACE tone, not white. Panels are a shade off the page and
+     separated by a hairline, the way a terminal draws a box.
+   - `--primary` is INVERSE VIDEO: ink fill, page-coloured text. There is no
+     filled brand colour anywhere in the app.
+   - `--ring` is the single accent. It is used for the focus outline, the
+     active-nav marker, the tab underline and prompt glyphs. It is never used as
+     text on `--accent`, where it measures 4.32:1 and would fail AA.
+   - `--accent` is a neutral hover/selection wash (shadcn's slot, kept for
+     compatibility), and `--accent-foreground` is ink so a selected row is
+     readable, not tinted.
+   - `--ok` / `--warn` / `--danger` replace the Tailwind palette tints the
+     status chips used to carry. They are foreground colours: a status tag is
+     coloured text on the surface, never a filled pill. Because both themes
+     define them, no `dark:` pairing can be forgotten (the failure mode
+     docs/accessibility.md records).
+
+   Every ratio below is measured in docs/accessibility.md. Re-run it after any
+   change here - `--muted-foreground` and `--input` have the least headroom.
+--------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
+  --radius: 0px;
 
-  /* Ported from the approved FE prototype. Muted text is darkened from
-     #78766f to keep normal copy above WCAG AA on the warm background. */
-  --background: #fafaf9;
-  --foreground: #1c1c1a;
-  --card: #ffffff;
-  --card-foreground: #1c1c1a;
-  --popover: #ffffff;
-  --popover-foreground: #1c1c1a;
-  --primary: #1c1c1a;
-  --primary-foreground: #fafaf9;
-  --secondary: #f1f1ef;
-  --secondary-foreground: #3d3d3a;
-  --muted: #f1f1ef;
-  --muted-foreground: #706e68;
-  --accent: #eef0ff;
-  --accent-foreground: #3a47c4;
-  --destructive: #c14a3a;
-  --destructive-foreground: #ffffff;
+  --background: #fcfbf9;
+  --foreground: #14140f;
+  --card: #f5f3ef;
+  --card-foreground: #14140f;
+  --popover: #fcfbf9;
+  --popover-foreground: #14140f;
+  --primary: #14140f;
+  --primary-foreground: #fcfbf9;
+  --secondary: #f5f3ef;
+  --secondary-foreground: #14140f;
+  --muted: #f5f3ef;
+  --muted-foreground: #5d5b53;
+  --accent: #eeece7;
+  --accent-foreground: #14140f;
+  --destructive: #b3261e;
+  --destructive-foreground: #fcfbf9;
+  --border: #e3e1da;
+  /* Deliberately darker than `--border`: 3.25:1 against the page, so an input
+     boundary clears the 3:1 non-text contrast minimum. A hairline is for
+     grouping panels; it is not enough to say "this is a field". */
+  --input: #8f8c83;
+  --ring: #cc3700;
+
   /* The calendar's current day. Its own token, not `destructive`: red here
      means "now", not "danger". */
   --today: #c8231b;
   --today-foreground: #ffffff;
-  --border: #e7e5e2;
-  --input: #d6d3ce;
-  --ring: #5b6cff;
 
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --ok: #0b6b3a;
+  --warn: #8a5300;
+  --danger: #b3261e;
+
+  --scrim: rgb(20 20 15 / 0.55);
+
+  /* A terminal screen: the one surface that does NOT invert with the theme.
+     Used by the login panel, which is composed as a window onto a machine
+     rather than as a section of the page. Keeping it fixed is what lets the
+     faded-text floors in docs/accessibility.md be measured once instead of
+     twice, and avoids the light-panel-in-dark-mode bug the old `bg-primary`
+     split screen had. */
+  --screen: #14140f;
+  --screen-foreground: #f2f1ec;
+  /* The accent to use ON the screen. It is the dark direction's orange, fixed:
+     the light accent (#cc3700) measures 3.62:1 on `--screen` and could not be
+     used for text there, whereas #ff6b3d is 6.53:1. */
+  --screen-accent: #ff6b3d;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #16161a;
-  --foreground: #ececef;
-  --card: #1d1d22;
-  --card-foreground: #ececef;
-  --popover: #1d1d22;
-  --popover-foreground: #ececef;
-  --primary: #ececef;
-  --primary-foreground: #16161a;
-  --secondary: #24242a;
-  --secondary-foreground: #ececef;
-  --muted: #24242a;
-  --muted-foreground: #b0b0b8;
-  --accent: #232442;
-  --accent-foreground: #aab4ff;
-  --destructive: #e07566;
-  --destructive-foreground: #16161a;
+
+  --background: #12120f;
+  --foreground: #f2f1ec;
+  --card: #1b1b17;
+  --card-foreground: #f2f1ec;
+  --popover: #1b1b17;
+  --popover-foreground: #f2f1ec;
+  --primary: #f2f1ec;
+  --primary-foreground: #12120f;
+  --secondary: #1b1b17;
+  --secondary-foreground: #f2f1ec;
+  --muted: #1b1b17;
+  --muted-foreground: #a3a099;
+  --accent: #22221c;
+  --accent-foreground: #f2f1ec;
+  --destructive: #ff9a8c;
+  --destructive-foreground: #12120f;
+  --border: #2b2b25;
+  --input: #6b6b64;
+  --ring: #ff6b3d;
+
   --today: #f97066;
   --today-foreground: #16161a;
-  --border: #2c2c33;
-  --input: #3a3a42;
-  --ring: #818df8;
 
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --ok: #5fd39a;
+  --warn: #f5c069;
+  --danger: #ff9a8c;
+
+  --scrim: rgb(0 0 0 / 0.72);
 }
 
 /* Map the tokens above into Tailwind's theme so `bg-background`,
-   `text-muted-foreground`, `rounded-lg`, etc. resolve. */
+   `text-muted-foreground`, `rounded-lg`, `font-display` etc. resolve. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -96,32 +151,49 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-scrim: var(--scrim);
+  --color-screen: var(--screen);
+  --color-screen-foreground: var(--screen-foreground);
+  --color-screen-accent: var(--screen-accent);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: "Geist", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  /* All-sharp, as literals: `calc(0px - 4px)` is a negative radius, so the
+     usual derivation from `--radius` cannot be used. */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+
+  /* The whole app is monospace. That is the point of the direction, not an
+     oversight: there is no sans face anywhere in this build. `--font-display`
+     is the pixel face, reserved for headings, the wordmark and labels that
+     should read as chrome rather than prose. */
+  --font-sans: var(--font-mono);
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --font-display: "Departure Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
 @layer base {
   * {
     border-color: var(--border);
-    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
   }
   body {
     min-height: 100svh;
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+  /* One focus style for every control, including the native inputs, selects
+     and textareas that never went through a primitive. Outline rather than a
+     ring so it survives on top of a hairline border. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
   button,
   a {
@@ -133,19 +205,74 @@
   h4,
   h5,
   h6 {
+    /* Pixel face for every heading. Titles are chrome, not prose. */
+    font-family: var(--font-display);
+    font-synthesis: none;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    font-smooth: never;
     scroll-margin-top: 6rem;
+    letter-spacing: 0.01em;
     text-wrap: balance;
   }
   p {
     text-wrap: pretty;
   }
   ::selection {
-    background: var(--accent);
-    color: var(--accent-foreground);
+    background: var(--ring);
+    color: var(--background);
+  }
+}
+
+/* Pixel type is only crisp with smoothing off: the face is drawn on a square
+   grid, and antialiasing greys the edges until it reads as a broken sans.
+   Applied to the `font-display` utility itself, so every element that opts into
+   the pixel face gets it and there is no second class to remember. */
+@layer utilities {
+  .font-display {
+    font-synthesis: none;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    font-smooth: never;
+  }
+}
+
+/* A TUI status tag: the brackets are drawn, not typed, so the text content of
+   the element stays exactly its label for screen readers and tests. */
+.tag::before {
+  content: "[";
+}
+.tag::after {
+  content: "]";
+}
+
+/* The blinking block cursor from the reference masthead, used once: beside the
+   app title, where it signals "this is a live session". */
+.caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.8em;
+  margin-left: 0.16em;
+  vertical-align: -0.04em;
+  background: var(--ring);
+  animation: caret-blink 1.4s step-end infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
   *,
   *::before,
   *::after {
