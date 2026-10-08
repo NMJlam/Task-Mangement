@@ -30,7 +30,10 @@ export function EventHealthStrip({
   subject?: string;
 }) {
   const total = taskCounts.todo + taskCounts.inProgress + taskCounts.blocked + taskCounts.done;
-  const percentComplete = total === 0 ? 0 : Math.round((taskCounts.done / total) * 100);
+  // The meter takes the exact share and the words take the rounded one: rounded
+  // first, one done task in 250 would draw an empty bar and 249 a full one.
+  const shareComplete = total === 0 ? 0 : (taskCounts.done / total) * 100;
+  const percentComplete = Math.round(shareComplete);
   const burn = budget.allocationCents === 0 ? null : budget.committedCents / budget.allocationCents;
 
   return (
@@ -39,7 +42,7 @@ export function EventHealthStrip({
       data-slot="event-health-strip"
     >
       <TextMeter
-        value={percentComplete}
+        value={shareComplete}
         max={100}
         label={subject ? `${subject} tasks complete` : "Tasks complete"}
         valueText={`${percentComplete}% complete`}

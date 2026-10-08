@@ -306,7 +306,8 @@ function AllocationRow({ row }: { row: BudgetSummary["allocations"][number] }) {
           // carries a word as well as the colour.
           <span className="inline-flex items-center justify-end gap-2">
             <TextMeter
-              value={Math.round(used * 100)}
+              // Unrounded, so $20 of $5,000 draws a sliver rather than nothing.
+              value={used * 100}
               max={100}
               cells={8}
               label={`${row.eventTitle} budget used`}
