@@ -206,10 +206,14 @@ None adds a colour pair: each uses tokens already measured above.
   meter is a `role="progressbar"` with a name and an `aria-valuetext` that says
   the reading in words ("62% complete", "120% used, over budget"). The value is
   clamped to the maximum, so "over" is carried by the words and the `danger`
-  colour, never by an out-of-range number. The glyphs are `aria-hidden`.
-  Filled cells are `foreground` (or `danger`, 5.90:1 light / 8.43:1 dark), and
-  the track and brackets are `muted-foreground` (6.14:1 light / 6.62:1 dark on a
-  panel). Both pass as text, so the bar also clears 1.4.11's 3:1 as a graphic.
+  colour, never by an out-of-range number. The drawing is `aria-hidden`. Its
+  cells are character-wide boxes, not `█`/`░` glyphs: Windows draws `░` from a
+  taller fallback font, which overlapped the row below. Filled cells are solid
+  `foreground` (or `danger`, 5.90:1 light / 8.43:1 dark), well over 1.4.11's
+  3:1 against the page or a panel. The track is a one-pixel dither of
+  `muted-foreground` and the brackets are that colour too (6.14:1 light /
+  6.62:1 dark on a panel). The track is a backdrop, not information: the filled
+  cells and the words carry the reading.
 - **Panels** (`Panel`, a box titled in its top border). Each is a `section`
   named by its own `h2`/`h3`, so it is a region a screen reader can jump to by
   name. The drawn lines are `--border` hairlines and `aria-hidden`. They group
