@@ -21,7 +21,7 @@ export function staffableTeams(
 }
 
 /**
- * A member's teams as chips, and — for a viewer who can staff at least one
+ * A member's teams as `[Tag]`s, and — for a viewer who can staff at least one
  * team — the popover that puts them on or takes them off.
  *
  * The popover lists only the teams the viewer can staff, so every box in it
@@ -55,10 +55,7 @@ export function MemberTeams({
       ) : (
         <ul aria-label={`Teams for ${memberName}`} className="flex flex-wrap justify-end gap-1.5">
           {onTeams.map((team) => (
-            <li
-              key={team.id}
-              className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
-            >
+            <li key={team.id} className="tag text-xs leading-none font-medium">
               {team.name}
             </li>
           ))}
@@ -80,7 +77,7 @@ export function MemberTeams({
               side="bottom"
               sideOffset={6}
               collisionPadding={12}
-              className="z-50 grid w-[min(16rem,calc(100vw-2rem))] gap-1 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg outline-none"
+              className="z-50 grid w-[min(16rem,calc(100vw-2rem))] gap-1 rounded-lg border bg-popover p-3 text-popover-foreground"
             >
               <p className="px-1 pb-1 text-xs font-semibold text-muted-foreground">
                 Teams for {memberName}
