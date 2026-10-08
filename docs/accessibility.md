@@ -206,14 +206,19 @@ None adds a colour pair: each uses tokens already measured above.
   meter is a `role="progressbar"` with a name and an `aria-valuetext` that says
   the reading in words ("62% complete", "120% used, over budget"). The value is
   clamped to the maximum, so "over" is carried by the words and the `danger`
-  colour, never by an out-of-range number. The drawing is `aria-hidden`. Its
-  cells are character-wide boxes, not `█`/`░` glyphs: Windows draws `░` from a
-  taller fallback font, which overlapped the row below. Filled cells are solid
-  `foreground` (or `danger`, 5.90:1 light / 8.43:1 dark), well over 1.4.11's
-  3:1 against the page or a panel. The track is a one-pixel dither of
-  `muted-foreground` and the brackets are that colour too (6.14:1 light /
-  6.62:1 dark on a panel). The track is a backdrop, not information: the filled
-  cells and the words carry the reading.
+  colour, never by an out-of-range number. The drawing is `aria-hidden`: two
+  runs, each as many characters wide as its cells. Two things were tried and
+  dropped. `█`/`░` glyphs failed because Windows draws `░` from a taller
+  fallback font, which overlapped the row below. A box per cell failed because
+  at 125% and 150% scaling the boxes land on fractional pixels and show seams.
+  The filled run is solid `foreground` (or `danger`, 5.90:1 light / 8.43:1
+  dark), well over 1.4.11's 3:1 against the page or a panel. The track is a 35%
+  tint of `muted-foreground` and the brackets are that colour at full strength
+  (6.14:1 light / 6.62:1 dark on a panel). The track is a backdrop, not
+  information: the filled run and the words carry the reading. **Forced
+  colours** (Windows contrast themes) would blank every background, so the
+  runs and the panels' top rules opt out with `forced-color-adjust: none` and
+  draw in `CanvasText`, with the track as an outline.
 - **Panels** (`Panel`, a box titled in its top border). Each is a `section`
   named by its own `h2`/`h3`, so it is a region a screen reader can jump to by
   name. The drawn lines are `--border` hairlines and `aria-hidden`. They group

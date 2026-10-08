@@ -2,12 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { TextMeter } from "./text-meter";
 
-/** The meter's drawn cells, filled and empty. */
+/** How many cells the meter fills and leaves empty, read off its two runs. */
 function cells(meter: HTMLElement) {
-  return {
-    on: meter.querySelectorAll('[data-cell="on"]'),
-    off: meter.querySelectorAll('[data-cell="off"]'),
-  };
+  const run = (kind: "on" | "off") =>
+    Number(meter.querySelector(`[data-run="${kind}"]`)?.getAttribute("data-cells") ?? 0);
+  return { on: run("on"), off: run("off") };
 }
 
 it("is a named progressbar whose drawing is hidden from assistive tech", () => {
@@ -19,20 +18,39 @@ it("is a named progressbar whose drawing is hidden from assistive tech", () => {
   expect(meter).toHaveAttribute("aria-valuenow", "3");
   expect(meter).toHaveAttribute("aria-valuemax", "4");
   expect(meter).toHaveAttribute("aria-valuetext", "3 open tasks");
-  expect(cells(meter).on).toHaveLength(6);
-  expect(cells(meter).off).toHaveLength(2);
+  expect(cells(meter)).toEqual({ on: 6, off: 2 });
   for (const part of meter.children) expect(part).toHaveAttribute("aria-hidden", "true");
 });
 
 /**
- * Cells are boxes, not `█`/`░` characters: Windows draws `░` from a fallback
- * font that is taller than the monospace stack and overlaps the next row. The
- * only text left is the ASCII brackets, which every font has.
+ * Two runs, each as wide as its cells, rather than a box per cell: at 125% and
+ * 150% display scaling a `1ch` box lands on a fractional pixel, and a row of
+ * them showed hairline seams. No glyph either — Windows draws `░` from a taller
+ * fallback font. The only text left is the ASCII brackets.
  */
-it("draws its cells as boxes, so no glyph depends on the font", () => {
-  render(<TextMeter value={1} max={2} label="Half" valueText="50%" cells={4} />);
+it("draws a filled run and an empty run, each as wide as its cells", () => {
+  render(<TextMeter value={1} max={4} label="Quarter" valueText="25%" cells={8} />);
 
-  expect(screen.getByRole("progressbar", { name: "Half" }).textContent).toBe("[]");
+  const meter = screen.getByRole("progressbar", { name: "Quarter" });
+  expect(meter.textContent).toBe("[]");
+  expect(meter.querySelector('[data-run="on"]')).toHaveStyle({ width: "2ch" });
+  expect(meter.querySelector('[data-run="off"]')).toHaveStyle({ width: "6ch" });
+});
+
+it("draws no empty run when full, and no filled run when empty", () => {
+  render(
+    <>
+      <TextMeter value={4} max={4} label="Full" valueText="full" cells={4} />
+      <TextMeter value={0} max={4} label="Empty" valueText="empty" cells={4} />
+    </>,
+  );
+
+  expect(
+    screen.getByRole("progressbar", { name: "Full" }).querySelector('[data-run="off"]'),
+  ).toBeNull();
+  expect(
+    screen.getByRole("progressbar", { name: "Empty" }).querySelector('[data-run="on"]'),
+  ).toBeNull();
 });
 
 it("clamps the reported value to max, and draws an over-max meter full in danger", () => {
@@ -49,7 +67,6 @@ it("clamps the reported value to max, and draws an over-max meter full in danger
 
   const meter = screen.getByRole("progressbar", { name: "Budget used" });
   expect(meter).toHaveAttribute("aria-valuenow", "100");
-  expect(cells(meter).on).toHaveLength(4);
-  expect(cells(meter).off).toHaveLength(0);
-  for (const cell of cells(meter).on) expect(cell).toHaveClass("text-danger");
+  expect(cells(meter)).toEqual({ on: 4, off: 0 });
+  expect(meter.querySelector('[data-run="on"]')).toHaveClass("text-danger");
 });

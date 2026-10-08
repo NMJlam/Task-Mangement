@@ -27,8 +27,8 @@ describe("EventHealthStrip", () => {
       />,
     );
     const meter = screen.getByRole("progressbar", { name: "Winter Showcase tasks complete" });
-    expect(meter.querySelectorAll('[data-cell="on"]')).toHaveLength(8);
-    expect(meter.querySelectorAll('[data-cell="off"]')).toHaveLength(2);
+    expect(meter.querySelector('[data-run="on"]')).toHaveAttribute("data-cells", "8");
+    expect(meter.querySelector('[data-run="off"]')).toHaveAttribute("data-cells", "2");
     expect(meter).toHaveAttribute("aria-valuetext", "75% complete");
   });
 
