@@ -31,7 +31,8 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
-      className={cn("leading-none font-semibold", className)}
+      // A panel heading is chrome, not prose: pixel face, same as `h1`-`h6`.
+      className={cn("font-display leading-none font-semibold", className)}
       {...props}
     />
   );

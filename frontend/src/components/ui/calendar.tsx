@@ -63,7 +63,7 @@ export function Calendar({
         // The <td> is only a cell; the button inside it is the target.
         day: "p-0 text-center [&>button]:mx-auto",
         day_button:
-          "size-9 cursor-pointer rounded-md text-sm font-medium tabular-nums transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed",
+          "size-9 cursor-pointer rounded-md text-sm font-medium tabular-nums transition-colors hover:bg-accent hover:text-accent-foreground  disabled:cursor-not-allowed",
         selected:
           "[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
         today: "[&>button]:font-semibold",

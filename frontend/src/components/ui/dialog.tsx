@@ -24,7 +24,7 @@ function DialogOverlay({
       // overlay the containing block for `position: fixed` descendants — see
       // DialogContent. A static overlay keeps floating layers positioning
       // correctly at every moment.
-      className={cn("fixed inset-0 z-50 bg-black/50", className)}
+      className={cn("fixed inset-0 z-50 bg-scrim", className)}
       {...props}
     />
   );
@@ -76,14 +76,14 @@ function DialogContent({
             // dialog. Scrolling works here because the dialog content is the
             // scroll-lock shard — anything portaled outside it has its wheel
             // events cancelled by react-remove-scroll.
-            "relative z-50 grid max-h-[calc(100vh-2rem)] w-full gap-4 overflow-y-auto overscroll-contain rounded-lg border bg-card p-6 shadow-lg",
+            "relative z-50 grid max-h-[calc(100vh-2rem)] w-full gap-4 overflow-y-auto overscroll-contain rounded-lg border bg-card p-6",
             dialogSizes[size],
             className,
           )}
           {...props}
         >
           {children}
-          <DialogPrimitive.Close className="absolute top-4 right-4 cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+          <DialogPrimitive.Close className="absolute top-4 right-4 cursor-pointer p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             <X aria-hidden="true" className="size-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

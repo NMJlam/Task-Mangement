@@ -22,7 +22,10 @@ function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimi
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
-      className={cn("flex gap-1 overflow-x-auto rounded-lg bg-secondary p-1", className)}
+      // A tab bar, not a segmented control: one hairline under the row, the
+      // active tab marked by an accent rule underneath. The old pill-in-a-tray
+      // look is a mobile-iOS shape, not a terminal one.
+      className={cn("flex gap-1 overflow-x-auto border-b", className)}
       {...props}
     />
   );
@@ -33,7 +36,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        "-mb-px flex-1 cursor-pointer border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-[border-color,color] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 data-[state=active]:border-ring data-[state=active]:text-foreground",
         className,
       )}
       {...props}
@@ -43,11 +46,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
-    <TabsPrimitive.Content
-      data-slot="tabs-content"
-      className={cn("outline-none focus-visible:ring-3 focus-visible:ring-ring/50", className)}
-      {...props}
-    />
+    <TabsPrimitive.Content data-slot="tabs-content" className={cn("", className)} {...props} />
   );
 }
 
