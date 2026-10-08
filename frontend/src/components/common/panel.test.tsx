@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { Panel } from "./panel";
 
-it("is a region named by its title, with meta and action in the border", () => {
+it("is a region named by its heading, with meta and action in the border", () => {
   render(
     <Panel title="My Tasks" meta="3 open" action={<a href="/tasks">View All</a>}>
       <p>Body</p>
@@ -14,15 +14,13 @@ it("is a region named by its title, with meta and action in the border", () => {
   expect(within(region).getByText("3 open")).toBeInTheDocument();
   expect(within(region).getByRole("link", { name: "View All" })).toBeInTheDocument();
   expect(within(region).getByText("Body")).toBeInTheDocument();
-});
 
-it("takes a lower heading level where it nests under another heading", () => {
+  // A lower level where it nests under another heading.
   render(
     <Panel title="Risk" level={3}>
-      <p>Body</p>
+      x
     </Panel>,
   );
-
   expect(screen.getByRole("heading", { level: 3, name: "Risk" })).toBeInTheDocument();
 });
 

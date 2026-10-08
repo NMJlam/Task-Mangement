@@ -17,14 +17,6 @@ describe("Tabs", () => {
     );
   }
 
-  it("exposes tablist semantics the hand-rolled control cannot", () => {
-    renderTabs();
-
-    expect(screen.getByRole("tablist")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "One" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel")).toHaveTextContent("First panel");
-  });
-
   /**
    * A tab sits 1px over the row's hairline (`-mb-px`). In a scroll container
    * that pixel overflowed, so the row grew a scroll area and cut each tab's
@@ -36,9 +28,11 @@ describe("Tabs", () => {
     expect(screen.getByRole("tablist").className).not.toMatch(/overflow/);
   });
 
-  it("moves between tabs with the arrow keys", async () => {
+  it("exposes tablist semantics the hand-rolled control could not, and moves on the arrow keys", async () => {
     const user = userEvent.setup({ delay: null });
     renderTabs();
+    expect(screen.getByRole("tab", { name: "One" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("First panel");
 
     await user.tab();
     await user.keyboard("{ArrowRight}");
