@@ -10,6 +10,7 @@ import {
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { Button } from "@/components/ui/button";
@@ -80,10 +81,10 @@ export function NotificationsPage() {
         <LoadingLine label="Loading Notifications…" className="mt-8" />
       )}
       {notifications.state.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load notifications: {notifications.state.message}. Refresh the page to try
           again.
-        </p>
+        </LogLine>
       )}
       {notifications.state.status === "ok" && items.length === 0 && (
         <Card className="mt-4 border-dashed shadow-none">

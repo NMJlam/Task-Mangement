@@ -8,6 +8,7 @@ import { ListPlus, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { statusStyles } from "@/components/common/status-badge";
 import { TaskBoard } from "@/components/tasks/task-board";
@@ -203,19 +204,19 @@ export function TasksPage() {
           its own state rather than a board that waits for a request that can
           never be issued. */}
       {needsIdentity && !identityReady && me.status !== "loading" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load your membership, so your tasks can&apos;t be listed.{" "}
           <Link to="/tasks" className="underline">
             Show all tasks
           </Link>
           .
-        </p>
+        </LogLine>
       )}
       {tasks.state.status === "loading" && <LoadingLine label="Loading Tasks…" className="mt-8" />}
       {tasks.state.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load tasks: {tasks.state.message}. Refresh the page to try again.
-        </p>
+        </LogLine>
       )}
       {tasks.state.status === "ok" && (
         <section aria-label="Task board" className="mt-8">

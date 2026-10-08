@@ -8,6 +8,7 @@ import {
 } from "@ctp/shared";
 import { useRef, useState } from "react";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { UserAvatar } from "@/components/common/user-avatar";
@@ -84,9 +85,9 @@ export function MembersPage() {
         <LoadingLine label="Loading Members…" className="mt-8" />
       )}
       {members.state.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load members: {members.state.message}. Refresh the page to try again.
-        </p>
+        </LogLine>
       )}
       {members.state.status === "ok" && items.length === 0 && (
         <Card className="mt-8 border-dashed shadow-none">

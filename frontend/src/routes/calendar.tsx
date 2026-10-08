@@ -12,6 +12,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus } from "luc
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge, statusStyles, toneChip } from "@/components/common/status-badge";
 import { EventDatesDialog } from "@/components/events/event-dates-dialog";
@@ -840,9 +841,7 @@ function EventOverview({
         </p>
       )}
       {state.status === "error" && (
-        <p className="text-sm text-destructive" role="alert">
-          Couldn&apos;t load the event: {state.message}. Try again.
-        </p>
+        <LogLine tone="err">Couldn&apos;t load the event: {state.message}. Try again.</LogLine>
       )}
       {event && (
         <EventOverviewBody

@@ -3,6 +3,7 @@ import { CalendarDays, Hash, MessageCircle, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
+import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
@@ -113,9 +114,9 @@ export function MessagesPage() {
         <LoadingLine label="Loading Conversations…" className="mt-8" />
       )}
       {threads.state.status === "error" && (
-        <p className="mt-8 text-sm text-destructive" role="alert">
+        <LogLine tone="err" className="mt-8">
           Couldn&apos;t load conversations: {threads.state.message}. Refresh the page to try again.
-        </p>
+        </LogLine>
       )}
       {threads.state.status === "ok" && threadItems.length === 0 && (
         <div className="mt-8 rounded-xl border border-dashed">
