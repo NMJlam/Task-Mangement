@@ -33,7 +33,10 @@ export function ThreadChat({
   kind: Thread["kind"];
   members: RosterMember[];
   selfId: string | undefined;
-  /** Sits beside the title — Messages puts the way to an event thread's event here. */
+  /**
+   * Sits beside the title. Messages puts the way to an event thread's event
+   * here, and the event's Thread tab the way back to Messages.
+   */
   titleAction?: ReactNode;
   className?: string;
 }) {

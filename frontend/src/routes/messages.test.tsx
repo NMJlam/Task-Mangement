@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessagesPage } from "./messages";
 
@@ -389,6 +389,54 @@ describe("MessagesPage", () => {
     expect(screen.queryByRole("link", { name: "View event" })).not.toBeInTheDocument();
   });
 
+  describe("the conversation in the URL", () => {
+    const threadA = "018f3a4b-0000-7000-8000-0000000000a1";
+    const threadB = "018f3a4b-0000-7000-8000-0000000000b2";
+
+    function stubTwoThreads() {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string) => {
+          if (input === "/api/threads") {
+            return response({
+              threads: [thread(threadA, "Winter Showcase"), thread(threadB, "Logistics")],
+            });
+          }
+          if (input === "/api/members") return response({ members: [] });
+          return response({ messages: [], nextCursor: null });
+        }),
+      );
+    }
+
+    it("opens the conversation a link names, not the most recent one", async () => {
+      stubTwoThreads();
+
+      renderPage(`/messages?thread=${threadB}`);
+
+      expect(await screen.findByRole("heading", { name: "Logistics" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Winter Showcase" })).not.toBeInTheDocument();
+    });
+
+    it("falls back to the most recent conversation when the named one is not listed", async () => {
+      stubTwoThreads();
+
+      renderPage("/messages?thread=018f3a4b-0000-7000-8000-0000000000ff");
+
+      expect(await screen.findByRole("heading", { name: "Winter Showcase" })).toBeInTheDocument();
+    });
+
+    it("writes the conversation the reader picks back to the URL", async () => {
+      stubTwoThreads();
+
+      renderPage();
+      await screen.findByRole("heading", { name: "Winter Showcase" });
+      fireEvent.click(screen.getByRole("button", { name: /logistics/i }));
+
+      expect(await screen.findByRole("heading", { name: "Logistics" })).toBeInTheDocument();
+      expect(screen.getByTestId("location")).toHaveTextContent(`?thread=${threadB}`);
+    });
+  });
+
   it("keeps a draft typed in another thread when an earlier send lands", async () => {
     const threadA = "018f3a4b-0000-7000-8000-0000000000a1";
     const threadB = "018f3a4b-0000-7000-8000-0000000000b2";
@@ -704,12 +752,21 @@ describe("MessagesPage", () => {
 });
 
 /** The page links out to events, so it renders inside a router, as the app does. */
-function renderPage() {
+function renderPage(path = "/messages") {
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter
+      initialEntries={[path]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <MessagesPage />
+      <LocationProbe />
     </MemoryRouter>,
   );
+}
+
+/** Shows the router's search string, so a test can read what the page wrote to the URL. */
+function LocationProbe() {
+  return <output data-testid="location">{useLocation().search}</output>;
 }
 
 function thread(id: string, name: string) {
