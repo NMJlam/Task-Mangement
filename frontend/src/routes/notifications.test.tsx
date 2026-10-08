@@ -44,32 +44,21 @@ const base = {
 describe("NotificationsPage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("shows unread notifications and marks one as read", async () => {
+  it("marks a row read on the click, before the server answers", async () => {
     const fetchMock = stubFeed({
       feed: { notifications: [base], unreadCount: 1 },
-      markRead: response({ notification: { ...base, readAt: "2026-09-18T01:00:00.000Z" } }),
+      markRead: new Promise(() => {}),
     });
-
-    renderPage();
-
-    await waitFor(() => expect(screen.getByText(base.body)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Mark Read" }));
-
-    await waitFor(() => expect(screen.getByText("0 unread notifications.")).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledWith(`/api/notifications/${base.id}/read`, {
-      method: "PATCH",
-      credentials: "include",
-    });
-  });
-
-  it("marks a row read on the click, before the server answers", async () => {
-    stubFeed({ feed: { notifications: [base], unreadCount: 1 }, markRead: new Promise(() => {}) });
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Mark Read" }));
 
     expect(screen.getByText("0 unread notifications.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark Read" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(`/api/notifications/${base.id}/read`, {
+      method: "PATCH",
+      credentials: "include",
+    });
   });
 
   it("puts a row back to unread when marking it fails", async () => {
@@ -173,18 +162,31 @@ describe("NotificationsPage", () => {
   /**
    * `entityType`/`entityId` shipped on every row as "a deep-link target" and
    * were rendered by nothing, so each notification named a task it could not
-   * open. These two cases pin the mapping and its refusal to guess.
+   * open. An event has its own page, so its id goes in the link. The board has
+   * no per-task URL, so a task links to the board without one: a `?task=` that
+   * no page reads would look like a deep link and silently not be. And a row
+   * with nothing reachable stays plain text rather than guessing.
    */
-  it("carries the id for an entity that has a route of its own", async () => {
+  it("links each row as far as a page can take it, and no further", async () => {
     const onEvent = {
       ...base,
+      id: "018f3a4b-0000-7000-8000-000000000011",
       kind: "event_cancelled",
       body: "Semester Hackathon was cancelled.",
       entityType: "event",
     };
+    const orphan = {
+      ...base,
+      id: "018f3a4b-0000-7000-8000-000000000012",
+      body: "Welcome aboard.",
+      entityType: null,
+      entityId: null,
+    };
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(response({ notifications: [onEvent], unreadCount: 1 })),
+      vi
+        .fn()
+        .mockResolvedValue(response({ notifications: [onEvent, base, orphan], unreadCount: 3 })),
     );
 
     renderPage();
@@ -195,36 +197,8 @@ describe("NotificationsPage", () => {
         `/events/${onEvent.entityId}`,
       ),
     );
-  });
-
-  /**
-   * The board has no per-task URL, so the id stays OUT of the link. A `?task=`
-   * that no page reads looks like a working deep link and silently is not —
-   * which is exactly the state this assertion exists to prevent returning to.
-   */
-  it("links to the page but not the row when the row has no route", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(response({ notifications: [base], unreadCount: 1 })),
-    );
-
-    renderPage();
-
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: base.body })).toHaveAttribute("href", "/tasks"),
-    );
-  });
-
-  it("leaves a notification with no reachable entity as plain text", async () => {
-    const orphan = { ...base, entityType: null, entityId: null };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(response({ notifications: [orphan], unreadCount: 1 })),
-    );
-
-    renderPage();
-
-    await waitFor(() => expect(screen.getByText(orphan.body)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: base.body })).toHaveAttribute("href", "/tasks");
+    expect(screen.getByText(orphan.body)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: orphan.body })).not.toBeInTheDocument();
   });
 
@@ -243,14 +217,11 @@ describe("NotificationsPage", () => {
   });
 });
 
-describe("pollIntervalFrom", () => {
-  it("takes a positive whole number of milliseconds", () => {
-    expect(pollIntervalFrom("5000")).toBe(5_000);
-  });
-
-  it.each([undefined, "", "abc", "0", "-5", "1.5"])("falls back to a second for %j", (raw) => {
+it("takes a positive whole number of milliseconds as the poll interval, and a second otherwise", () => {
+  expect(pollIntervalFrom("5000")).toBe(5_000);
+  for (const raw of [undefined, "", "abc", "0", "-5", "1.5"]) {
     expect(pollIntervalFrom(raw)).toBe(1_000);
-  });
+  }
 });
 
 /**

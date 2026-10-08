@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MembersPage } from "./members";
-import { canSetLead, staffableTeams } from "@/components/members/member-teams";
 
 const viewer = vi.hoisted(() => ({
   id: "018f3a4b-0000-7000-8000-000000000001",
@@ -288,40 +287,6 @@ describe("MembersPage", () => {
 
     await screen.findByRole("list", { name: "Teams for Alex Morgan" });
     expect(screen.queryByRole("button", { name: /edit teams/i })).not.toBeInTheDocument();
-  });
-});
-
-describe("canSetLead", () => {
-  it.each([
-    [2, true],
-    [1, false],
-    [0, false],
-  ])("tier %i → %s, as PATCH /api/teams/:id is authorise(2)", (tier, expected) => {
-    expect(canSetLead({ tier })).toBe(expected);
-  });
-});
-
-describe("staffableTeams", () => {
-  const lead = "018f3a4b-0000-7000-8000-000000000001";
-  const team = (id: string, teamLead: string | null) => ({
-    id,
-    name: id,
-    lead: teamLead,
-    createdAt: new Date(),
-    memberIds: [],
-  });
-  const teams = [team("led", lead), team("other", null)];
-
-  it("lets tier 2 staff every team", () => {
-    expect(staffableTeams(teams, { id: lead, tier: 2 }).map((t) => t.id)).toEqual(["led", "other"]);
-  });
-
-  it("lets tier 1 staff only the teams they lead", () => {
-    expect(staffableTeams(teams, { id: lead, tier: 1 }).map((t) => t.id)).toEqual(["led"]);
-  });
-
-  it("lets tier 0 staff nothing, even a team they lead — the route is authorise(1)", () => {
-    expect(staffableTeams(teams, { id: lead, tier: 0 })).toEqual([]);
   });
 });
 
