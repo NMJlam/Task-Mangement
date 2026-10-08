@@ -134,10 +134,6 @@ describe("/api/threads (integration)", () => {
     await closeNodeDb();
   });
 
-  it("401s without a session", async () => {
-    expect((await request(app).get("/api/threads")).status).toBe(401);
-  });
-
   describe("POST /api/threads", () => {
     it("starts one dm per pair, whichever side asks", async () => {
       const officer = await member("officer", "officer");

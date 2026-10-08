@@ -23,20 +23,12 @@ const updateTask: AiApplyOperation = {
 };
 
 describe("requiredTierFor", () => {
-  it("puts a single task create at tier 0, matching POST /api/tasks", () => {
+  it("asks the tier the matching route does: one task or an update at 0, a batch or an event at 1", () => {
+    // POST /api/tasks, PATCH /api/tasks/:id, POST /api/tasks/bulk, POST /api/events.
     expect([...requiredTierFor([createTask()]).keys()]).toEqual([0]);
-  });
-
-  it("raises two or more task creates to tier 1, matching POST /api/tasks/bulk", () => {
-    expect([...requiredTierFor([createTask(), createTask()]).keys()]).toContain(1);
-  });
-
-  it("puts an event create at tier 1", () => {
-    expect([...requiredTierFor([createEvent]).keys()]).toContain(1);
-  });
-
-  it("leaves a task update at tier 0, matching PATCH /api/tasks/:id", () => {
     expect([...requiredTierFor([updateTask]).keys()]).toEqual([0]);
+    expect([...requiredTierFor([createTask(), createTask()]).keys()]).toContain(1);
+    expect([...requiredTierFor([createEvent]).keys()]).toContain(1);
   });
 });
 

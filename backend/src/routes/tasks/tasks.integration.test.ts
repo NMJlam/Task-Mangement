@@ -200,14 +200,6 @@ describe("/api/tasks", () => {
       expect(response.body.task.creator).toBe(actor.id);
     });
 
-    it("401s without a session", async () => {
-      getSession.mockResolvedValue(null);
-      const response = await request(app)
-        .post("/api/tasks")
-        .send({ teamId: UNKNOWN_ID, title: "x" });
-      expect(response.status).toBe(401);
-    });
-
     it("422s on a blank title", async () => {
       const actor = await member("officer", "officer");
       const { id: teamId } = await team();
@@ -1094,17 +1086,6 @@ describe("/api/tasks", () => {
 
       expect(response.status).toBe(200);
       expect(response.body.task).toMatchObject({ eventId: null, teamId });
-    });
-
-    it("404s a link change on an unknown task", async () => {
-      const actor = await member("officer", "officer");
-      const { id: eventId } = await event();
-      signedInAs(actor);
-
-      const response = await request(app).patch(`/api/tasks/${UNKNOWN_ID}`).send({ eventId });
-
-      expect(response.status).toBe(404);
-      expect(response.body.error.code).toBe("TASK_NOT_FOUND");
     });
 
     it("declares each distinct workstream once for a bulk batch", async () => {

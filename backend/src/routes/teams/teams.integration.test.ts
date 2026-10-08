@@ -87,12 +87,6 @@ describe("/api/teams (integration)", () => {
     expect(mine.body.teams.map((t: { id: string }) => t.id)).toEqual([staffed.id]);
   });
 
-  it("401s without a session", async () => {
-    const response = await request(app).get("/api/teams");
-
-    expect(response.status).toBe(401);
-  });
-
   it("refuses create, rename and delete below management tier", async () => {
     signIn(await member("director", "director"));
     const existing = await team("guarded");

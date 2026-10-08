@@ -27,71 +27,31 @@ afterEach(() => {
   }
 });
 
+/** Sets exactly these variables for one read; the hooks above restore the rest. */
+function withEnv(env: Partial<Record<(typeof AI_ENV_KEYS)[number], string>>) {
+  for (const key of AI_ENV_KEYS) delete process.env[key];
+  Object.assign(process.env, env);
+  return aiConfig();
+}
+
 describe("aiConfig", () => {
-  describe("enabled (R14 default-OFF gate)", () => {
-    it("is false when nothing is set", () => {
-      expect(aiConfig().enabled).toBe(false);
-    });
-
-    it("is false when AI_ENABLED=1 but GEMINI_API_KEY is absent", () => {
-      process.env.AI_ENABLED = "1";
-      expect(aiConfig().enabled).toBe(false);
-    });
-
-    it("is false when AI_ENABLED=1 but GEMINI_API_KEY is empty", () => {
-      process.env.AI_ENABLED = "1";
-      process.env.GEMINI_API_KEY = "";
-      expect(aiConfig().enabled).toBe(false);
-    });
-
-    it("is false when a key is set but AI_ENABLED is unset", () => {
-      process.env.GEMINI_API_KEY = "some-key";
-      expect(aiConfig().enabled).toBe(false);
-    });
-
-    it('is false when a key is set but AI_ENABLED is any value other than "1"', () => {
-      process.env.GEMINI_API_KEY = "some-key";
-      process.env.AI_ENABLED = "true";
-      expect(aiConfig().enabled).toBe(false);
-    });
-
-    it("is true only when AI_ENABLED=1 and a non-empty key are both present", () => {
-      process.env.AI_ENABLED = "1";
-      process.env.GEMINI_API_KEY = "some-key";
-      expect(aiConfig().enabled).toBe(true);
-    });
+  it("is enabled only with AI_ENABLED=1 and a non-empty key (R14 default-OFF gate)", () => {
+    expect(withEnv({}).enabled).toBe(false);
+    expect(withEnv({ AI_ENABLED: "1" }).enabled).toBe(false);
+    expect(withEnv({ AI_ENABLED: "1", GEMINI_API_KEY: "" }).enabled).toBe(false);
+    expect(withEnv({ GEMINI_API_KEY: "some-key" }).enabled).toBe(false);
+    expect(withEnv({ AI_ENABLED: "true", GEMINI_API_KEY: "some-key" }).enabled).toBe(false);
+    expect(withEnv({ AI_ENABLED: "1", GEMINI_API_KEY: "some-key" }).enabled).toBe(true);
   });
 
-  describe("apiKey", () => {
-    it("is an empty string when GEMINI_API_KEY is absent", () => {
-      expect(aiConfig().apiKey).toBe("");
-    });
-
-    it("is the raw env value when GEMINI_API_KEY is set", () => {
-      process.env.GEMINI_API_KEY = "some-key";
-      expect(aiConfig().apiKey).toBe("some-key");
-    });
-  });
-
-  describe("model", () => {
-    it("falls back to DEFAULT_GEMINI_MODEL when GEMINI_MODEL is unset", () => {
-      expect(aiConfig().model).toBe(DEFAULT_GEMINI_MODEL);
-    });
-
-    it("returns the env value when GEMINI_MODEL is set", () => {
-      process.env.GEMINI_MODEL = "gemini-3.0-pro";
-      expect(aiConfig().model).toBe("gemini-3.0-pro");
-    });
-  });
-
-  describe("dailyRunCap", () => {
-    it("defaults to 50 when AI_DAILY_RUN_CAP is unset", () => {
-      expect(aiConfig().dailyRunCap).toBe(50);
-    });
-
-    it("returns the parsed env value when AI_DAILY_RUN_CAP is a valid number", () => {
-      process.env.AI_DAILY_RUN_CAP = "10";
-      expect(aiConfig().dailyRunCap).toBe(10);
-    });
+  it("defaults the key, model and daily cap, and takes each from the environment", () => {
+    expect(withEnv({})).toMatchObject({ apiKey: "", model: DEFAULT_GEMINI_MODEL, dailyRunCap: 50 });
+    expect(
+      withEnv({
+        GEMINI_API_KEY: "some-key",
+        GEMINI_MODEL: "gemini-3.0-pro",
+        AI_DAILY_RUN_CAP: "10",
+      }),
+    ).toMatchObject({ apiKey: "some-key", model: "gemini-3.0-pro", dailyRunCap: 10 });
   });
 });

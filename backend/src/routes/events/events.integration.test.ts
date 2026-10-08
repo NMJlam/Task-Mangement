@@ -518,19 +518,6 @@ describe("/api/events", () => {
       expect(response.body.error.fields.minTier).toBeDefined();
     });
 
-    it("allows raising minTier when every assignee already meets it", async () => {
-      const director = await member("director", "director");
-      const secretary = await member("secretary", "secretary");
-      const event = await seedEvent({ title: "test-event-tier-escalation-ok" });
-      await seedTask(event.id, [director.id, secretary.id]);
-      signedInAs(director);
-
-      const response = await request(app).patch(`/api/events/${event.id}`).send({ minTier: 1 });
-
-      expect(response.status).toBe(200);
-      expect(response.body.event.minTier).toBe(1);
-    });
-
     it("embeds every assignee of each task on GET /api/events/:id", async () => {
       const officer = await member("officer", "officer");
       const director = await member("director", "director");

@@ -21,11 +21,8 @@ describe("extractJson", () => {
     expect(extractJson('{"ok":true}')).toEqual(['{"ok":true}']);
   });
 
-  it("unwraps a fenced block, which Gemini emits even when asked not to", () => {
+  it("unwraps a fenced block, labelled or not, which Gemini emits even when asked not to", () => {
     expect(extractJson('```json\n{"ok":true}\n```')).toEqual(['{"ok":true}']);
-  });
-
-  it("unwraps an unlabelled fence", () => {
     expect(extractJson('```\n{"ok":true}\n```')).toEqual(['{"ok":true}']);
   });
 
@@ -68,12 +65,6 @@ describe("completeJson", () => {
       'Format looks like:\n```json\n{"note":"draft"}\n```\n' +
       'My actual answer:\n```json\n{"ok":true}\n```';
     const complete = vi.fn().mockResolvedValue(raw);
-    await expect(completeJson(complete, "p", schema)).resolves.toEqual({ ok: true });
-    expect(complete).toHaveBeenCalledTimes(1);
-  });
-
-  it("still resolves a response with only a single fence", async () => {
-    const complete = vi.fn().mockResolvedValue('```json\n{"ok":true}\n```');
     await expect(completeJson(complete, "p", schema)).resolves.toEqual({ ok: true });
     expect(complete).toHaveBeenCalledTimes(1);
   });
