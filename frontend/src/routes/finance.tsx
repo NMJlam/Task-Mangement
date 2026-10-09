@@ -224,7 +224,11 @@ export function FinancePage() {
         </Panel>
       )}
 
-      <section aria-labelledby="expenses-heading" className="mt-10 grid gap-3">
+      <section
+        aria-labelledby="expenses-heading"
+        data-key-list="expenses"
+        className="mt-10 grid gap-3"
+      >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="expenses-heading" className="text-xl font-semibold tracking-tight">
             Expenses

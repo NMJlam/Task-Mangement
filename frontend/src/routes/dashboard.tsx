@@ -258,7 +258,7 @@ export function DashboardPage() {
                 ) : myOpenTasks.length === 0 ? (
                   <ShellEmpty command="ls tasks/" message="No open tasks are assigned to you." />
                 ) : (
-                  <div className="divide-y">
+                  <div data-key-list="overview" className="divide-y">
                     {myOpenTasks.slice(0, 5).map((task) => (
                       <TaskRow
                         key={task.id}
@@ -297,7 +297,7 @@ export function DashboardPage() {
                     message="No events are scheduled in the next 7 days."
                   />
                 ) : (
-                  <div className="divide-y">
+                  <div data-key-list="overview" className="divide-y">
                     {upcomingEvents.slice(0, 4).map((event) => (
                       <EventRow key={event.id} event={event} />
                     ))}
@@ -328,7 +328,7 @@ export function DashboardPage() {
                     compact
                   />
                 ) : (
-                  <div className="grid gap-4">
+                  <div data-key-list="overview" className="grid gap-4">
                     {todayItems.map((item) => {
                       const Icon = item.kind === "event" ? CalendarDays : CheckSquare2;
                       return (
@@ -366,7 +366,7 @@ export function DashboardPage() {
                 {notificationItems.length === 0 ? (
                   <ShellEmpty command="tail inbox" message="No recent updates." compact />
                 ) : (
-                  <div className="grid gap-4">
+                  <div data-key-list="overview" className="grid gap-4">
                     {notificationItems.slice(0, 4).map((notification) => (
                       <ActivityRow key={notification.id} notification={notification} />
                     ))}

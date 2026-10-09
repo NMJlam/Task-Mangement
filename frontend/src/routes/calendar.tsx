@@ -656,7 +656,7 @@ function DayColumn({
         )}
       </div>
 
-      <ul className="grid gap-1">
+      <ul data-key-list="calendar" className="grid gap-1">
         {events.map((event) => (
           <li key={event.id}>
             <EventChip

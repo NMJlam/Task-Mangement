@@ -93,6 +93,9 @@ export function MemberTeams({
           <Popover.Portal>
             <Popover.Content
               aria-label={`Edit teams for ${memberName}`}
+              // A key list: up and down step between teams, left and right
+              // between a team's membership and Lead boxes.
+              data-key-list="teams"
               align="end"
               side="bottom"
               sideOffset={6}

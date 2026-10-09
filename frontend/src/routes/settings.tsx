@@ -131,7 +131,12 @@ export function SettingsPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Theme">
+          <div
+            className="grid gap-3 sm:grid-cols-2"
+            role="group"
+            aria-label="Theme"
+            data-key-list="settings"
+          >
             {THEME_OPTIONS.map((option) => (
               <button
                 key={option.value}
