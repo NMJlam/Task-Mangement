@@ -493,11 +493,12 @@ function TaskRow({ task, eventName, today }: { task: Task; eventName?: string; t
   // The whole row is the link, so it is one box the moves land on, not a
   // title somewhere inside it. It keeps its surface when selected (a cursor
   // bar and the focus outline) because its dot and status tag are measured
-  // only against `card`.
+  // only against `card`. The box reaches 8px past the content on each side
+  // (`-mx-2 px-2`), so the bar sits clear of the priority dot.
   return (
     <Link
       to="/tasks?scope=mine"
-      className="tui-card flex min-w-0 items-center gap-3 py-3.5 -outline-offset-2 hover:shadow-[inset_3px_0_0_var(--ring)]"
+      className="tui-card -mx-2 flex min-w-0 items-center gap-3 px-2 py-3.5 -outline-offset-2 hover:shadow-[inset_3px_0_0_var(--ring)]"
     >
       <PriorityDot priority={task.priority} />
       <span className="min-w-0 flex-1">

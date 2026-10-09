@@ -164,9 +164,13 @@ export function EventsPage() {
       {state.status === "ok" && state.items.length > 0 && (
         <section aria-label="Event list" data-key-list="events" className="mt-8 grid gap-3">
           {state.items.map((event) => (
+            // The card is the box: its title link's hit area covers it, and
+            // while the link has keyboard focus the whole card is outlined.
+            // The link's own outline would be clipped by the truncating
+            // heading around it.
             <Card
               key={event.id}
-              className="relative gap-0 py-0 shadow-none transition-[border-color,box-shadow] focus-within:border-input hover:border-input"
+              className="tui-card relative gap-0 py-0 shadow-none transition-[border-color,box-shadow] hover:border-input has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-ring"
             >
               <CardContent className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
@@ -180,7 +184,7 @@ export function EventsPage() {
                       */}
                       <Link
                         to={`/events/${event.id}`}
-                        className="rounded-sm after:absolute after:inset-0 hover:underline"
+                        className="rounded-sm after:absolute after:inset-0 hover:underline focus-visible:outline-none"
                       >
                         {event.title}
                       </Link>
