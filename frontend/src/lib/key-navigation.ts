@@ -1,30 +1,33 @@
 /**
- * The row and column moves (W A S D by default), on every page and in every
- * popup.
+ * The moves (W A S D by default), on every page and in every popup, as a game
+ * pad's D-pad does it: each key goes to the nearest control in that direction
+ * on screen. Down is always down and right is always right, whatever order
+ * the markup happens to be in: a board's next column, the card below, an
+ * Inbox row's Mark Read beside its link, the next day on the calendar.
  *
- * - A page or popup marks a list with `data-key-list` on its container. Its
- *   rows are its `data-key-item` descendants, or failing those its direct
- *   children. Lists sharing a `data-key-list` value are siblings the column
- *   moves cross: the task board's columns, the Overview's panels.
- * - Up and down move between rows, keeping the column (the control's place in
- *   its row). Left and right cross to a sibling list, or, with none, move
- *   between the controls of the current row: an Inbox row's link and Mark
- *   Read, a team's two checkboxes.
- * - With a dialog or popover open, the moves stay inside it.
- * - Where there is no list (a form, a popup without one), up and down walk the
- *   controls in order.
+ * - With a dialog or popover open, the moves stay inside it; otherwise they
+ *   stay in the page's content.
+ * - The first move, made from outside the content, lands on the first row of
+ *   the page's main list (`data-key-list` on its container, its rows being its
+ *   `data-key-item` descendants or, failing those, its direct children), or on
+ *   the first control if the page marks none.
+ * - Up or down with nothing further that way scrolls the page, as a pager does.
  *
  * Moves shift real focus, so a screen reader follows and Enter does what the
- * focused control already does. Text fields are never landed on: a letter
- * pressed there must type.
+ * focused control already does. Text fields are never landed on, because a
+ * letter pressed there must type.
  */
 
+/** Down, up, left and right. */
 export type Move = "next" | "previous" | "left" | "right";
 
 const FOCUSABLE =
   "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]";
 const OVERLAY = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
 const NOT_TEXT = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color"]);
+
+/** How far up and down scroll when there is nothing further that way: a few lines. */
+const SCROLL_STEP = 80;
 
 /**
  * A field where a key is a character being typed. A `<select>` is not one: it
@@ -44,18 +47,18 @@ export function overlayOpen(): boolean {
 
 /**
  * The controls under `root` (itself included) a move can land on: reachable by
- * Tab, not a text field, and not hidden. Radix pairs its checkbox with an
- * `aria-hidden` input at tabindex -1, which this skips.
+ * Tab, not a text field, not hidden, and drawn. Radix pairs its checkbox with
+ * an `aria-hidden` input at tabindex -1, which this skips.
  */
 function controlsIn(root: HTMLElement): HTMLElement[] {
   const found = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)];
   if (root.matches(FOCUSABLE)) found.unshift(root);
-  return found.filter(
-    (element) =>
-      element.tabIndex >= 0 &&
-      !isTextEntry(element) &&
-      !element.closest('[aria-hidden="true"], [hidden], [inert]'),
-  );
+  return found.filter((element) => {
+    if (element.tabIndex < 0 || isTextEntry(element)) return false;
+    if (element.closest('[aria-hidden="true"], [hidden], [inert]')) return false;
+    const box = element.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  });
 }
 
 /** Where moves happen: the popup holding focus, else the open popup, else the page. */
@@ -67,110 +70,111 @@ function scopeOf(active: HTMLElement | null): HTMLElement {
   return document.getElementById("main-content") ?? document.querySelector("main") ?? document.body;
 }
 
-/** A list's rows that have something to land on. */
-function rowsOf(list: HTMLElement): HTMLElement[] {
-  const explicit = [...list.querySelectorAll<HTMLElement>("[data-key-item]")].filter(
-    (row) => row.closest("[data-key-list]") === list,
-  );
-  const rows =
-    explicit.length > 0
-      ? explicit
-      : [...list.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
-  return rows.filter((row) => controlsIn(row).length > 0);
+/** Where a first move lands: the first row of the scope's first marked list. */
+function entryOf(scope: HTMLElement, controls: HTMLElement[]): HTMLElement | undefined {
+  const lists = [...scope.querySelectorAll<HTMLElement>("[data-key-list]")];
+  // The scope can be a list itself: a popover marks its own content.
+  if (scope.matches("[data-key-list]")) lists.unshift(scope);
+  for (const list of lists) {
+    const explicit = [...list.querySelectorAll<HTMLElement>("[data-key-item]")].filter(
+      (row) => row.closest("[data-key-list]") === list,
+    );
+    const rows =
+      explicit.length > 0
+        ? explicit
+        : [...list.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
+    for (const row of rows) {
+      const first = controls.find((control) => row === control || row.contains(control));
+      if (first) return first;
+    }
+  }
+  return controls[0];
 }
 
-/** The row of `list` that holds `element`. */
-function rowOf(list: HTMLElement, element: HTMLElement): HTMLElement | null {
-  const explicit = element.closest<HTMLElement>("[data-key-item]");
-  if (explicit && explicit.closest("[data-key-list]") === list) return explicit;
-  let node: HTMLElement | null = element;
-  while (node && node.parentElement !== list) node = node.parentElement;
-  return node;
+/**
+ * The control nearest to `from` in the direction of `move`.
+ *
+ * - A candidate must lie beyond `from`'s facing edge, so a control inside a
+ *   card is not "right of" the card.
+ * - Left and right stay on the row: a candidate must sit level with `from`,
+ *   within its own height, or the move goes nowhere rather than jumping to a
+ *   far corner.
+ * - The score is the gap plus twice the sideways distance: none for a control
+ *   that overlaps `from`'s column (or row), else the distance between centres.
+ *   So whatever is squarely below wins, wide or narrow, over a nearer one off
+ *   in the next column.
+ */
+function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElement | undefined {
+  const vertical = move === "next" || move === "previous";
+  const fromX = from.left + from.width / 2;
+  const fromY = from.top + from.height / 2;
+  let best: HTMLElement | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const box = candidate.getBoundingClientRect();
+    const gap =
+      move === "next"
+        ? box.top - from.bottom
+        : move === "previous"
+          ? from.top - box.bottom
+          : move === "right"
+            ? box.left - from.right
+            : from.left - box.right;
+    if (gap < -1) continue;
+    if (!vertical && (box.bottom < from.top - from.height || box.top > from.bottom + from.height)) {
+      continue;
+    }
+    const overlaps = vertical
+      ? box.left < from.right && box.right > from.left
+      : box.top < from.bottom && box.bottom > from.top;
+    const sideways = overlaps
+      ? 0
+      : vertical
+        ? Math.abs(box.left + box.width / 2 - fromX)
+        : Math.abs(box.top + box.height / 2 - fromY);
+    const score = Math.max(gap, 0) + sideways * 2;
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
-function land(element: HTMLElement | undefined) {
-  if (!element) return;
+function land(element: HTMLElement) {
   element.focus();
   // Absent in jsdom; every browser has it.
   if ("scrollIntoView" in element) element.scrollIntoView({ block: "nearest" });
 }
 
-/** The row's control in `column`, or its last if the row is shorter. */
-function landInColumn(row: HTMLElement, column: number) {
-  const controls = controlsIn(row);
-  land(controls[Math.min(column, controls.length - 1)]);
-}
-
-/** How far up and down scroll a page with nothing to land on: a few lines. */
-const SCROLL_STEP = 80;
-
-/**
- * No list here: up and down walk the controls in order. A page with no
- * controls at all (a read-only member directory) scrolls instead, the way a
- * pager does.
- */
-function walkControls(scope: HTMLElement, active: HTMLElement | null, move: Move): boolean {
-  const controls = controlsIn(scope);
-  if (controls.length === 0) {
-    if (scope.closest(OVERLAY) || (move !== "next" && move !== "previous")) return false;
-    window.scrollBy({ top: move === "next" ? SCROLL_STEP : -SCROLL_STEP });
-    return true;
-  }
-  const index = active ? controls.indexOf(active) : -1;
-  if (index === -1) {
-    land(controls[0]);
-    return true;
-  }
-  if (move === "left" || move === "right") return false;
-  const step = move === "next" ? 1 : -1;
-  land(controls[Math.min(Math.max(index + step, 0), controls.length - 1)]);
-  return true;
-}
-
-/**
- * Moves focus and says whether the key was used. With focus outside every
- * list, a move starts at the first row of the scope's first list.
- */
+/** Moves focus and says whether the key was used. */
 export function moveFocus(move: Move): boolean {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const scope = scopeOf(active);
-  // The scope can be a list itself: a popover marks its own content.
-  const marked = [...scope.querySelectorAll<HTMLElement>("[data-key-list]")];
-  if (scope.matches("[data-key-list]")) marked.unshift(scope);
-  const lists = marked.filter((list) => rowsOf(list).length > 0);
-  if (lists.length === 0) return walkControls(scope, active, move);
+  const controls = controlsIn(scope);
+  const vertical = move === "next" || move === "previous";
+  const inPage = scope.closest(OVERLAY) === null;
 
-  const holding = active?.closest<HTMLElement>("[data-key-list]");
-  const list = holding && lists.includes(holding) ? holding : null;
-  const row = list && active ? rowOf(list, active) : null;
-  if (!list || !row || !active) {
-    landInColumn(rowsOf(lists[0]!)[0]!, 0);
-    return true;
+  if (!active || !controls.includes(active)) {
+    const entry = entryOf(scope, controls);
+    if (entry) {
+      land(entry);
+      return true;
+    }
+  } else {
+    const target = nearest(
+      active.getBoundingClientRect(),
+      controls.filter((control) => !control.contains(active) && !active.contains(control)),
+      move,
+    );
+    if (target) {
+      land(target);
+      return true;
+    }
   }
 
-  const rows = rowsOf(list);
-  const index = Math.max(rows.indexOf(row), 0);
-  const column = Math.max(controlsIn(row).indexOf(active), 0);
-
-  if (move === "next" || move === "previous") {
-    // Clamped, not wrapped: the ends of a list are where lazygit stops too.
-    const target = rows[Math.min(Math.max(index + (move === "next" ? 1 : -1), 0), rows.length - 1)];
-    if (target && target !== row) landInColumn(target, column);
-    return true;
-  }
-
-  const step = move === "right" ? 1 : -1;
-  const siblings = lists.filter((candidate) => candidate.dataset.keyList === list.dataset.keyList);
-  if (siblings.length > 1) {
-    const next = siblings[siblings.indexOf(list) + step];
-    if (!next) return false;
-    const candidates = rowsOf(next);
-    // The same place in the next list, or its last row if it is shorter.
-    landInColumn(candidates[Math.min(index, candidates.length - 1)]!, column);
-    return true;
-  }
-  const target = controlsIn(row)[column + step];
-  if (!target) return false;
-  land(target);
+  // Nothing (further) that way: up and down page through the content.
+  if (!vertical || !inPage) return false;
+  window.scrollBy({ top: move === "next" ? SCROLL_STEP : -SCROLL_STEP });
   return true;
 }
