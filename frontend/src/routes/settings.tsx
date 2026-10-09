@@ -70,6 +70,7 @@ export function SettingsPage() {
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Settings"
+        hints={["move", "open", "help"]}
         description="Your account details, club access, and display preferences."
       />
 

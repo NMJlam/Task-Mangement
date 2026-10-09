@@ -218,20 +218,24 @@ export function useBindings(): Bindings {
   return useSyncExternalStore(subscribe, bindings, () => DEFAULT_BINDINGS);
 }
 
-/** The footer phrases a pane or the board prints, from the current keys. */
-export type Hint = "move" | "column" | "open" | "new";
+/** The phrases a page header lists under its subtitle, from the current keys. */
+export type Hint = "move" | "open" | "new" | "search" | "leave" | "help";
 
 export function hintText(hint: Hint, keys: Bindings): string {
   const { actions } = keys;
   switch (hint) {
     case "move":
-      return `[${actions.previous}/${actions.next}] move`;
-    case "column":
-      return `[${actions.left}/${actions.right}] column`;
+      return `[${actions.previous}/${actions.left}/${actions.next}/${actions.right}] move`;
     case "open":
       return "[enter] open";
     case "new":
       return `[${actions.new}] new`;
+    case "search":
+      return `[${actions.search}] search`;
+    case "leave":
+      return "[esc] leave chat box";
+    case "help":
+      return `[${actions.help}] all keys`;
   }
 }
 

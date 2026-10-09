@@ -18,7 +18,6 @@ import {
 } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useRef, useState } from "react";
-import { KeyHints } from "@/components/common/key-hints";
 import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { TaskCard } from "@/components/tasks/task-card";
@@ -266,7 +265,6 @@ export function TaskBoard({
           ))}
         </section>
       </DragDropProvider>
-      <KeyHints className="mt-3" hints={["move", "column", "open", "new"]} />
 
       <TaskDetailDialog
         task={openTask}

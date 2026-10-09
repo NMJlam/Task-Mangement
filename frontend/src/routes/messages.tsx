@@ -14,7 +14,7 @@ import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useThreadChat } from "@/hooks/use-thread-chat";
 import { useThreads } from "@/hooks/use-threads";
-import { useShortcut, useShortcutsEnabled } from "@/lib/shortcuts";
+import { useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 export function MessagesPage() {
@@ -28,7 +28,6 @@ export function MessagesPage() {
   const [selectedId, setSelectedId] = useState(requested);
   const [dialogOpen, setDialogOpen] = useState(false);
   const newKey = useShortcut("new");
-  const shortcuts = useShortcutsEnabled();
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const unreadTotal = threadItems.reduce((total, thread) => total + thread.unreadCount, 0);
 
@@ -84,6 +83,7 @@ export function MessagesPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Messages"
+        hints={["move", "open", "new", "search", "leave", "help"]}
         description="Event threads and committee conversations."
         actions={
           <Button onClick={() => setDialogOpen(true)} {...newKey}>
@@ -136,7 +136,6 @@ export function MessagesPage() {
             title="Conversations"
             meta={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
             bodyClassName="p-1"
-            keys={["move", "open", "new"]}
           >
             {/* A key list: j/k walk the conversations, enter opens one. The
                 padding leaves room for each button's focus outline inside the
@@ -174,10 +173,9 @@ export function MessagesPage() {
             </nav>
           </Panel>
 
-          {/* Its edges meet the Conversations pane's lines: the top sits half
-              a title row down, and so does the bottom while the pane has its
-              key foot. */}
-          <div className={cn("flex min-w-0 border bg-card lg:mt-3", shortcuts && "lg:mb-3")}>
+          {/* Its top meets the Conversations pane's line, which sits half a
+              title row down. */}
+          <div className="flex min-w-0 border bg-card lg:mt-3">
             <ThreadChat
               chat={chat}
               title={threadName(active, memberItems, selfId)}

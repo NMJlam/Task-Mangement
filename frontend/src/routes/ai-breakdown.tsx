@@ -68,6 +68,7 @@ export function AiBreakdownPage({ view }: { view?: "briefing" }) {
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="AI Assistant"
+        hints={["move", "open", "leave", "help"]}
         description="Ask about the club's work, or have the assistant draft a plan for you to check and confirm."
       />
 

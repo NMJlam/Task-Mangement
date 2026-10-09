@@ -162,6 +162,7 @@ export function DashboardPage() {
     <main className="mx-auto w-full max-w-[90rem] px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Overview"
+        hints={["move", "open", "search", "help"]}
         description={`${headingDate.format(now)} · Your club’s work, events, and updates at a glance.`}
         actions={
           <>

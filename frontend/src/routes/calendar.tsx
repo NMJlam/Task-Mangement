@@ -42,6 +42,7 @@ import {
 } from "@/lib/dates";
 import type { EventDates } from "@/lib/event-dates";
 import { canEditEvent } from "@/lib/permissions";
+import { useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 type View = "day" | "week" | "month";
@@ -165,6 +166,10 @@ export function CalendarPage() {
   const opener = useRef<HTMLElement | null>(null);
   const me = useMe();
   const user = me.status === "ok" ? me.user : undefined;
+  // `/events/new` is guarded at minTier 1, so New Event (and its key) shows
+  // only to those it would not bounce.
+  const canCreate = user !== undefined && user.tier >= 1;
+  const newKey = useShortcut("new");
   const { days, from, to } = rangeFor(view, anchor);
   const calendar = useCalendar(from, to);
   const events =
@@ -248,15 +253,14 @@ export function CalendarPage() {
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Calendar"
+        hints={canCreate ? ["move", "open", "new", "help"] : ["move", "open", "help"]}
         description={`${rangeLabel(view, days, anchor)} · Drag an event to another day to move it.`}
         actions={
-          // `/events/new` is guarded at minTier 1 — hiding the link keeps a
-          // guaranteed bounce off screen. The anchor day travels with it, so
-          // "New Event" from a day cell starts on that day.
-          user !== undefined &&
-          user.tier >= 1 && (
+          // The anchor day travels with it, so "New Event" from a day cell
+          // starts on that day.
+          canCreate && (
             <Button asChild>
-              <Link to={`/events/new?date=${toIsoDate(anchor)}`}>
+              <Link to={`/events/new?date=${toIsoDate(anchor)}`} {...newKey}>
                 <Plus aria-hidden="true" />
                 New Event
               </Link>
