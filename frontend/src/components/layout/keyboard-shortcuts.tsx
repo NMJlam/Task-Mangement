@@ -1,31 +1,21 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { moveFocus } from "@/lib/key-navigation";
+import { isTextEntry, moveFocus, overlayOpen, type Move } from "@/lib/key-navigation";
 import { ACTIONS, bindings, GO_TO, matchKey, useShortcutsEnabled } from "@/lib/shortcuts";
 
 /** How long `g` waits for its letter. */
 const SEQUENCE_MS = 1500;
 
-const NOT_TEXT = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color"]);
+const MOVES = new Set<string>(["next", "previous", "left", "right"]);
 
-/** A field where the key is a character being typed, never a command. */
-function isTypingTarget(target: EventTarget | null): boolean {
+/** Widgets that use letters themselves, for type-ahead. */
+const OWNS_LETTERS =
+  '[role="listbox"], [role="menu"], [role="menubar"], [role="combobox"], [role="tree"]';
+
+/** A key that must reach its target as typing, or as the widget's own key. */
+function keepsKey(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-  return target instanceof HTMLInputElement && !NOT_TEXT.has(target.type);
-}
-
-/**
- * A dialog or popover is up (Radix marks both `role="dialog"` with an open
- * state). A key must not act on the page hidden behind it.
- */
-function overlayOpen(): boolean {
-  return (
-    document.querySelector(
-      '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
-    ) !== null
-  );
+  return isTextEntry(target) || target.closest(OWNS_LETTERS) !== null;
 }
 
 /**
@@ -37,10 +27,11 @@ function overlayOpen(): boolean {
  * - `n` presses the page's `[data-shortcut="new"]`;
  * - `/` focuses (or presses) the page's `[data-shortcut="search"]`;
  * - `?` opens the key list;
- * - W A S D walk the page's lists (`lib/key-navigation.ts`).
+ * - W A S D walk the page's lists, or a popup's (`lib/key-navigation.ts`).
  *
- * WCAG 2.1.4: none of them fire while typing, with a modifier held, over a
- * dialog, or at all once Settings turns them off.
+ * WCAG 2.1.4: none of them fire while typing, with a modifier held, or at all
+ * once Settings turns them off. Over a dialog or popover only the moves work,
+ * and only inside it, so no key acts on the page hidden behind it.
  */
 export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
   const enabled = useShortcutsEnabled();
@@ -53,10 +44,18 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.isComposing) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (isTypingTarget(event.target) || overlayOpen()) return;
+      if (keepsKey(event.target)) return;
 
       const keys = bindings();
       const key = matchKey(event.key);
+      const action = ACTIONS.find((entry) => keys.actions[entry.id] === key)?.id;
+
+      if (overlayOpen()) {
+        window.clearTimeout(pending);
+        pending = undefined;
+        if (action && MOVES.has(action) && moveFocus(action as Move)) event.preventDefault();
+        return;
+      }
 
       if (pending !== undefined) {
         window.clearTimeout(pending);
@@ -69,7 +68,6 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
         return;
       }
 
-      const action = ACTIONS.find((entry) => keys.actions[entry.id] === key)?.id;
       switch (action) {
         case "go":
           pending = window.setTimeout(() => {
