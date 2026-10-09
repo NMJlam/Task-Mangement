@@ -371,7 +371,17 @@ whatever order the markup is in:
 - **Past the end.** Up or down with nothing further that way scrolls the page,
   the way a pager does. So does a page with nothing to land on, like a member's
   read-only directory.
+- **Boxes.** The Overview's At a glance figures, each of My Tasks, and each
+  calendar day are link boxes, and moves land on them whole. A day's events sit
+  inside its box, so `s` goes from a day into its events and on to the next week.
+  A box keeps its surface when selected, with the cursor bar and accent border,
+  because its dots and tags are measured only against `card`.
 - **Fields.** A text field is never landed on, because a letter there must type.
+  The exception is the chat boxes, marked `data-key-field`: the Messages box, and
+  the AI chat and briefing boxes. Moves can land in them, and `d` from the
+  conversations or chats goes straight into the box. Once in, the keys type, and
+  Escape steps back to where the move came from. A popup keeps Escape for closing
+  itself.
 - **Selects.** A `<select>` is landed on and stepped past, and the key is cancelled.
   Its type-ahead would otherwise turn `s` into a choice.
 - **Type-ahead widgets** (listbox, menu, combobox, tree) keep their letters.

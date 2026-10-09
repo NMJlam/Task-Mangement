@@ -84,7 +84,8 @@ Accounts may exist without membership. `db:seed` is idempotent.
   search opt in with `useShortcut("new" | "search")`. The moves are spatial (the
   nearest control on screen that way), so they need no markup. A page marks its
   main list `data-key-list` only so the first move lands on its first row. Rows
-  add `tui-row` (or `tui-card`) for the selection style. A new top-level page adds an
+  add `tui-row` (or `tui-card`) for the selection style. A text box the moves may
+  enter (a chat box) carries `data-key-field`, and Escape leaves it. A new top-level page adds an
   entry (`id`, default letter) to `GO_TO`. Write hints from the bindings
   (`hintText`), never as literal keys. Single-key shortcuts stay switchable off
   (WCAG 2.1.4).
