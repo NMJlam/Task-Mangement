@@ -4,10 +4,13 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { KeyboardShortcuts } from "./keyboard-shortcuts";
 import { ShortcutHelp } from "./shortcut-help";
-import { setShortcutsEnabled } from "@/lib/shortcuts";
+import { resetBindings, setBinding, setShortcutsEnabled } from "@/lib/shortcuts";
 
 afterEach(() => {
-  act(() => setShortcutsEnabled(true));
+  act(() => {
+    setShortcutsEnabled(true);
+    resetBindings();
+  });
   localStorage.clear();
 });
 
@@ -79,7 +82,7 @@ it("jumps to a page with g then its letter, but not while typing or behind a dia
   expect(path).toHaveTextContent("/events");
 });
 
-it("walks a list with j/k and crosses lists with h/l", () => {
+it("walks a list with W/S and crosses lists with A/D, on whatever keys are bound", () => {
   const { rerender } = render(
     <Harness>
       <Lists />
@@ -87,19 +90,25 @@ it("walks a list with j/k and crosses lists with h/l", () => {
   );
   const button = (name: string) => screen.getByRole("button", { name });
 
-  press("j");
+  press("s");
+  expect(button("a1")).toHaveFocus();
+  press("s");
+  expect(button("a2")).toHaveFocus();
+  press("W"); // Caps Lock or Shift still reaches it
+  expect(button("a1")).toHaveFocus();
+  press("d");
+  expect(button("b1")).toHaveFocus();
+  press("a");
+  expect(button("a1")).toHaveFocus();
+
+  // Rebound in Settings: the new key moves, the old one no longer does.
+  act(() => void setBinding({ kind: "action", id: "next" }, "j"));
+  press("s");
   expect(button("a1")).toHaveFocus();
   press("j");
   expect(button("a2")).toHaveFocus();
-  press("k");
-  expect(button("a1")).toHaveFocus();
-  press("l");
-  expect(button("b1")).toHaveFocus();
-  press("h");
-  expect(button("a1")).toHaveFocus();
 
-  // The focused row leaves (a poll, a move): the next j starts over.
-  press("j");
+  // The focused row leaves (a poll, a move): the next move starts over.
   rerender(
     <Harness>
       <Lists rows={["a1"]} />
@@ -109,14 +118,14 @@ it("walks a list with j/k and crosses lists with h/l", () => {
   expect(button("a1")).toHaveFocus();
 });
 
-it("presses the page's n and focuses its / field", () => {
+it("presses the page's new action and focuses its search", () => {
   const onNew = vi.fn();
   render(
     <Harness>
-      <button type="button" data-shortcut="n" onClick={onNew}>
+      <button type="button" data-shortcut="new" onClick={onNew}>
         New
       </button>
-      <input aria-label="Find" data-shortcut="/" />
+      <input aria-label="Find" data-shortcut="search" />
     </Harness>,
   );
 
@@ -130,7 +139,7 @@ it("opens the key list with ?, and does nothing once single-key shortcuts are of
   const onNew = vi.fn();
   render(
     <Harness>
-      <button type="button" data-shortcut="n" onClick={onNew}>
+      <button type="button" data-shortcut="new" onClick={onNew}>
         New
       </button>
     </Harness>,

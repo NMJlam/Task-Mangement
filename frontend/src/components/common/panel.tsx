@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { useShortcutsEnabled } from "@/lib/shortcuts";
+import { hintText, useBindings, useShortcutsEnabled, type Hint } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
  * prints the shortcuts that work inside the panel in its bottom border, the
  * way lazygit footers a pane:
  *
- *   └─ [j/k] move · [enter] open ─────────────────┘
+ *   └─ [w/s] move · [enter] open ─────────────────┘
  *
  * Decorative (the `?` key list has them all) and drawn only while single-key
  * shortcuts are on.
@@ -39,11 +39,12 @@ export function Panel({
   level?: 2 | 3;
   className?: string;
   bodyClassName?: string;
-  keys?: string[];
+  keys?: Hint[];
   children: ReactNode;
 }) {
   const id = useId();
   const shortcuts = useShortcutsEnabled();
+  const bound = useBindings();
   const Heading = level === 2 ? "h2" : "h3";
   return (
     // A column whose body grows, so a pane stretched by its grid row keeps its
@@ -70,7 +71,7 @@ export function Panel({
         <div aria-hidden="true" className="panel-rule panel-foot">
           <span className="panel-line w-3 shrink-0" />
           <span className="shrink-0 px-1.5 font-mono text-xs leading-none text-muted-foreground">
-            {keys.join(" · ")}
+            {keys.map((hint) => hintText(hint, bound)).join(" · ")}
           </span>
           <span className="panel-line min-w-3 flex-1" />
         </div>
