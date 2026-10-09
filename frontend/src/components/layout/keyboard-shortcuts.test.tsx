@@ -142,7 +142,7 @@ it("moves to what is below, beside or above on screen, on whatever keys are boun
   expect(button("Light")).toHaveFocus();
 });
 
-it("presses the page's new action, and enters its search box and leaves it on Escape", () => {
+it("presses the page's new action, and enters its search on the key and leaves it on Escape", () => {
   const onNew = vi.fn();
   render(
     <Harness>
@@ -153,13 +153,7 @@ it("presses the page's new action, and enters its search box and leaves it on Es
       <button type="button" data-shortcut="new" onClick={onNew} data-box="200 30 60 20">
         New
       </button>
-      <input
-        aria-label="Find"
-        type="search"
-        data-shortcut="search"
-        data-key-field
-        data-box="0 30 100 20"
-      />
+      <input aria-label="Find" type="search" data-shortcut="search" data-box="0 30 100 20" />
     </Harness>,
   );
   const newButton = screen.getByRole("button", { name: "New" });
@@ -290,4 +284,32 @@ it("moves into a chat box, leaves the keys to typing there, and steps back out o
   expect(box).toHaveFocus();
   press("Escape");
   expect(conversation).toHaveFocus();
+});
+
+it("measures a stretched link by the row it covers, as the eye does", () => {
+  // jsdom positions nothing, so the row is the link's offsetParent here too.
+  vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.parentElement;
+  });
+  render(
+    <Harness>
+      <a href="/events" data-box="900 0 80 16">
+        All Events
+      </a>
+      <div data-box="0 40 1000 100">
+        <a href="/events/1" data-key-stretch data-box="0 40 180 20">
+          Executive Dinner Night
+        </a>
+      </div>
+      <a href="/members" data-box="1100 60 80 16">
+        Members
+      </a>
+    </Harness>,
+  );
+  screen.getByRole("link", { name: "All Events" }).focus();
+
+  press("s"); // the event's row lies under All Events; its title text does not
+  expect(screen.getByRole("link", { name: "Executive Dinner Night" })).toHaveFocus();
 });

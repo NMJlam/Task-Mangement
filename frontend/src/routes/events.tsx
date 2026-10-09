@@ -185,6 +185,7 @@ export function EventsPage() {
                       */}
                       <Link
                         to={`/events/${event.id}`}
+                        data-key-stretch
                         className="rounded-sm after:absolute after:inset-0 hover:underline focus-visible:outline-none"
                       >
                         {event.title}
