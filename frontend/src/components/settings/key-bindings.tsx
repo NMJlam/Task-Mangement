@@ -80,7 +80,7 @@ export function KeyBindings() {
 
   function table(caption: string, rows: Row[]) {
     return (
-      <table className="w-full text-sm">
+      <table className="w-full self-start text-sm">
         <caption className="pb-2 text-left text-xs tracking-[0.14em] text-muted-foreground uppercase">
           {caption}
         </caption>
