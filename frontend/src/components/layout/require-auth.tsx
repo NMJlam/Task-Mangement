@@ -1,6 +1,7 @@
 import { can, type AuthUser, type Capability, type Tier } from "@ctp/shared";
 import { useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
+import { LoadingLine } from "@/components/common/loading-line";
 import { AppShell } from "@/components/layout/app-shell";
 import { RoleChangeDialog } from "@/components/members/role-change-dialog";
 import { Button } from "@/components/ui/button";
@@ -95,9 +96,7 @@ export function RequireAuth({
   if (isLoading) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
-        <p className="text-muted-foreground" role="status">
-          Loading…
-        </p>
+        <LoadingLine label="Loading…" />
       </main>
     );
   }
