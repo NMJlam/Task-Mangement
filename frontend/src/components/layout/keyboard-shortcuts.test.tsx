@@ -157,3 +157,47 @@ it("opens the key list with ?, and does nothing once single-key shortcuts are of
   expect(onNew).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+it("moves inside an open popup by its rows and their controls, and walks a page with no list", () => {
+  const { rerender } = render(
+    <Harness>
+      <button type="button">Behind the popup</button>
+      <div role="dialog" data-state="open" aria-label="Edit teams">
+        <p>Teams</p>
+        <div data-key-list>
+          <div>
+            <button type="button">Design</button>
+            <button type="button">Lead of Design</button>
+          </div>
+          <div>
+            <button type="button">Events</button>
+            <button type="button">Lead of Events</button>
+          </div>
+        </div>
+      </div>
+    </Harness>,
+  );
+  const button = (name: string) => screen.getByRole("button", { name });
+
+  press("s");
+  expect(button("Design")).toHaveFocus();
+  press("d");
+  expect(button("Lead of Design")).toHaveFocus();
+  press("s"); // keeps the column
+  expect(button("Lead of Events")).toHaveFocus();
+  press("a");
+  expect(button("Events")).toHaveFocus();
+
+  // A form: no list, so the moves walk its controls, stepping over the field.
+  rerender(
+    <Harness>
+      <a href="/events">Back</a>
+      <input aria-label="Title" />
+      <button type="button">Save</button>
+    </Harness>,
+  );
+  press("s");
+  expect(screen.getByRole("link", { name: "Back" })).toHaveFocus();
+  press("s");
+  expect(button("Save")).toHaveFocus();
+});
