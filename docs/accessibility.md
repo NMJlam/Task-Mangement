@@ -337,6 +337,49 @@ None adds a colour pair: each uses tokens already measured above.
   masked so it fades out before reaching any text. Forced colours drop it with
   the other background images.
 
+## Keyboard shortcuts
+
+The app has a keyboard layer, listed in full behind `?` or the status line's
+`keys` button (a shadcn Dialog):
+
+- `g` then a letter jumps to a page.
+- `n` is the page's new action, and `/` its search.
+- `j` / `k` walk a list, and `h` / `l` cross the task board's columns.
+
+- **WCAG 2.1.4, character key shortcuts.** Every single-key shortcut can be turned
+  off in Settings → Keyboard, which matters for speech input, where dictated words
+  would otherwise set keys off. Ctrl+K search has a modifier, so it is outside the
+  criterion and stays on.
+- **When shortcuts never fire:**
+  - while typing in an input, textarea, select or contenteditable, or during IME
+    composition;
+  - with Ctrl, Meta or Alt held;
+  - while any dialog or popover is open (Radix marks both `role="dialog"`), so no
+    key acts on the page hidden behind it.
+- **`j/k/h/l` move real focus** to a row's first control: a card's Open button, a
+  notification's link, a conversation. A screen reader follows it, and Enter does
+  what that control already does. Selection adds no ARIA state of its own. It is
+  only how the row holding keyboard focus looks. The open conversation, which is
+  current without focus, carries `aria-current="true"`. An Inbox row with neither
+  a link nor Mark Read has nothing to act on, and `j/k` step over it.
+- **Selection contrast.** A `.tui-row` holding keyboard focus turns inverse video,
+  `primary-foreground` on `primary`, which the tables above measure in every
+  palette. Its text re-inks to match, apart from tiles that bring their own surface
+  (`.tui-keep`). A focused control inside the row outlines in `primary-foreground`
+  rather than the accent: the accent ring on an amber fill is about 1.3:1. Board
+  cards keep their `card` surface, since their chips and priority dot are measured
+  only against it. They take the accent border (`ring` on `card`) and a 3px cursor
+  bar. The bar is decoration everywhere, because the fill or the border carries the
+  state. Mouse focus does not select, since the style keys off `:focus-visible`.
+  Under forced colours the fill drops, and the system focus outline remains.
+- **Hints.** The `[g t]` beside each nav link, the `[j/k] move · …` lines in panel
+  borders and under the board, and the status line's `?` are `aria-hidden`. The
+  key list says the same in full. All of them disappear while shortcuts are off,
+  so none names a dead key. The nav hints take their link's own colour, and the
+  panel hints are `muted-foreground` straddling `background` and `card`, like the
+  panel titles' meta, so neither adds a new contrast pair.
+- **`aria-keyshortcuts`** marks the `n` and `/` controls only while shortcuts are on.
+
 ## ⚠️ Re-run this after any palette change
 
 These numbers are current for the terminal palette. Recompute them whenever a
