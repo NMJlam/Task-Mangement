@@ -280,7 +280,8 @@ export function DashboardPage() {
                 {/* The widget is capped at five, so it says how much it left out
                     instead of letting the list read as the whole of one's work. */}
                 {personalLoaded && myOpenTasks.length > 5 && (
-                  <div className="mt-1 border-t pt-2.5">
+                  // Its rule reaches as far as the rows' dividers above it.
+                  <div className="-mx-2 mt-1 border-t px-2 pt-2.5">
                     <Link
                       to="/tasks?scope=mine"
                       className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
