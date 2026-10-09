@@ -4,7 +4,10 @@ import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/use-me";
+import { setShortcutsEnabled, useShortcutsEnabled } from "@/lib/shortcuts";
 import { applyTheme, saveTheme, storedTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +56,7 @@ const THEME_OPTIONS: {
 
 export function SettingsPage() {
   const me = useMe();
+  const shortcuts = useShortcutsEnabled();
   const [theme, setTheme] = useState<Theme>(storedTheme);
 
   function chooseTheme(next: Theme) {
@@ -152,6 +156,38 @@ export function SettingsPage() {
                 </span>
               </button>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4 shadow-none">
+        <CardHeader>
+          <h2 className="text-lg font-semibold tracking-tight">Keyboard</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Shortcuts for moving around without the mouse. Press ? for the full list.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {/* WCAG 2.1.4: a single-character shortcut must be able to be turned
+              off, or speech input's dictated words set them off. */}
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="single-key-shortcuts"
+              checked={shortcuts}
+              onCheckedChange={(value) => setShortcutsEnabled(value === true)}
+              aria-describedby="single-key-shortcuts-hint"
+              className="mt-0.5"
+            />
+            <div>
+              <Label htmlFor="single-key-shortcuts">Single-key shortcuts</Label>
+              <p
+                id="single-key-shortcuts-hint"
+                className="mt-1 text-sm leading-6 text-muted-foreground"
+              >
+                Keys like g then t for Tasks, or n for new. Turn them off if you use speech input or
+                they get in your way. Ctrl+K search stays on.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

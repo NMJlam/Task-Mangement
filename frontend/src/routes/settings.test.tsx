@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SettingsPage } from "./settings";
+import { setShortcutsEnabled, shortcutsEnabled } from "@/lib/shortcuts";
 
 vi.mock("@/hooks/use-me", () => ({
   useMe: () => ({
@@ -15,6 +16,7 @@ vi.mock("@/hooks/use-me", () => ({
 }));
 
 afterEach(() => {
+  act(() => setShortcutsEnabled(true));
   localStorage.clear();
   document.documentElement.classList.remove("dark");
   document.documentElement.removeAttribute("data-theme");
@@ -48,4 +50,13 @@ it("still opens and switches theme when the browser blocks storage", () => {
     reads.mockRestore();
     writes.mockRestore();
   }
+});
+
+it("turns single-key shortcuts off from Settings", () => {
+  render(<SettingsPage />);
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "Single-key shortcuts" }));
+
+  expect(shortcutsEnabled()).toBe(false);
+  expect(localStorage.getItem("shortcuts")).toBe("off");
 });
