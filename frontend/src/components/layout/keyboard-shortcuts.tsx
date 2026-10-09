@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { moveFocus } from "@/lib/key-navigation";
-import { GO_TO, useShortcutsEnabled } from "@/lib/shortcuts";
+import { ACTIONS, bindings, GO_TO, matchKey, useShortcutsEnabled } from "@/lib/shortcuts";
 
 /** How long `g` waits for its letter. */
 const SEQUENCE_MS = 1500;
@@ -29,13 +29,15 @@ function overlayOpen(): boolean {
 }
 
 /**
- * The app's single-key shortcuts, on one document listener:
+ * The app's single-key shortcuts, on one document listener. The keys are the
+ * bindings (`lib/shortcuts.ts`), read at each keypress so a rebind in Settings
+ * takes effect at once; the defaults are:
  *
- * - `g` then a letter jumps to a page (`GO_TO`);
- * - `n` presses the page's `[data-shortcut="n"]`, its new action;
- * - `/` focuses (or presses) the page's `[data-shortcut="/"]`, its search;
+ * - `g` then a page's letter jumps to it (`GO_TO`);
+ * - `n` presses the page's `[data-shortcut="new"]`;
+ * - `/` focuses (or presses) the page's `[data-shortcut="search"]`;
  * - `?` opens the key list;
- * - `j/k/h/l` walk the page's lists (`lib/key-navigation.ts`).
+ * - W A S D walk the page's lists (`lib/key-navigation.ts`).
  *
  * WCAG 2.1.4: none of them fire while typing, with a modifier held, over a
  * dialog, or at all once Settings turns them off.
@@ -53,10 +55,13 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTypingTarget(event.target) || overlayOpen()) return;
 
+      const keys = bindings();
+      const key = matchKey(event.key);
+
       if (pending !== undefined) {
         window.clearTimeout(pending);
         pending = undefined;
-        const destination = GO_TO.find((entry) => entry.key === event.key);
+        const destination = GO_TO.find((page) => keys.pages[page.id] === key);
         if (destination) {
           event.preventDefault();
           navigate(destination.to);
@@ -64,30 +69,31 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
         return;
       }
 
-      switch (event.key) {
-        case "g":
+      const action = ACTIONS.find((entry) => keys.actions[entry.id] === key)?.id;
+      switch (action) {
+        case "go":
           pending = window.setTimeout(() => {
             pending = undefined;
           }, SEQUENCE_MS);
           return;
-        case "?":
+        case "help":
           event.preventDefault();
           onHelp();
           return;
-        case "n":
-        case "/": {
-          const control = document.querySelector<HTMLElement>(`[data-shortcut="${event.key}"]`);
+        case "new":
+        case "search": {
+          const control = document.querySelector<HTMLElement>(`[data-shortcut="${action}"]`);
           if (!control) return;
           event.preventDefault();
           if (control instanceof HTMLInputElement) control.focus();
           else control.click();
           return;
         }
-        case "j":
-        case "k":
-        case "h":
-        case "l":
-          if (moveFocus(event.key)) event.preventDefault();
+        case "next":
+        case "previous":
+        case "left":
+        case "right":
+          if (moveFocus(action)) event.preventDefault();
           return;
       }
     }

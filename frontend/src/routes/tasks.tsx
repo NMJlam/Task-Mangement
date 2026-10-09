@@ -92,8 +92,8 @@ export function TasksPage() {
   // the same shape as `canCreate` on the events page.
   const canDelete = me.status === "ok" && me.user.tier >= 1;
   const [adding, setAdding] = useState(false);
-  const newKey = useShortcut("n");
-  const searchKey = useShortcut("/");
+  const newKey = useShortcut("new");
+  const searchKey = useShortcut("search");
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : undefined;
   const memberItems = members.state.status === "ok" ? members.state.items : [];

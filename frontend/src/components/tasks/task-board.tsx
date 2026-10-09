@@ -266,7 +266,7 @@ export function TaskBoard({
           ))}
         </section>
       </DragDropProvider>
-      <KeyHints className="mt-3" keys={["[j/k] move", "[h/l] column", "[enter] open", "[n] new"]} />
+      <KeyHints className="mt-3" hints={["move", "column", "open", "new"]} />
 
       <TaskDetailDialog
         task={openTask}
@@ -324,7 +324,7 @@ function BoardColumn({
   });
 
   // A titled pane per column, its count in the border, lazygit's way. The
-  // body is a key list in the "board" group, so j/k walk the column and h/l
+  // body is a key list in the "board" group, so the row moves walk the column and the column moves
   // cross to the next one.
   return (
     <Panel level={3} title={column.label} meta={tasks.length} bodyClassName="p-2">

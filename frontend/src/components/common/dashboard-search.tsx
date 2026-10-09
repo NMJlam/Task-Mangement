@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useShortcutsEnabled } from "@/lib/shortcuts";
+import { useShortcut } from "@/lib/shortcuts";
 
 export function DashboardSearch({
   tasks,
@@ -17,7 +17,7 @@ export function DashboardSearch({
   members: RosterMember[];
 }) {
   const [open, setOpen] = useState(false);
-  const shortcuts = useShortcutsEnabled();
+  const searchKey = useShortcut("search");
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();
 
@@ -80,12 +80,14 @@ export function DashboardSearch({
   return (
     <Dialog.Root open={open} onOpenChange={changeOpen}>
       <Dialog.Trigger asChild>
-        {/* Also the Overview's `/`: the handler presses whatever carries
-            data-shortcut="/", and here that opens this dialog. */}
+        {/* Also the Overview's search key: the handler presses whatever
+            carries data-shortcut="search", and here that opens this dialog. */}
         <Button
           variant="outline"
-          data-shortcut="/"
-          aria-keyshortcuts={shortcuts ? "Meta+K Control+K /" : "Meta+K Control+K"}
+          data-shortcut={searchKey["data-shortcut"]}
+          aria-keyshortcuts={["Meta+K Control+K", searchKey["aria-keyshortcuts"]]
+            .filter(Boolean)
+            .join(" ")}
         >
           <Search aria-hidden="true" />
           Search

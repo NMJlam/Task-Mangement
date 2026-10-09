@@ -100,7 +100,7 @@ export function EventDetailPage() {
   // The Tasks tab's create form. Any member may open it: `POST /api/tasks` sits
   // behind `authorise(0)`, so there is nothing to hide.
   const [addingTask, setAddingTask] = useState(false);
-  const newTaskKey = useShortcut("n");
+  const newTaskKey = useShortcut("new");
   // Warnings the last successful move came back with — a date change can leave
   // task deadlines behind the event, which the route reports rather than fixing.
   const [dateWarnings, setDateWarnings] = useState<string[]>([]);

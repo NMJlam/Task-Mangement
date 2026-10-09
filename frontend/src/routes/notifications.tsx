@@ -106,7 +106,7 @@ export function NotificationsPage() {
             meta={`${items.length} shown`}
             className="mt-4"
             bodyClassName="p-0"
-            keys={["[j/k] move", "[enter] open"]}
+            keys={["move", "open"]}
           >
             <div data-key-list="inbox">
               {items.map((notification) => (

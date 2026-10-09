@@ -59,7 +59,7 @@ export function EventsPage() {
   // `/events/new` is guarded at minTier 1 — hiding the link keeps a guaranteed
   // bounce off screen.
   const canCreate = me.status === "ok" && me.user.tier >= 1;
-  const newKey = useShortcut("n");
+  const newKey = useShortcut("new");
   const identityReady = me.status === "ok";
   const query = useMemo(
     () => ({

@@ -21,7 +21,7 @@ import { ShortcutHelp } from "@/components/layout/shortcut-help";
 import { StatusLine } from "@/components/layout/status-line";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
-import { GO_TO, useShortcutsEnabled } from "@/lib/shortcuts";
+import { GO_TO, useBindings, useShortcutsEnabled } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -188,7 +188,9 @@ function NavigationLink({
   const count = to === "/notifications" ? unread : 0;
   // The page's `g` jump, hinted beside it; read from the handler's own table.
   const shortcuts = useShortcutsEnabled();
-  const jump = compact || !shortcuts ? undefined : GO_TO.find((entry) => entry.to === to)?.key;
+  const keys = useBindings();
+  const page = compact || !shortcuts ? undefined : GO_TO.find((entry) => entry.to === to);
+  const jump = page && `${keys.actions.go} ${keys.pages[page.id]}`;
 
   return (
     <NavLink
@@ -236,7 +238,7 @@ function NavigationLink({
                   hidden because the key list names every jump. */}
               {jump && (
                 <span aria-hidden="true" className="font-mono text-[0.6875rem] whitespace-nowrap">
-                  [g {jump}]
+                  [{jump}]
                 </span>
               )}
             </span>

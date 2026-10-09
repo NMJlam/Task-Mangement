@@ -27,7 +27,7 @@ export function MessagesPage() {
   const requested = searchParams.get("thread") ?? undefined;
   const [selectedId, setSelectedId] = useState(requested);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const newKey = useShortcut("n");
+  const newKey = useShortcut("new");
   const shortcuts = useShortcutsEnabled();
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const unreadTotal = threadItems.reduce((total, thread) => total + thread.unreadCount, 0);
@@ -136,7 +136,7 @@ export function MessagesPage() {
             title="Conversations"
             meta={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
             bodyClassName="p-1"
-            keys={["[j/k] move", "[enter] open", "[n] new"]}
+            keys={["move", "open", "new"]}
           >
             {/* A key list: j/k walk the conversations, enter opens one. The
                 padding leaves room for each button's focus outline inside the

@@ -54,7 +54,7 @@ export function ThreadChat({
   const searchId = useId();
   // The conversation's search is the page's `/`, on Messages and on an
   // event's Thread tab alike.
-  const searchKey = useShortcut("/");
+  const searchKey = useShortcut("search");
   const draftId = useId();
 
   return (
