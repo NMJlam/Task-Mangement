@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
+import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { ThreadChat } from "@/components/messages/thread-chat";
@@ -13,6 +14,7 @@ import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useThreadChat } from "@/hooks/use-thread-chat";
 import { useThreads } from "@/hooks/use-threads";
+import { useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 export function MessagesPage() {
@@ -25,7 +27,9 @@ export function MessagesPage() {
   const requested = searchParams.get("thread") ?? undefined;
   const [selectedId, setSelectedId] = useState(requested);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const newKey = useShortcut("n");
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
+  const unreadTotal = threadItems.reduce((total, thread) => total + thread.unreadCount, 0);
 
   // A link to another conversation while Messages is already open changes only
   // the URL, not the mount, so the pin follows the URL when it moves — settled
@@ -81,7 +85,7 @@ export function MessagesPage() {
         title="Messages"
         description="Event threads and committee conversations."
         actions={
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={() => setDialogOpen(true)} {...newKey}>
             <Plus aria-hidden="true" />
             New message
           </Button>
@@ -124,55 +128,75 @@ export function MessagesPage() {
         </div>
       )}
       {threads.state.status === "ok" && active && (
-        <div className="mt-8 grid min-h-[36rem] overflow-hidden rounded-xl border bg-card lg:grid-cols-[17rem_minmax(0,1fr)]">
-          <nav
-            aria-label="Conversations"
-            className="flex gap-1 overflow-x-auto border-b p-3 lg:block lg:overflow-y-auto lg:border-r lg:border-b-0"
+        // Two panes, lazygit's way: the conversations titled in their border,
+        // with their keys in the foot, and the open conversation beside them.
+        <div className="mt-8 grid min-h-[36rem] gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
+          <Panel
+            title="Conversations"
+            meta={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
+            bodyClassName="p-1"
+            keys={["[j/k] move", "[enter] open", "[n] new"]}
           >
-            {threadItems.map((thread) => (
-              <button
-                key={thread.id}
-                type="button"
-                onClick={() => select(thread.id)}
-                className={cn(
-                  "flex min-w-48 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground lg:mb-1 lg:w-full lg:min-w-0",
-                  thread.id === active.id && "bg-accent font-medium text-accent-foreground",
-                )}
-              >
-                {thread.kind === "dm" ? (
-                  <MessageCircle aria-hidden="true" className="size-4 shrink-0" />
-                ) : (
-                  <Hash aria-hidden="true" className="size-4 shrink-0" />
-                )}
-                <span className="truncate">{threadName(thread, memberItems, selfId)}</span>
-                {thread.unreadCount > 0 && (
-                  <span className="ml-auto bg-primary px-1.5 py-0.5 text-[0.625rem] text-primary-foreground tabular-nums">
-                    {thread.unreadCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
+            {/* A key list: j/k walk the conversations, enter opens one. The
+                padding leaves room for each button's focus outline inside the
+                scroller. */}
+            <nav
+              aria-label="Conversations"
+              data-key-list="threads"
+              className="flex gap-1 overflow-x-auto p-1 lg:block lg:overflow-y-auto"
+            >
+              {threadItems.map((thread) => (
+                <button
+                  key={thread.id}
+                  type="button"
+                  data-key-item
+                  aria-current={thread.id === active.id ? "true" : undefined}
+                  onClick={() => select(thread.id)}
+                  className={cn(
+                    "tui-row flex min-w-48 cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-sm text-muted-foreground transition-[background-color,color] hover:bg-accent hover:text-foreground lg:mb-1 lg:w-full lg:min-w-0",
+                    thread.id === active.id && "bg-accent font-medium text-accent-foreground",
+                  )}
+                >
+                  {thread.kind === "dm" ? (
+                    <MessageCircle aria-hidden="true" className="size-4 shrink-0" />
+                  ) : (
+                    <Hash aria-hidden="true" className="size-4 shrink-0" />
+                  )}
+                  <span className="truncate">{threadName(thread, memberItems, selfId)}</span>
+                  {thread.unreadCount > 0 && (
+                    <span className="tui-keep ml-auto bg-primary px-1.5 py-0.5 text-[0.625rem] text-primary-foreground tabular-nums">
+                      {thread.unreadCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </Panel>
 
-          <ThreadChat
-            chat={chat}
-            title={threadName(active, memberItems, selfId)}
-            kind={active.kind}
-            members={memberItems}
-            selfId={selfId}
-            titleAction={
-              // The same conversation, on its event's page — beside the
-              // event's tasks and the thread summary.
-              active.eventId && (
-                <Button asChild variant="outline" size="xs">
-                  <Link to={`/events/${active.eventId}?tab=thread`}>
-                    <CalendarDays aria-hidden="true" />
-                    View event
-                  </Link>
-                </Button>
-              )
-            }
-          />
+          {/* Its top meets the Conversations pane's line, which sits half a
+              title row down. */}
+          <div className="flex min-w-0 border bg-card lg:mt-3">
+            <ThreadChat
+              chat={chat}
+              title={threadName(active, memberItems, selfId)}
+              kind={active.kind}
+              members={memberItems}
+              selfId={selfId}
+              titleAction={
+                // The same conversation, on its event's page — beside the
+                // event's tasks and the thread summary.
+                active.eventId && (
+                  <Button asChild variant="outline" size="xs">
+                    <Link to={`/events/${active.eventId}?tab=thread`}>
+                      <CalendarDays aria-hidden="true" />
+                      View event
+                    </Link>
+                  </Button>
+                )
+              }
+              className="flex-1"
+            />
+          </div>
         </div>
       )}
     </main>
