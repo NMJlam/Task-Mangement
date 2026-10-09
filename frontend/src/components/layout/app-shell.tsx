@@ -150,22 +150,14 @@ function Brand({ compact = false }: { compact?: boolean }) {
     );
   }
   return (
-    <div className={cn("flex items-center gap-2.5", !compact && "px-2")}>
+    <div className="flex items-center gap-2.5">
       <span
         aria-hidden="true"
         className="inline-flex size-8 items-center justify-center border border-screen-foreground/25 bg-screen font-display text-xs font-bold text-screen-foreground"
       >
         M
       </span>
-      <div className="leading-tight">
-        <p className="font-display text-sm tracking-[0.04em]">
-          MAC
-          {/* One blinking cursor for the whole app, beside the wordmark: the
-              session is live. Decorative, so the text stays "MAC". */}
-          {!compact && <span aria-hidden="true" className="caret" />}
-        </p>
-        {!compact && <p className="mt-1 text-xs text-muted-foreground">Club Operations</p>}
-      </div>
+      <p className="font-display text-sm leading-tight tracking-[0.04em]">MAC</p>
     </div>
   );
 }
