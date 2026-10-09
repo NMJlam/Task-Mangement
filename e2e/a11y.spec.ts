@@ -35,6 +35,16 @@ async function useTheme(page: Page, theme: (typeof THEMES)[number]) {
   await page.reload();
 }
 
+/**
+ * Waits for a loaded page. `main` renders before its data, so the wait also
+ * runs until no loading line is left; otherwise the calendar is scanned before
+ * its event chips exist, and the chips are where its markup is most involved.
+ */
+async function waitForLoaded(page: Page) {
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Loading" })).toHaveCount(0);
+}
+
 /** Signs the context in and leaves the session cookie in its jar. */
 async function signIn(page: Page) {
   const response = await page.request.post("/api/auth/sign-in/email", {
@@ -78,7 +88,7 @@ test.describe("signed-in pages", () => {
         await useTheme(page, theme);
         // The scans are of loaded pages: a route still on its skeleton has
         // nothing to check, and axe would pass a spinner.
-        await expect(page.getByRole("main")).toBeVisible();
+        await waitForLoaded(page);
 
         expect(await axeViolations(page)).toEqual([]);
       });
@@ -97,6 +107,7 @@ test.describe("signed-in pages", () => {
       await page.goto(`/events/${items[0]!.id}`);
       await useTheme(page, theme);
       await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+      await waitForLoaded(page);
 
       expect(await axeViolations(page)).toEqual([]);
     });
