@@ -610,11 +610,15 @@ function DayColumn({
   const { ref, isDropTarget } = useDroppable({ id: String(dayIndex), accept: "event" });
   const isToday = sameDay(date, new Date());
 
+  // The day is a box: its date button's hit area spreads over the whole cell
+  // (the `after:` layer below), so a click anywhere in it opens the day, and
+  // `tui-card` marks the cell while anything in it holds keyboard focus. The
+  // events sit above that layer and keep their own buttons.
   return (
     <div
       ref={ref}
       className={cn(
-        "grid content-start gap-1 rounded-lg",
+        "tui-card relative grid content-start gap-1 rounded-lg border border-transparent",
         compact ? "min-h-24 p-1.5" : "min-h-20 p-2",
         isDropTarget && "bg-accent/60 ring-2 ring-ring/40 ring-inset",
       )}
@@ -642,7 +646,7 @@ function DayColumn({
             aria-label={`Show ${fullDate.format(date)}`}
             aria-current={isToday ? "date" : undefined}
             className={cn(
-              "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium hover:bg-accent",
+              "cursor-pointer rounded-sm px-1 py-0.5 text-xs font-medium after:absolute after:inset-0 hover:bg-accent",
               compact && "tabular-nums",
               // Filled red, white number — the calendar-app convention for "now".
               isToday &&
@@ -656,7 +660,7 @@ function DayColumn({
         )}
       </div>
 
-      <ul data-key-list="calendar" className="grid gap-1">
+      <ul data-key-list="calendar" className="relative z-10 grid gap-1">
         {events.map((event) => (
           <li key={event.id}>
             <EventChip
