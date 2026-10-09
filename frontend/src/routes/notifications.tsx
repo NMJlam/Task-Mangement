@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
 import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
+import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -98,18 +99,25 @@ export function NotificationsPage() {
       )}
       {notifications.state.status === "ok" && items.length > 0 && (
         <>
-          <section
-            aria-label="Notifications"
-            className="mt-4 overflow-hidden rounded-xl border bg-card"
+          {/* A titled pane whose rows are a key list: j/k walk the feed and
+              enter opens a row's link. */}
+          <Panel
+            title="Notifications"
+            meta={`${items.length} shown`}
+            className="mt-4"
+            bodyClassName="p-0"
+            keys={["[j/k] move", "[enter] open"]}
           >
-            {items.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                onRead={() => void notifications.markRead(notification)}
-              />
-            ))}
-          </section>
+            <div data-key-list="inbox">
+              {items.map((notification) => (
+                <NotificationRow
+                  key={notification.id}
+                  notification={notification}
+                  onRead={() => void notifications.markRead(notification)}
+                />
+              ))}
+            </div>
+          </Panel>
           {/* The feed is a capped page. Without this the oldest notification the
               reader could see was simply the 50th, with nothing saying so. */}
           {notifications.state.hasMore && (
@@ -141,9 +149,13 @@ function NotificationRow({
   const to = notificationLink(notification);
 
   return (
+    // A row of the feed's key list: j/k land on its link, or on Mark Read
+    // when it has none. A row with neither has nothing to act on and is
+    // stepped over. `tui-row` turns it inverse while it holds focus.
     <article
+      data-key-item
       className={cn(
-        "relative flex items-start gap-4 border-b p-4 last:border-0 sm:p-5",
+        "tui-row flex items-start gap-4 border-b p-4 last:border-0 sm:p-5",
         unread && "bg-foreground/5",
       )}
     >
@@ -153,7 +165,7 @@ function NotificationRow({
           className="absolute top-6 left-1.5 size-1.5 bg-accent-foreground"
         />
       )}
-      <span className="bg-accent p-2 text-muted-foreground">
+      <span className="tui-keep bg-accent p-2 text-muted-foreground">
         <Icon aria-hidden="true" className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
