@@ -196,11 +196,16 @@ export function DashboardPage() {
           )}
 
           {/* One panel, ruled into cells like a hardware readout: the 1px
-              gaps over the border colour are the grid lines. */}
+              gaps over the border colour are the grid lines. Each cell is a
+              box that opens the page behind its figure. */}
           <Panel title="At a glance" className="mt-6" bodyClassName="px-0 pt-1 pb-0">
-            <dl className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+            <ul
+              data-key-list="glance"
+              className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4"
+            >
               <Metric
                 label="My Open Tasks"
+                to="/tasks?scope=mine"
                 value={personalLoaded ? myOpenTasks.length : undefined}
                 detail={
                   personalLoaded
@@ -210,6 +215,7 @@ export function DashboardPage() {
               />
               <Metric
                 label="Due Next 7 Days"
+                to="/tasks?scope=mine"
                 value={personalLoaded ? dueThisWeek.length : undefined}
                 detail={
                   !personalLoaded
@@ -222,6 +228,7 @@ export function DashboardPage() {
               />
               <Metric
                 label="Upcoming Events"
+                to="/events"
                 value={eventsLoaded ? upcomingEvents.length : undefined}
                 detail={
                   !eventsLoaded
@@ -233,10 +240,11 @@ export function DashboardPage() {
               />
               <Metric
                 label="Unread Updates"
+                to="/notifications"
                 value={unreadCount}
                 detail={unreadCount ? "Review your inbox" : "You’re all caught up"}
               />
-            </dl>
+            </ul>
           </Panel>
 
           <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -420,37 +428,45 @@ export function DashboardPage() {
 }
 
 /**
- * One cell of the At a glance grid: a tiny uppercase label over the figure,
- * as a hardware readout labels its dials.
+ * One cell of the At a glance grid: a tiny uppercase label over the figure, as
+ * a hardware readout labels its dials. The whole cell is a link to the page
+ * behind the figure, and a box the moves land on.
  */
 function Metric({
   label,
   value,
   detail,
   tone,
+  to,
 }: {
   label: string;
   /** Absent when the read behind it failed: a failed read is not a zero. */
   value?: number;
   detail: string;
   tone?: "danger";
+  to: string;
 }) {
   return (
-    <div className="bg-card px-4 py-3">
-      <dt className="text-[0.6875rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-        {label}
-      </dt>
-      <dd
-        className={cn(
-          "mt-1 text-3xl font-semibold tracking-[-0.04em] tabular-nums",
-          tone === "danger" && "text-destructive",
-        )}
+    <li className="bg-card">
+      <Link
+        to={to}
+        className="tui-card block h-full px-4 py-3 -outline-offset-2 hover:shadow-[inset_3px_0_0_var(--ring)]"
       >
-        {value ?? "—"}
-        {value === undefined && <span className="sr-only">unavailable</span>}
-      </dd>
-      <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
-    </div>
+        <span className="block text-[0.6875rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+          {label}
+        </span>
+        <span
+          className={cn(
+            "mt-1 block text-3xl font-semibold tracking-[-0.04em] tabular-nums",
+            tone === "danger" && "text-destructive",
+          )}
+        >
+          {value ?? "—"}
+          {value === undefined && <span className="sr-only">unavailable</span>}
+        </span>
+        <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
+      </Link>
+    </li>
   );
 }
 
@@ -474,20 +490,22 @@ function TaskRow({ task, eventName, today }: { task: Task; eventName?: string; t
   // Task" here would be a fact the loaded data cannot support.
   const context = eventName ?? (task.eventId ? "Linked to an event" : "Standalone Task");
 
+  // The whole row is the link, so it is one box the moves land on, not a
+  // title somewhere inside it. It keeps its surface when selected (a cursor
+  // bar and the focus outline) because its dot and status tag are measured
+  // only against `card`.
   return (
-    <div className="flex min-w-0 items-center gap-3 py-3.5">
+    <Link
+      to="/tasks?scope=mine"
+      className="tui-card flex min-w-0 items-center gap-3 py-3.5 -outline-offset-2 hover:shadow-[inset_3px_0_0_var(--ring)]"
+    >
       <PriorityDot priority={task.priority} />
-      <div className="min-w-0 flex-1">
-        <Link
-          to="/tasks?scope=mine"
-          className="block truncate rounded-sm text-sm font-medium hover:underline"
-        >
-          {task.title}
-        </Link>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{context}</p>
-      </div>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{task.title}</span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">{context}</span>
+      </span>
       <StatusBadge status={task.status} className="hidden sm:inline-flex" />
-      <div className="w-24 shrink-0 text-right">
+      <span className="w-24 shrink-0 text-right">
         <time
           dateTime={task.dueAt?.toISOString()}
           className={`block text-xs tabular-nums ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}
@@ -501,8 +519,8 @@ function TaskRow({ task, eventName, today }: { task: Task; eventName?: string; t
             Overdue
           </span>
         )}
-      </div>
-    </div>
+      </span>
+    </Link>
   );
 }
 

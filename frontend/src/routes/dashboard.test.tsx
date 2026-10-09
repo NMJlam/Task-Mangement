@@ -27,9 +27,23 @@ it("summarises the current member’s work and upcoming events", async () => {
     "href",
     `/events/${eventId}`,
   );
-  expect(
-    within(screen.getByRole("region", { name: "At a glance" })).getByText("2"),
-  ).toBeInTheDocument();
+  const glance = within(screen.getByRole("region", { name: "At a glance" }));
+  expect(glance.getByText("2")).toBeInTheDocument();
+  // Each figure is a box that opens the page behind it.
+  expect(glance.getByRole("link", { name: /my open tasks/i })).toHaveAttribute(
+    "href",
+    "/tasks?scope=mine",
+  );
+  expect(glance.getByRole("link", { name: /upcoming events/i })).toHaveAttribute("href", "/events");
+  expect(glance.getByRole("link", { name: /unread updates/i })).toHaveAttribute(
+    "href",
+    "/notifications",
+  );
+  // So is each of my tasks: the whole row, not just its title.
+  expect(screen.getByRole("link", { name: /confirm venue access/i })).toHaveAttribute(
+    "href",
+    "/tasks?scope=mine",
+  );
   expect(screen.getByRole("progressbar", { name: "Jordan Lee open tasks" })).toHaveAttribute(
     "aria-valuenow",
     "1",
