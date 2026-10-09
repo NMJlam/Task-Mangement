@@ -161,7 +161,7 @@ test("shows the briefing on the Overview and pinned in AI Breakdown", async ({ p
   await expect(briefingHeading).toBeVisible();
   await expect(page.getByText("A quiet week before Hack Night.")).toBeVisible();
   // It leads the page: above the statistics, not tucked into the right rail.
-  const statistics = page.getByRole("region", { name: "Overview statistics" });
+  const statistics = page.getByRole("region", { name: "At a glance" });
   const [briefingTop, statisticsTop] = await Promise.all([
     briefingHeading.evaluate((element) => element.getBoundingClientRect().top),
     statistics.evaluate((element) => element.getBoundingClientRect().top),
