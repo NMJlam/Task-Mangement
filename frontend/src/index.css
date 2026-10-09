@@ -480,3 +480,41 @@
   background-size: 4px 4px;
   mask-image: linear-gradient(to bottom right, transparent 45%, black);
 }
+
+/* TUI selection, lazygit's cursor (lib/key-navigation.ts moves real focus;
+   this is only how the row holding it looks). Unlayered on purpose: it must
+   beat the utilities layer to re-ink children that carry `text-muted-*`.
+
+   A `.tui-row` holding keyboard focus turns inverse video, `primary-foreground`
+   on `primary`, a pair measured in every palette. Its text re-inks to match,
+   except a `.tui-keep` tile that brings its own surface. A focused control
+   inside outlines in that inverse ink: the accent ring on an amber fill is
+   about 1.3:1. Mouse focus does not select, since `:focus-visible` is keyboard
+   focus. The 3px bar is decoration (the fill carries the state), and it also
+   marks a row that is current but not focused, such as the open conversation. */
+.tui-row {
+  position: relative;
+}
+.tui-row:is(:focus-visible, :has(:focus-visible)) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.tui-row:is(:focus-visible, :has(:focus-visible)) :not(.tui-keep, .tui-keep *) {
+  color: inherit;
+}
+.tui-row :focus-visible {
+  outline-color: var(--primary-foreground);
+}
+.tui-row:is(:focus-visible, :has(:focus-visible), [aria-current="true"])::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--ring);
+}
+/* A board card keeps its surface: its chips and priority dot are measured only
+   against `card`. Selection is the cursor bar plus the accent border. */
+.tui-card:has(:focus-visible) {
+  border-color: var(--ring);
+  box-shadow: inset 3px 0 0 var(--ring);
+}
