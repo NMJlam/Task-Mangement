@@ -134,9 +134,10 @@ function walkControls(scope: HTMLElement, active: HTMLElement | null, move: Move
 export function moveFocus(move: Move): boolean {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const scope = scopeOf(active);
-  const lists = [...scope.querySelectorAll<HTMLElement>("[data-key-list]")].filter(
-    (list) => rowsOf(list).length > 0,
-  );
+  // The scope can be a list itself: a popover marks its own content.
+  const marked = [...scope.querySelectorAll<HTMLElement>("[data-key-list]")];
+  if (scope.matches("[data-key-list]")) marked.unshift(scope);
+  const lists = marked.filter((list) => rowsOf(list).length > 0);
   if (lists.length === 0) return walkControls(scope, active, move);
 
   const holding = active?.closest<HTMLElement>("[data-key-list]");

@@ -162,17 +162,16 @@ it("moves inside an open popup by its rows and their controls, and walks a page 
   const { rerender } = render(
     <Harness>
       <button type="button">Behind the popup</button>
-      <div role="dialog" data-state="open" aria-label="Edit teams">
+      {/* The list on the popup itself, as Edit teams marks its popover. */}
+      <div role="dialog" data-state="open" aria-label="Edit teams" data-key-list>
         <p>Teams</p>
-        <div data-key-list>
-          <div>
-            <button type="button">Design</button>
-            <button type="button">Lead of Design</button>
-          </div>
-          <div>
-            <button type="button">Events</button>
-            <button type="button">Lead of Events</button>
-          </div>
+        <div>
+          <button type="button">Design</button>
+          <button type="button">Lead of Design</button>
+        </div>
+        <div>
+          <button type="button">Events</button>
+          <button type="button">Lead of Events</button>
         </div>
       </div>
     </Harness>,
