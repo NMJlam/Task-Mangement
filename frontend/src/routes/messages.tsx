@@ -14,7 +14,7 @@ import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { useThreadChat } from "@/hooks/use-thread-chat";
 import { useThreads } from "@/hooks/use-threads";
-import { useShortcut } from "@/lib/shortcuts";
+import { useShortcut, useShortcutsEnabled } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 export function MessagesPage() {
@@ -28,6 +28,7 @@ export function MessagesPage() {
   const [selectedId, setSelectedId] = useState(requested);
   const [dialogOpen, setDialogOpen] = useState(false);
   const newKey = useShortcut("n");
+  const shortcuts = useShortcutsEnabled();
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const unreadTotal = threadItems.reduce((total, thread) => total + thread.unreadCount, 0);
 
@@ -173,9 +174,10 @@ export function MessagesPage() {
             </nav>
           </Panel>
 
-          {/* Its top meets the Conversations pane's line, which sits half a
-              title row down. */}
-          <div className="flex min-w-0 border bg-card lg:mt-3">
+          {/* Its edges meet the Conversations pane's lines: the top sits half
+              a title row down, and so does the bottom while the pane has its
+              key foot. */}
+          <div className={cn("flex min-w-0 border bg-card lg:mt-3", shortcuts && "lg:mb-3")}>
             <ThreadChat
               chat={chat}
               title={threadName(active, memberItems, selfId)}
