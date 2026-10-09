@@ -20,7 +20,9 @@ export function AsciiWordmark({ className }: { className?: string }) {
     <pre
       role="img"
       aria-label="MAC"
-      className={cn("font-mono leading-[1.05] whitespace-pre select-none", className)}
+      // The leading comes after `className`: tailwind-merge lets a later size
+      // class drop an earlier `leading-*`, and the rows need to stay tight.
+      className={cn("font-mono whitespace-pre select-none", className, "leading-[1.05]")}
     >
       {MAC}
     </pre>
