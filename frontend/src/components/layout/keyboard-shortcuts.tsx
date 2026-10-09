@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { isTextEntry, leaveField, moveFocus, overlayOpen, type Move } from "@/lib/key-navigation";
+import {
+  enterField,
+  isTextEntry,
+  leaveField,
+  moveFocus,
+  overlayOpen,
+  type Move,
+} from "@/lib/key-navigation";
 import { ACTIONS, bindings, GO_TO, matchKey, useShortcutsEnabled } from "@/lib/shortcuts";
 
 /** How long `g` waits for its letter. */
@@ -44,8 +51,9 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.isComposing) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      // Escape steps out of a chat box the moves can enter; a popup keeps
-      // Escape for closing itself.
+      // Escape steps out of a box the moves can enter (a chat box, the task
+      // search), keeping what was typed; a popup keeps Escape for closing
+      // itself.
       if (
         event.key === "Escape" &&
         event.target instanceof HTMLElement &&
@@ -94,7 +102,7 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
           const control = document.querySelector<HTMLElement>(`[data-shortcut="${action}"]`);
           if (!control) return;
           event.preventDefault();
-          if (control instanceof HTMLInputElement) control.focus();
+          if (control instanceof HTMLInputElement) enterField(control);
           else control.click();
           return;
         }
