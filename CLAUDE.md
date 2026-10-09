@@ -81,12 +81,10 @@ Accounts may exist without membership. `db:seed` is idempotent.
   `eslint-plugin-jsx-a11y` enforces the basics.
 - **Keyboard:** shortcuts are rebindable bindings (`lib/shortcuts.ts`; defaults
   `n`, `/`, `?`, W A S D to move, `g` + a page letter). A page's new action and
-  search opt in with `useShortcut("new" | "search")`. A list the moves should walk
-  marks its container `data-key-list`. Its rows are its direct children, or
-  `data-key-item` descendants where rows sit deeper, and lists sharing a value are
-  crossed by left and right. Rows add `tui-row` (or `tui-card`) for the selection
-  style. Popups and pages without a list are walked control by control
-  automatically. A new top-level page adds an
+  search opt in with `useShortcut("new" | "search")`. The moves are spatial (the
+  nearest control on screen that way), so they need no markup. A page marks its
+  main list `data-key-list` only so the first move lands on its first row. Rows
+  add `tui-row` (or `tui-card`) for the selection style. A new top-level page adds an
   entry (`id`, default letter) to `GO_TO`. Write hints from the bindings
   (`hintText`), never as literal keys. Single-key shortcuts stay switchable off
   (WCAG 2.1.4).

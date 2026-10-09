@@ -344,27 +344,33 @@ The app has a keyboard layer, listed in full behind `?` or the status line's
 
 - `g` then a letter jumps to a page.
 - `n` is the page's new action, and `/` its search.
-- `w` / `s` walk a list up and down, and `a` / `d` move left and right. That is the
-  arrow cluster's shape on letters. Real arrow keys already scroll the page, and
-  they drive the widgets that own them (tabs, selects, a picked-up drag handle), so
-  the shortcuts leave them alone.
+- `w` / `a` / `s` / `d` move up, left, down and right. That is the arrow cluster's
+  shape on letters. Real arrow keys already scroll the page, and they drive the
+  widgets that own them (tabs, selects, a picked-up drag handle), so the
+  shortcuts leave them alone.
 
-The moves work on every page and in every popup:
+The moves work like a game pad's D-pad, on every page and in every popup. Each key
+goes to the nearest control in that direction on screen, so down is always down,
+whatever order the markup is in:
 
-- **On a page.** The lists are marked:
-  - the Overview's panels, which `a` / `d` cross;
-  - Events, each Calendar day, the task board's columns, Finance's expenses, the
-    Inbox, Messages, the Members directory, the AI chats, and Settings' themes and
-    key tables.
+- in a two-column grid like the Settings themes;
+- across the task board's columns and the Overview's panels;
+- from one calendar day to the next;
+- from an Inbox row's link to its Mark Read;
+- in the Edit teams popover, between teams and between a team's membership and
+  Lead boxes.
+
+- **Which control counts as "that way".** Something overlapping your column counts
+  as straight below (or above), and centre distance breaks ties off to the side.
+  Left and right stay on the row, so with nothing level they go nowhere rather
+  than jumping to a far corner.
+- **The first move** lands on the first row of the page's main list (marked
+  `data-key-list`), or on the first control if the page marks none.
 - **In a popup.** With a dialog or popover open, the moves stay inside it, and
-  every other shortcut is blocked so no key acts on the page behind it. In the
-  Edit teams popover, `w` / `s` step between teams and `a` / `d` between a team's
-  membership and Lead boxes.
-- **Left and right.** With no sibling list to cross, `a` / `d` move between the
-  controls of the current row, and `w` / `s` keep that column.
-- **With no list at all** (a form, a dialog), the moves walk the controls in order.
-  A page with nothing to land on, like a member's read-only directory, scrolls
-  instead, the way a pager does.
+  every other shortcut is blocked so no key acts on the page behind it.
+- **Past the end.** Up or down with nothing further that way scrolls the page,
+  the way a pager does. So does a page with nothing to land on, like a member's
+  read-only directory.
 - **Fields.** A text field is never landed on, because a letter there must type.
 - **Selects.** A `<select>` is landed on and stepped past, and the key is cancelled.
   Its type-ahead would otherwise turn `s` into a choice.
