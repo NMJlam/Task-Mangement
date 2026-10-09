@@ -26,6 +26,7 @@ import { useEvents } from "@/hooks/use-events";
 import { useMe } from "@/hooks/use-me";
 import { useMembers } from "@/hooks/use-members";
 import { MAX_TASKS, useTasks } from "@/hooks/use-tasks";
+import { useShortcut } from "@/lib/shortcuts";
 
 /**
  * The filter state a URL carries. Every key is optional and every default is
@@ -91,6 +92,8 @@ export function TasksPage() {
   // the same shape as `canCreate` on the events page.
   const canDelete = me.status === "ok" && me.user.tier >= 1;
   const [adding, setAdding] = useState(false);
+  const newKey = useShortcut("n");
+  const searchKey = useShortcut("/");
   const taskItems = tasks.state.status === "ok" ? tasks.state.items : [];
   const eventItems = events.state.status === "ok" ? events.state.items : undefined;
   const memberItems = members.state.status === "ok" ? members.state.items : [];
@@ -157,9 +160,10 @@ export function TasksPage() {
                 autoComplete="off"
                 spellCheck={false}
                 className="pl-8"
+                {...searchKey}
               />
             </div>
-            <Button onClick={() => setAdding(true)}>
+            <Button onClick={() => setAdding(true)} {...newKey}>
               <ListPlus aria-hidden="true" />
               Add Tasks
             </Button>

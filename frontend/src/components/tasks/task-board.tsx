@@ -18,6 +18,8 @@ import {
 } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useRef, useState } from "react";
+import { KeyHints } from "@/components/common/key-hints";
+import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { TaskCard } from "@/components/tasks/task-card";
 import { TaskDetailDialog } from "@/components/tasks/task-detail-dialog";
@@ -264,6 +266,7 @@ export function TaskBoard({
           ))}
         </section>
       </DragDropProvider>
+      <KeyHints className="mt-3" keys={["[j/k] move", "[h/l] column", "[enter] open", "[n] new"]} />
 
       <TaskDetailDialog
         task={openTask}
@@ -320,18 +323,16 @@ function BoardColumn({
     collisionPriority: CollisionPriority.Low,
   });
 
+  // A titled pane per column, its count in the border, lazygit's way. The
+  // body is a key list in the "board" group, so j/k walk the column and h/l
+  // cross to the next one.
   return (
-    <section aria-labelledby={`${column.status}-heading`}>
-      <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <h3 id={`${column.status}-heading`} className="text-sm font-semibold">
-          {column.label}
-        </h3>
-        <span className="text-xs text-muted-foreground tabular-nums">{tasks.length}</span>
-      </div>
+    <Panel level={3} title={column.label} meta={tasks.length} bodyClassName="p-2">
       <div
         ref={ref}
+        data-key-list="board"
         className={cn(
-          "grid min-h-20 gap-2 rounded-lg transition-colors motion-reduce:transition-none",
+          "grid min-h-20 content-start gap-2 transition-colors motion-reduce:transition-none",
           isDropTarget && "bg-accent/60 ring-2 ring-ring/40 ring-inset",
         )}
       >
@@ -351,11 +352,9 @@ function BoardColumn({
           />
         ))}
         {tasks.length === 0 && (
-          <div className="rounded-lg border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
-            No tasks
-          </div>
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">No tasks</p>
         )}
       </div>
-    </section>
+    </Panel>
   );
 }

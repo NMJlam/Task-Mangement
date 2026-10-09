@@ -33,6 +33,7 @@ import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
 import { useThreadChat } from "@/hooks/use-thread-chat";
 import { canEditEvent } from "@/lib/permissions";
+import { useShortcut } from "@/lib/shortcuts";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "full",
@@ -99,6 +100,7 @@ export function EventDetailPage() {
   // The Tasks tab's create form. Any member may open it: `POST /api/tasks` sits
   // behind `authorise(0)`, so there is nothing to hide.
   const [addingTask, setAddingTask] = useState(false);
+  const newTaskKey = useShortcut("n");
   // Warnings the last successful move came back with — a date change can leave
   // task deadlines behind the event, which the route reports rather than fixing.
   const [dateWarnings, setDateWarnings] = useState<string[]>([]);
@@ -344,7 +346,7 @@ export function EventDetailPage() {
                 </Link>
               </Button>
             )}
-            <Button onClick={() => setAddingTask(true)}>
+            <Button onClick={() => setAddingTask(true)} {...newTaskKey}>
               <ListPlus aria-hidden="true" />
               Add Task
             </Button>

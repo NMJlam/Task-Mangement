@@ -57,8 +57,11 @@ export function TaskCard({
   return (
     <Card
       ref={ref}
+      // A row of its column's key list; its first control, the Open overlay,
+      // is where j/k land. `tui-card` draws the cursor on it.
+      data-key-item
       className={cn(
-        "relative gap-4 py-4 shadow-none transition-[border-color,box-shadow,opacity] motion-reduce:transition-none",
+        "tui-card relative gap-4 py-4 shadow-none transition-[border-color,box-shadow,opacity] motion-reduce:transition-none",
         isDragging ? "border-ring opacity-60" : "hover:border-input",
       )}
     >
