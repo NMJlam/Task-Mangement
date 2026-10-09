@@ -83,7 +83,10 @@ Accounts may exist without membership. `db:seed` is idempotent.
   `routes/` components stay declarative.
 - **Theme:** colours are CSS variables in `frontend/src/index.css` (Tailwind v4
   `@theme`), one palette in two directions — light and dark both define every
-  token, so no colour carries a `dark:` half. The look is a terminal: all-sharp
+  token, so no colour carries a `dark:` half. Settings adds three dark terminal
+  palettes (amber, green, Gruvbox) as `:root[data-theme=…]` blocks that also
+  define every token; a new token goes in all five, and a new palette in
+  `lib/theme.ts` and `index.html`'s pre-paint script. The look is a terminal: all-sharp
   corners, hairline rules, monospace throughout, Departure Mono (vendored, SIL
   OFL — see `docs/stack-versions.md`) for display type. There is no filled brand
   colour: `--primary` is inverse video and `--ring` is the single accent, used
