@@ -48,6 +48,17 @@ export function overlayOpen(): boolean {
 }
 
 /**
+ * Where a control sits on screen. A link that stretches its hit area over a
+ * row or card (`data-key-stretch`, drawn with an `after:` layer over its
+ * positioned ancestor) is measured as that row: it is what the eye and the
+ * mouse see, while the link's own box is just its title text.
+ */
+function rectOf(element: HTMLElement): DOMRect {
+  const box = element.hasAttribute("data-key-stretch") ? element.offsetParent : null;
+  return (box instanceof HTMLElement ? box : element).getBoundingClientRect();
+}
+
+/**
  * The controls under `root` (itself included) a move can land on: reachable by
  * Tab, not a text field, not hidden, and drawn. Radix pairs its checkbox with
  * an `aria-hidden` input at tabindex -1, which this skips.
@@ -59,7 +70,7 @@ function controlsIn(root: HTMLElement): HTMLElement[] {
     if (element.tabIndex < 0) return false;
     if (isTextEntry(element) && !element.hasAttribute("data-key-field")) return false;
     if (element.closest('[aria-hidden="true"], [hidden], [inert]')) return false;
-    const box = element.getBoundingClientRect();
+    const box = rectOf(element);
     return box.width > 0 && box.height > 0;
   });
 }
@@ -125,7 +136,7 @@ function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElem
     const reach = Math.max(from.width, 160) * 2;
     const boxes = candidates.filter((candidate) => {
       if (!candidate.hasAttribute("data-key-field")) return false;
-      const gap = gapTo(candidate.getBoundingClientRect());
+      const gap = gapTo(rectOf(candidate));
       return gap >= -1 && gap <= reach;
     });
     if (boxes.length > 0) candidates = boxes;
@@ -133,7 +144,7 @@ function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElem
   let best: HTMLElement | undefined;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
-    const box = candidate.getBoundingClientRect();
+    const box = rectOf(candidate);
     const gap = gapTo(box);
     if (gap < -1) continue;
     const field = candidate.hasAttribute("data-key-field");
@@ -200,7 +211,7 @@ export function moveFocus(move: Move): boolean {
     }
   } else {
     const target = nearest(
-      active.getBoundingClientRect(),
+      rectOf(active),
       controls.filter((control) => !control.contains(active) && !active.contains(control)),
       move,
     );
@@ -226,7 +237,7 @@ export function leaveField(field: HTMLElement): boolean {
   const controls = controlsIn(scope).filter(
     (control) => control !== field && !control.hasAttribute("data-key-field"),
   );
-  const box = field.getBoundingClientRect();
+  const box = rectOf(field);
   const back =
     cameFrom && cameFrom.isConnected && controls.includes(cameFrom)
       ? cameFrom

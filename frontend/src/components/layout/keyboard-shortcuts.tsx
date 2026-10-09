@@ -51,13 +51,14 @@ export function KeyboardShortcuts({ onHelp }: { onHelp: () => void }) {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.isComposing) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      // Escape steps out of a box the moves can enter (a chat box, the task
-      // search), keeping what was typed; a popup keeps Escape for closing
-      // itself.
+      // Escape steps out of a chat box the moves can enter, or the page's
+      // search the search key went into, keeping what was typed (a search
+      // field would otherwise clear). A popup keeps Escape for closing itself.
       if (
         event.key === "Escape" &&
         event.target instanceof HTMLElement &&
-        event.target.hasAttribute("data-key-field") &&
+        (event.target.hasAttribute("data-key-field") ||
+          event.target.matches('[data-shortcut="search"]')) &&
         !overlayOpen()
       ) {
         if (leaveField(event.target)) event.preventDefault();

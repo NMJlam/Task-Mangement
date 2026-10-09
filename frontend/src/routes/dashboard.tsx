@@ -584,6 +584,9 @@ function EventRow({ event }: { event: EventSummary }) {
         <div className="min-w-0">
           <Link
             to={`/events/${event.id}`}
+            // Measured as the row it covers, so the moves reach it from
+            // anywhere a row would be "that way".
+            data-key-stretch
             className="block truncate rounded-sm text-sm font-semibold after:absolute after:inset-0 hover:underline focus-visible:outline-none"
           >
             {event.title}
