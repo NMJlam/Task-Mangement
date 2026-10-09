@@ -235,7 +235,7 @@ export function hintText(hint: Hint, keys: Bindings): string {
     case "leave":
       return "[esc] leave chat box";
     case "help":
-      return `[${actions.help}] all keys`;
+      return `[${actions.help}] help`;
   }
 }
 
