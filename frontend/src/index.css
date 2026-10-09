@@ -512,9 +512,11 @@
   width: 3px;
   background: var(--ring);
 }
-/* A board card keeps its surface: its chips and priority dot are measured only
-   against `card`. Selection is the cursor bar plus the accent border. */
-.tui-card:has(:focus-visible) {
+/* A board card, a day on the calendar or an Overview box keeps its surface:
+   its chips, dots and tags are measured only against `card`. Selection is the
+   cursor bar plus the accent border, whether the box itself is focused or a
+   control inside it is. */
+.tui-card:is(:focus-visible, :has(:focus-visible)) {
   border-color: var(--ring);
   box-shadow: inset 3px 0 0 var(--ring);
 }
