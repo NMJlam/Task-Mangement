@@ -3,6 +3,7 @@ import { useState } from "react";
 import { LoadingLine } from "@/components/common/loading-line";
 import { PageHeader } from "@/components/common/page-header";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { KeyBindings } from "@/components/settings/key-bindings";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -164,7 +165,7 @@ export function SettingsPage() {
         <CardHeader>
           <h2 className="text-lg font-semibold tracking-tight">Keyboard</h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            Shortcuts for moving around without the mouse. Press ? for the full list.
+            Shortcuts for moving around without the mouse, and the keys they use.
           </p>
         </CardHeader>
         <CardContent>
@@ -184,11 +185,12 @@ export function SettingsPage() {
                 id="single-key-shortcuts-hint"
                 className="mt-1 text-sm leading-6 text-muted-foreground"
               >
-                Keys like g then t for Tasks, or n for new. Turn them off if you use speech input or
-                they get in your way. Ctrl+K search stays on.
+                Keys like g then t for Tasks, n for new, or W A S D to move through a list. Turn
+                them off if you use speech input or they get in your way. Ctrl+K search stays on.
               </p>
             </div>
           </div>
+          <KeyBindings />
         </CardContent>
       </Card>
     </main>
