@@ -142,21 +142,37 @@ it("moves to what is below, beside or above on screen, on whatever keys are boun
   expect(button("Light")).toHaveFocus();
 });
 
-it("presses the page's new action and focuses its search", () => {
+it("presses the page's new action, and enters its search box and leaves it on Escape", () => {
   const onNew = vi.fn();
   render(
     <Harness>
-      <button type="button" data-shortcut="new" onClick={onNew}>
+      <button type="button" data-box="0 0 60 20">
+        Filter
+      </button>
+      {/* Beside the box, not above it: only the way back can return here. */}
+      <button type="button" data-shortcut="new" onClick={onNew} data-box="200 30 60 20">
         New
       </button>
-      <input aria-label="Find" data-shortcut="search" />
+      <input
+        aria-label="Find"
+        type="search"
+        data-shortcut="search"
+        data-key-field
+        data-box="0 30 100 20"
+      />
     </Harness>,
   );
+  const newButton = screen.getByRole("button", { name: "New" });
+  const find = screen.getByRole("searchbox", { name: "Find" });
 
   press("n");
   expect(onNew).toHaveBeenCalledOnce();
+  newButton.focus();
   press("/");
-  expect(screen.getByRole("textbox", { name: "Find" })).toHaveFocus();
+  expect(find).toHaveFocus();
+  // Escape steps back out (and keeps the query: the key is cancelled).
+  expect(fireEvent.keyDown(find, { key: "Escape" })).toBe(false);
+  expect(newButton).toHaveFocus();
 });
 
 it("opens the key list with ?, and does nothing once single-key shortcuts are off", () => {

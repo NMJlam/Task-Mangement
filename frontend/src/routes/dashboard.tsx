@@ -572,14 +572,19 @@ function ActivityRow({ notification }: { notification: Notification }) {
   );
 }
 
+/**
+ * One event this week, as a box: the title link's hit area covers the row, and
+ * while it has keyboard focus the whole row is outlined. Like My Tasks, the
+ * box reaches 8px past the content on each side, and keeps its surface.
+ */
 function EventRow({ event }: { event: EventSummary }) {
   return (
-    <div className="py-4">
+    <div className="tui-card relative -mx-2 px-2 py-4 hover:shadow-[inset_3px_0_0_var(--ring)] has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-ring">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <Link
             to={`/events/${event.id}`}
-            className="block truncate rounded-sm text-sm font-semibold hover:underline"
+            className="block truncate rounded-sm text-sm font-semibold after:absolute after:inset-0 hover:underline focus-visible:outline-none"
           >
             {event.title}
           </Link>

@@ -161,15 +161,25 @@ function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElem
   return best;
 }
 
-/** Where a move into a chat box came from, for Escape to return to. */
+/** Where a move (or `/`) into a box came from, for Escape to return to. */
 let cameFrom: HTMLElement | null = null;
+
+/**
+ * Focuses a box the keys can type into, remembering where focus was so Escape
+ * can step back there. Used by the moves and by the search key.
+ */
+export function enterField(field: HTMLElement) {
+  const from = document.activeElement;
+  cameFrom = from instanceof HTMLElement && from !== document.body && from !== field ? from : null;
+  field.focus();
+}
 
 function land(element: HTMLElement) {
   if (element.hasAttribute("data-key-field")) {
-    const from = document.activeElement;
-    cameFrom = from instanceof HTMLElement && from !== document.body ? from : null;
+    enterField(element);
+  } else {
+    element.focus();
   }
-  element.focus();
   // Absent in jsdom; every browser has it.
   if ("scrollIntoView" in element) element.scrollIntoView({ block: "nearest" });
 }
@@ -207,8 +217,9 @@ export function moveFocus(move: Move): boolean {
 }
 
 /**
- * Escape in a chat box: back to the control the move came from, or, if that
- * has gone, the nearest control above (or to the left of) the box.
+ * Escape in a box: back to the control the move (or `/`) came from, or, if
+ * that has gone, the nearest control above, left, below or right of the box.
+ * With none at all, focus just leaves the box, so the moves work again.
  */
 export function leaveField(field: HTMLElement): boolean {
   const scope = scopeOf(field);
@@ -219,9 +230,12 @@ export function leaveField(field: HTMLElement): boolean {
   const back =
     cameFrom && cameFrom.isConnected && controls.includes(cameFrom)
       ? cameFrom
-      : (nearest(box, controls, "previous") ?? nearest(box, controls, "left"));
+      : (nearest(box, controls, "previous") ??
+        nearest(box, controls, "left") ??
+        nearest(box, controls, "next") ??
+        nearest(box, controls, "right"));
   cameFrom = null;
-  if (!back) return false;
-  land(back);
+  if (back) land(back);
+  else field.blur();
   return true;
 }

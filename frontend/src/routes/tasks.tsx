@@ -161,6 +161,9 @@ export function TasksPage() {
                 autoComplete="off"
                 spellCheck={false}
                 className="pl-8"
+                // A box the moves can enter, like Messages' chat box: type to
+                // search, Escape to move on again (keeping the query).
+                data-key-field
                 {...searchKey}
               />
             </div>
