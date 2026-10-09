@@ -132,6 +132,8 @@ export function ChatThread({
             </label>
             <textarea
               id="assistant-draft"
+              // The moves can enter this box; Escape steps back out.
+              data-key-field
               rows={2}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}

@@ -15,7 +15,9 @@
  *
  * Moves shift real focus, so a screen reader follows and Enter does what the
  * focused control already does. Text fields are never landed on, because a
- * letter pressed there must type.
+ * letter pressed there must type, except a chat box marked `data-key-field`.
+ * Once in one, the keys type, and Escape steps back to where the move came
+ * from (`leaveField`).
  */
 
 /** Down, up, left and right. */
@@ -54,7 +56,8 @@ function controlsIn(root: HTMLElement): HTMLElement[] {
   const found = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)];
   if (root.matches(FOCUSABLE)) found.unshift(root);
   return found.filter((element) => {
-    if (element.tabIndex < 0 || isTextEntry(element)) return false;
+    if (element.tabIndex < 0) return false;
+    if (isTextEntry(element) && !element.hasAttribute("data-key-field")) return false;
     if (element.closest('[aria-hidden="true"], [hidden], [inert]')) return false;
     const box = element.getBoundingClientRect();
     return box.width > 0 && box.height > 0;
@@ -98,7 +101,9 @@ function entryOf(scope: HTMLElement, controls: HTMLElement[]): HTMLElement | und
  *   card is not "right of" the card.
  * - Left and right stay on the row: a candidate must sit level with `from`,
  *   within its own height, or the move goes nowhere rather than jumping to a
- *   far corner.
+ *   far corner. The exception is a chat box in that direction, within a pane's
+ *   reach: from Messages' conversations or the AI chats, right goes into the
+ *   box to write in, wherever it sits.
  * - The score is the gap plus twice the sideways distance: none for a control
  *   that overlaps `from`'s column (or row), else the distance between centres.
  *   So whatever is squarely below wins, wide or narrow, over a nearer one off
@@ -108,20 +113,35 @@ function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElem
   const vertical = move === "next" || move === "previous";
   const fromX = from.left + from.width / 2;
   const fromY = from.top + from.height / 2;
+  const gapTo = (box: DOMRect) =>
+    move === "next"
+      ? box.top - from.bottom
+      : move === "previous"
+        ? from.top - box.bottom
+        : move === "right"
+          ? box.left - from.right
+          : from.left - box.right;
+  if (!vertical) {
+    const reach = Math.max(from.width, 160) * 2;
+    const boxes = candidates.filter((candidate) => {
+      if (!candidate.hasAttribute("data-key-field")) return false;
+      const gap = gapTo(candidate.getBoundingClientRect());
+      return gap >= -1 && gap <= reach;
+    });
+    if (boxes.length > 0) candidates = boxes;
+  }
   let best: HTMLElement | undefined;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
     const box = candidate.getBoundingClientRect();
-    const gap =
-      move === "next"
-        ? box.top - from.bottom
-        : move === "previous"
-          ? from.top - box.bottom
-          : move === "right"
-            ? box.left - from.right
-            : from.left - box.right;
+    const gap = gapTo(box);
     if (gap < -1) continue;
-    if (!vertical && (box.bottom < from.top - from.height || box.top > from.bottom + from.height)) {
+    const field = candidate.hasAttribute("data-key-field");
+    if (
+      !vertical &&
+      !field &&
+      (box.bottom < from.top - from.height || box.top > from.bottom + from.height)
+    ) {
       continue;
     }
     const overlaps = vertical
@@ -141,7 +161,14 @@ function nearest(from: DOMRect, candidates: HTMLElement[], move: Move): HTMLElem
   return best;
 }
 
+/** Where a move into a chat box came from, for Escape to return to. */
+let cameFrom: HTMLElement | null = null;
+
 function land(element: HTMLElement) {
+  if (element.hasAttribute("data-key-field")) {
+    const from = document.activeElement;
+    cameFrom = from instanceof HTMLElement && from !== document.body ? from : null;
+  }
   element.focus();
   // Absent in jsdom; every browser has it.
   if ("scrollIntoView" in element) element.scrollIntoView({ block: "nearest" });
@@ -176,5 +203,25 @@ export function moveFocus(move: Move): boolean {
   // Nothing (further) that way: up and down page through the content.
   if (!vertical || !inPage) return false;
   window.scrollBy({ top: move === "next" ? SCROLL_STEP : -SCROLL_STEP });
+  return true;
+}
+
+/**
+ * Escape in a chat box: back to the control the move came from, or, if that
+ * has gone, the nearest control above (or to the left of) the box.
+ */
+export function leaveField(field: HTMLElement): boolean {
+  const scope = scopeOf(field);
+  const controls = controlsIn(scope).filter(
+    (control) => control !== field && !control.hasAttribute("data-key-field"),
+  );
+  const box = field.getBoundingClientRect();
+  const back =
+    cameFrom && cameFrom.isConnected && controls.includes(cameFrom)
+      ? cameFrom
+      : (nearest(box, controls, "previous") ?? nearest(box, controls, "left"));
+  cameFrom = null;
+  if (!back) return false;
+  land(back);
   return true;
 }
