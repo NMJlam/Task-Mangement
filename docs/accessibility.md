@@ -163,6 +163,18 @@ Gruvbox — page `#282828`, panel `#32302f`, ink `#ebdbb2`, accent `#fe8019`:
 | `input` on `background`                   | 4.02:1 ✅  | 3:1   |
 | `input` on `card`                         | 3.58:1 ✅  | 3:1   |
 
+The axe scans were run once per palette as a local, uncommitted pass, so the suite
+stays two themes long. That pass covered the login page, `/`, `/events`, `/tasks`,
+`/members`, `/settings` and `/calendar`, with each page waited on until its loading
+lines had cleared. There were **0 colour violations**. The calendar reported one
+`nested-interactive` violation, and it does so in every theme, light included. It
+comes from the event chips, not the palettes: when a member cannot move an event,
+the chip has no drag handle. dnd-kit then makes the chip itself a disabled
+`role="button"` with `tabindex="0"`, wrapped around its "Open …" button, which
+leaves a dead tab stop on every chip. The committed calendar scan misses this
+because it runs before the month's events arrive. **Open**: give the chip no
+draggable role when there is no handle, then make the scan wait for the events.
+
 ### Non-text contrast (1.4.11)
 
 | Boundary                      | Light     | Dark      |
