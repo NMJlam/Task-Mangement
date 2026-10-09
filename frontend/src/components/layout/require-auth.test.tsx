@@ -28,7 +28,8 @@ it("keeps the auth check stable while the session request is pending", () => {
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("status")).toHaveTextContent("Loading…");
+  // A console loading line, spinner and all — every page switch passes here.
+  expect(screen.getByRole("status")).toHaveTextContent(/^[|/\\-] Loading…$/u);
   expect(screen.queryByRole("button", { name: /sign in with google/i })).not.toBeInTheDocument();
 });
 

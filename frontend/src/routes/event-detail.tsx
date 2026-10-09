@@ -33,7 +33,6 @@ import { useMembers } from "@/hooks/use-members";
 import { useTasks } from "@/hooks/use-tasks";
 import { useThreadChat } from "@/hooks/use-thread-chat";
 import { canEditEvent } from "@/lib/permissions";
-import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "full",
@@ -458,15 +457,14 @@ export function EventDetailPage() {
  * same shape as the loaded page, because a failure that strands the reader
  * without a way back is a worse outcome than the failure itself.
  */
+/** A whole-page state: loading draws the console spinner, and anything else an alert. */
 function PageState({
   heading,
   children,
   role,
-}: {
-  heading: string;
-  children: ReactNode;
-  role: "status" | "alert";
-}) {
+}: { heading: string } & (
+  { role: "status"; children: string } | { role: "alert"; children: ReactNode }
+)) {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <Link
@@ -479,12 +477,13 @@ function PageState({
 
       <PageHeader title={heading} />
 
-      <p
-        className={cn("mt-6 text-sm text-muted-foreground", role === "alert" && "text-destructive")}
-        role={role}
-      >
-        {children}
-      </p>
+      {role === "status" ? (
+        <LoadingLine label={children} className="mt-6" />
+      ) : (
+        <p className="mt-6 text-sm text-destructive" role="alert">
+          {children}
+        </p>
+      )}
     </main>
   );
 }

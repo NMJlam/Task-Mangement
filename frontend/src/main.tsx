@@ -1,6 +1,7 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider, type RouteObject } from "react-router-dom";
+import { LoadingLine } from "./components/common/loading-line";
 import { RequireAuth } from "./components/layout/require-auth";
 import { RouteError } from "./components/layout/route-error";
 import "./index.css";
@@ -206,9 +207,7 @@ createRoot(rootEl).render(
     <Suspense
       fallback={
         <main className="flex min-h-svh items-center justify-center p-8">
-          <p className="text-muted-foreground" role="status">
-            Loading…
-          </p>
+          <LoadingLine label="Loading…" />
         </main>
       }
     >
