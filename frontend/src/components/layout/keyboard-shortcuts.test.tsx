@@ -1,12 +1,36 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { KeyboardShortcuts } from "./keyboard-shortcuts";
 import { ShortcutHelp } from "./shortcut-help";
 import { resetBindings, setBinding, setShortcutsEnabled } from "@/lib/shortcuts";
 
+/**
+ * jsdom draws nothing, so each control here states its box on screen as
+ * `data-box="left top width height"`; anything without one is not drawn.
+ */
+beforeEach(() => {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const box = this instanceof HTMLElement ? (this.dataset.box ?? "") : "";
+    const [left = 0, top = 0, width = 0, height = 0] = box.split(" ").map(Number);
+    return {
+      left,
+      top,
+      width,
+      height,
+      x: left,
+      y: top,
+      right: left + width,
+      bottom: top + height,
+      toJSON: () => ({}),
+    };
+  });
+  vi.spyOn(window, "scrollBy").mockImplementation(() => {});
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   act(() => {
     setShortcutsEnabled(true);
     resetBindings();
@@ -37,23 +61,23 @@ function press(...keys: string[]) {
   for (const key of keys) fireEvent.keyDown(document.activeElement ?? document.body, { key });
 }
 
-/** Two columns of rows, the board's shape; `rows` drops rows from the first. */
-function Lists({ rows = ["a1", "a2"] }: { rows?: string[] }) {
+const GRID_BOXES: Record<string, string> = {
+  Light: "0 0 100 40",
+  Dark: "120 0 100 40",
+  Amber: "0 50 100 40",
+  Green: "120 50 100 40",
+};
+
+/** A two-column grid in reading order, the Settings themes' shape. */
+function Grid({ names = ["Light", "Dark", "Amber", "Green"] }: { names?: string[] }) {
   return (
-    <>
-      <ul data-key-list="board">
-        {rows.map((row) => (
-          <li key={row} data-key-item>
-            <button type="button">{row}</button>
-          </li>
-        ))}
-      </ul>
-      <ul data-key-list="board">
-        <li data-key-item>
-          <button type="button">b1</button>
-        </li>
-      </ul>
-    </>
+    <div data-key-list>
+      {names.map((name) => (
+        <button key={name} type="button" data-box={GRID_BOXES[name]}>
+          {name}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -82,40 +106,40 @@ it("jumps to a page with g then its letter, but not while typing or behind a dia
   expect(path).toHaveTextContent("/events");
 });
 
-it("walks a list with W/S and crosses lists with A/D, on whatever keys are bound", () => {
+it("moves to what is below, beside or above on screen, on whatever keys are bound", () => {
   const { rerender } = render(
     <Harness>
-      <Lists />
+      <Grid />
     </Harness>,
   );
   const button = (name: string) => screen.getByRole("button", { name });
 
   press("s");
-  expect(button("a1")).toHaveFocus();
-  press("s");
-  expect(button("a2")).toHaveFocus();
-  press("W"); // Caps Lock or Shift still reaches it
-  expect(button("a1")).toHaveFocus();
+  expect(button("Light")).toHaveFocus();
+  press("s"); // down is down, not the next in the markup (Dark)
+  expect(button("Amber")).toHaveFocus();
   press("d");
-  expect(button("b1")).toHaveFocus();
+  expect(button("Green")).toHaveFocus();
+  press("W"); // Caps Lock or Shift still reaches it
+  expect(button("Dark")).toHaveFocus();
   press("a");
-  expect(button("a1")).toHaveFocus();
+  expect(button("Light")).toHaveFocus();
 
   // Rebound in Settings: the new key moves, the old one no longer does.
   act(() => void setBinding({ kind: "action", id: "next" }, "j"));
   press("s");
-  expect(button("a1")).toHaveFocus();
+  expect(button("Light")).toHaveFocus();
   press("j");
-  expect(button("a2")).toHaveFocus();
+  expect(button("Amber")).toHaveFocus();
 
-  // The focused row leaves (a poll, a move): the next move starts over.
+  // The focused control leaves (a poll, a move): the next move starts over.
   rerender(
     <Harness>
-      <Lists rows={["a1"]} />
+      <Grid names={["Light", "Dark", "Green"]} />
     </Harness>,
   );
   press("j");
-  expect(button("a1")).toHaveFocus();
+  expect(button("Light")).toHaveFocus();
 });
 
 it("presses the page's new action and focuses its search", () => {
@@ -158,20 +182,30 @@ it("opens the key list with ?, and does nothing once single-key shortcuts are of
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-it("moves inside an open popup by its rows and their controls, and walks a page with no list", () => {
+it("moves inside an open popup only, and steps past text fields and selects", () => {
   const { rerender } = render(
     <Harness>
-      <button type="button">Behind the popup</button>
+      <button type="button" data-box="0 200 100 20">
+        Behind the popup
+      </button>
       {/* The list on the popup itself, as Edit teams marks its popover. */}
       <div role="dialog" data-state="open" aria-label="Edit teams" data-key-list>
         <p>Teams</p>
         <div>
-          <button type="button">Design</button>
-          <button type="button">Lead of Design</button>
+          <button type="button" data-box="0 0 80 20">
+            Design
+          </button>
+          <button type="button" data-box="100 0 80 20">
+            Lead of Design
+          </button>
         </div>
         <div>
-          <button type="button">Events</button>
-          <button type="button">Lead of Events</button>
+          <button type="button" data-box="0 30 80 20">
+            Events
+          </button>
+          <button type="button" data-box="100 30 80 20">
+            Lead of Events
+          </button>
         </div>
       </div>
     </Harness>,
@@ -182,23 +216,29 @@ it("moves inside an open popup by its rows and their controls, and walks a page 
   expect(button("Design")).toHaveFocus();
   press("d");
   expect(button("Lead of Design")).toHaveFocus();
-  press("s"); // keeps the column
+  press("s");
   expect(button("Lead of Events")).toHaveFocus();
   press("a");
   expect(button("Events")).toHaveFocus();
+  press("s"); // nothing below in the popup, and the page behind is off-limits
+  expect(button("Events")).toHaveFocus();
 
-  // A form: no list, so the moves walk its controls, stepping over the text
-  // field. A select is stepped past too, and the key never reaches it: its
-  // type-ahead would otherwise pick the option starting with "s".
+  // A form: the moves step over its text field. A select is stepped past
+  // too, and the key never reaches it: its type-ahead would otherwise pick
+  // the option starting with "s".
   rerender(
     <Harness>
-      <a href="/events">Back</a>
-      <input aria-label="Title" />
-      <select aria-label="Event" defaultValue="">
+      <a href="/events" data-box="0 0 60 20">
+        Back
+      </a>
+      <input aria-label="Title" data-box="0 30 200 20" />
+      <select aria-label="Event" defaultValue="" data-box="0 60 200 20">
         <option value="">No event</option>
         <option value="s">Semester Expo</option>
       </select>
-      <button type="button">Save</button>
+      <button type="button" data-box="0 90 60 20">
+        Save
+      </button>
     </Harness>,
   );
   press("s");
