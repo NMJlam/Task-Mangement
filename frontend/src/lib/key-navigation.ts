@@ -26,10 +26,14 @@ const FOCUSABLE =
 const OVERLAY = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
 const NOT_TEXT = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color"]);
 
-/** A field where a key is a character being typed. */
+/**
+ * A field where a key is a character being typed. A `<select>` is not one: it
+ * is a control the moves land on and step past. Its type-ahead would otherwise
+ * turn a move key into a choice, such as "s" picking the first option that
+ * starts with S. The handler cancels the key, so it never gets that far.
+ */
 export function isTextEntry(element: HTMLElement): boolean {
-  if (element.isContentEditable) return true;
-  if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) return true;
+  if (element.isContentEditable || element instanceof HTMLTextAreaElement) return true;
   return element instanceof HTMLInputElement && !NOT_TEXT.has(element.type);
 }
 
@@ -97,10 +101,21 @@ function landInColumn(row: HTMLElement, column: number) {
   land(controls[Math.min(column, controls.length - 1)]);
 }
 
-/** No list here: up and down walk the controls in order. */
+/** How far up and down scroll a page with nothing to land on: a few lines. */
+const SCROLL_STEP = 80;
+
+/**
+ * No list here: up and down walk the controls in order. A page with no
+ * controls at all (a read-only member directory) scrolls instead, the way a
+ * pager does.
+ */
 function walkControls(scope: HTMLElement, active: HTMLElement | null, move: Move): boolean {
   const controls = controlsIn(scope);
-  if (controls.length === 0) return false;
+  if (controls.length === 0) {
+    if (scope.closest(OVERLAY) || (move !== "next" && move !== "previous")) return false;
+    window.scrollBy({ top: move === "next" ? SCROLL_STEP : -SCROLL_STEP });
+    return true;
+  }
   const index = active ? controls.indexOf(active) : -1;
   if (index === -1) {
     land(controls[0]);
