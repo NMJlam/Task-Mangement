@@ -79,6 +79,11 @@ Accounts may exist without membership. `db:seed` is idempotent.
   one — that's where keyboard nav + ARIA (R14, US-21) come from. If you must hand-
   roll an interactive element, justify it in the PR and add keyboard handling.
   `eslint-plugin-jsx-a11y` enforces the basics.
+- **Keyboard:** a page's new action and search opt in to `n` and `/` with
+  `useShortcut("n" | "/")` (`lib/shortcuts.ts`). A list that `j/k` should walk
+  marks its container `data-key-list` and each row `data-key-item`; rows add
+  `tui-row` (or `tui-card`) for the selection style. A new top-level page adds its
+  `g` letter to `GO_TO`. Single-key shortcuts stay switchable off (WCAG 2.1.4).
 - **ViewModel layer:** data-fetching/state lives in `frontend/src/hooks/` (MVVM);
   `routes/` components stay declarative.
 - **Theme:** colours are CSS variables in `frontend/src/index.css` (Tailwind v4
