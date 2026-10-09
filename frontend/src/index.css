@@ -431,6 +431,12 @@
     margin-top: calc(var(--panel-rule) / 2);
     background: var(--border);
   }
+  /* With key hints in its bottom border, the box ends at that row's midline,
+     mirroring the title row, so the hints sit IN the border too. */
+  .panel:has(> .panel-foot)::before {
+    bottom: calc(var(--panel-rule) / 2);
+    border-bottom: 0;
+  }
 }
 
 /* `TextMeter` runs (components/common/text-meter.tsx): the filled run is solid

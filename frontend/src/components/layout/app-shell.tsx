@@ -21,6 +21,7 @@ import { ShortcutHelp } from "@/components/layout/shortcut-help";
 import { StatusLine } from "@/components/layout/status-line";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
+import { GO_TO, useShortcutsEnabled } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -185,6 +186,9 @@ function NavigationLink({
   // Only the Inbox carries a count today, so the badge is keyed off the
   // destination rather than added to every row of `navigation`.
   const count = to === "/notifications" ? unread : 0;
+  // The page's `g` jump, hinted beside it; read from the handler's own table.
+  const shortcuts = useShortcutsEnabled();
+  const jump = compact || !shortcuts ? undefined : GO_TO.find((entry) => entry.to === to)?.key;
 
   return (
     <NavLink
@@ -213,17 +217,28 @@ function NavigationLink({
           )}
           <NavigationIcon aria-hidden="true" className="size-4 shrink-0" />
           <span className="truncate">{label}</span>
-          {count > 0 && (
-            // `aria-hidden` because the link's own name already carries the
-            // number; announcing it twice is how "Inbox 3 3" happens.
-            <span
-              aria-hidden="true"
-              className={cn(
-                "bg-primary px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-primary-foreground tabular-nums",
-                compact ? "absolute top-1 right-1/4" : "ml-auto",
+          {(count > 0 || jump) && (
+            <span className={cn("flex items-center gap-2", !compact && "ml-auto")}>
+              {count > 0 && (
+                // `aria-hidden` because the link's own name already carries the
+                // number; announcing it twice is how "Inbox 3 3" happens.
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "bg-primary px-1.5 py-0.5 text-[0.625rem] leading-none font-medium text-primary-foreground tabular-nums",
+                    compact && "absolute top-1 right-1/4",
+                  )}
+                >
+                  {badgeLabel(count)}
+                </span>
               )}
-            >
-              {badgeLabel(count)}
+              {/* In the link's own colour, so it adds no new contrast pair;
+                  hidden because the key list names every jump. */}
+              {jump && (
+                <span aria-hidden="true" className="font-mono text-[0.6875rem] whitespace-nowrap">
+                  [g {jump}]
+                </span>
+              )}
             </span>
           )}
         </>
