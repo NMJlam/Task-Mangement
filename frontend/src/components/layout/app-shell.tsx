@@ -139,7 +139,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   if (!compact) {
     return (
       <div className="px-2">
-        <AsciiWordmark className="text-[0.5625rem] text-foreground" />
+        <AsciiWordmark className="text-[0.6875rem] text-foreground" />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Club Operations
           {/* One blinking cursor for the whole app, beside the brand: the
