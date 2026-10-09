@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SettingsPage } from "./settings";
-import { setShortcutsEnabled, shortcutsEnabled } from "@/lib/shortcuts";
+import { bindings, resetBindings, setShortcutsEnabled, shortcutsEnabled } from "@/lib/shortcuts";
 
 vi.mock("@/hooks/use-me", () => ({
   useMe: () => ({
@@ -16,7 +16,10 @@ vi.mock("@/hooks/use-me", () => ({
 }));
 
 afterEach(() => {
-  act(() => setShortcutsEnabled(true));
+  act(() => {
+    setShortcutsEnabled(true);
+    resetBindings();
+  });
   localStorage.clear();
   document.documentElement.classList.remove("dark");
   document.documentElement.removeAttribute("data-theme");
@@ -59,4 +62,21 @@ it("turns single-key shortcuts off from Settings", () => {
 
   expect(shortcutsEnabled()).toBe(false);
   expect(localStorage.getItem("shortcuts")).toBe("off");
+});
+
+it("rebinds a key from Settings, and says when that key is taken", () => {
+  render(<SettingsPage />);
+  const change = screen.getByRole("button", { name: "Change key for New" });
+
+  fireEvent.click(change);
+  expect(change).toHaveTextContent(/press a key/i);
+
+  fireEvent.keyDown(change, { key: "s" });
+  expect(screen.getByText(/already used for Next row/i)).toBeInTheDocument();
+  expect(bindings().actions.new).toBe("n");
+
+  fireEvent.keyDown(change, { key: "b" });
+  expect(bindings().actions.new).toBe("b");
+  expect(screen.getByText("New is now b.")).toBeInTheDocument();
+  expect(change).toHaveTextContent("Change");
 });
