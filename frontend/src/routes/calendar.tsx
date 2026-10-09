@@ -729,7 +729,11 @@ function EventChip({
 
   return (
     <div
-      ref={ref}
+      // Only a chip that can move is given to dnd-kit. It marks up the handle
+      // if there is one and the element if not, disabled or otherwise, so a
+      // chip without a grip would become a dead `role="button"` wrapped round
+      // its Open button: a nested control and an extra tab stop.
+      ref={movable ? ref : undefined}
       className={cn(
         "flex items-start gap-0.5 px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
         toneChip[status.tone],
