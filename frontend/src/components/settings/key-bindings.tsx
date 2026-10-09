@@ -91,7 +91,7 @@ export function KeyBindings() {
             <th scope="col">Change</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody data-key-list="settings">
           {rows.map((row) => {
             const live = capturing === row.id;
             return (

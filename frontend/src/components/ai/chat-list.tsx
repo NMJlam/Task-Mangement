@@ -59,7 +59,11 @@ export function ChatList({
   }
 
   return (
-    <nav aria-label="Chats" className="flex gap-1 overflow-x-auto p-3 lg:block lg:overflow-y-auto">
+    <nav
+      aria-label="Chats"
+      data-key-list="chats"
+      className="flex gap-1 overflow-x-auto p-3 lg:block lg:overflow-y-auto"
+    >
       <Button asChild variant="outline" className="shrink-0 lg:mb-3 lg:w-full">
         <Link to="/ai">
           <Plus aria-hidden="true" />

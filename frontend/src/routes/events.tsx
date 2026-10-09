@@ -162,7 +162,7 @@ export function EventsPage() {
         </Card>
       )}
       {state.status === "ok" && state.items.length > 0 && (
-        <section aria-label="Event list" className="mt-8 grid gap-3">
+        <section aria-label="Event list" data-key-list="events" className="mt-8 grid gap-3">
           {state.items.map((event) => (
             <Card
               key={event.id}

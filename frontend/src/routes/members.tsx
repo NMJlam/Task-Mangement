@@ -99,6 +99,7 @@ export function MembersPage() {
       {members.state.status === "ok" && items.length > 0 && (
         <section
           aria-label="Member directory"
+          data-key-list="members"
           className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
         >
           {items.map((member) => (
