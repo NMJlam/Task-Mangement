@@ -425,12 +425,16 @@ Every key can be changed in **Settings → Keyboard**:
   bar. The bar is decoration everywhere, because the fill or the border carries the
   state. Mouse focus does not select, since the style keys off `:focus-visible`.
   Under forced colours the fill drops, and the system focus outline remains.
-- **Hints.** The `[g t]` beside each nav link, the `[w/s] move · …` lines in panel
-  borders and under the board, and the status line's `?` are `aria-hidden`. The
-  key list says the same in full. All of them disappear while shortcuts are off,
-  so none names a dead key. The nav hints take their link's own colour, and the
-  panel hints are `muted-foreground` straddling `background` and `card`, like the
-  panel titles' meta, so neither adds a new contrast pair.
+- **Hints.** Every main page lists the keys that work on it just under its
+  subtitle (`PageHeader`'s `hints`), so they stay in view at the top:
+  `[w/a/s/d] move · [enter] open · [n] new · …`. A key the page does not offer
+  is not listed. For example, `[n] new` on Events appears only to those who can
+  create an event. These lines, the `[g t]` beside each nav link and the status
+  line's `?` are `aria-hidden`, because the key list says the same in full. They
+  are written from the current bindings, and all of them disappear while
+  shortcuts are off, so none names a dead key. The header hints are
+  `muted-foreground` on `background`, and the nav hints take their link's own
+  colour, so neither adds a new contrast pair.
 - **`aria-keyshortcuts`** marks the new-action and search controls with their
   current key, and only while shortcuts are on.
 
