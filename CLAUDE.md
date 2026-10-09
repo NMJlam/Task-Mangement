@@ -85,7 +85,9 @@ Accounts may exist without membership. `db:seed` is idempotent.
   nearest control on screen that way), so they need no markup. A page marks its
   main list `data-key-list` only so the first move lands on its first row. Rows
   add `tui-row` (or `tui-card`) for the selection style. A text box the moves may
-  enter (a chat box) carries `data-key-field`, and Escape leaves it. A new top-level page adds an
+  enter (a chat box) carries `data-key-field`, and Escape leaves it. A link
+  stretched over its row with `after:absolute after:inset-0` carries
+  `data-key-stretch`, so the moves measure it as the row. A new top-level page adds an
   entry (`id`, default letter) to `GO_TO`. A page lists its keys under its
   subtitle with `PageHeader`'s `hints` (only the ones it actually offers); never
   write a key into the UI literally, since the bindings can change. Single-key shortcuts stay switchable off

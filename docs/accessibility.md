@@ -381,7 +381,11 @@ whatever order the markup is in:
   the AI chat and briefing boxes. Moves can land in them, and `d` from the
   conversations or chats goes straight into the box. Once in, the keys type, and
   Escape steps back to where the move came from. A popup keeps Escape for closing
-  itself.
+  itself. A page's search box is not a stop for the moves, so they cannot strand
+  you in it. Only `/` enters it, and Escape steps back out, keeping the query.
+- **Stretched links.** A row or card whose title link covers it (an event on the
+  Overview or on Events) is measured as the whole row (`data-key-stretch`), so the
+  moves reach it from wherever the row lies "that way".
 - **Selects.** A `<select>` is landed on and stepped past, and the key is cancelled.
   Its type-ahead would otherwise turn `s` into a choice.
 - **Type-ahead widgets** (listbox, menu, combobox, tree) keep their letters.
