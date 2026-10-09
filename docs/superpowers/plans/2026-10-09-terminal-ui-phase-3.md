@@ -445,30 +445,27 @@ Keep the heading text exactly as the label, so the region name and the existing 
 
 ---
 
-## Amendment (2026-10-09): arrow keys and rebindable keys
+## Amendment (2026-10-09): arrow-shaped keys and rebindable keys
 
-The user asked for two changes: list movement on the arrow keys, which is more intuitive, and a Settings interface to change keybinds.
+The user asked for two changes: list movement on keys shaped like the arrows, which is more intuitive, and a Settings interface to change keybinds. Real arrow keys came up first, but they already scroll the page, so the user chose the arrow cluster's shape on letters instead: **W A S D**.
 
 - **A1, bindings model** (`lib/shortcuts.ts`):
-  - **Actions** `new`, `search`, `help`, `next`, `previous`, `left`, `right` and `go` default to `n`, `/`, `?`, `ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight` and `g`.
+  - **Actions** `new`, `search`, `help`, `previous`, `next`, `left`, `right` and `go` default to `n`, `/`, `?`, `w`, `s`, `a`, `d` and `g`.
   - **Pages:** each `GO_TO` entry gains an `id`, and its letter is a binding.
   - **Validation:**
-    - a binding is one printable character other than space, or an arrow key;
+    - a binding is one printable character other than space, and letters are stored and matched in lower case, so Caps Lock and Shift do not break them;
     - actions are unique among actions, and pages among pages;
-    - a stored value this build cannot use falls back to its default.
-  - **API:** `useBindings()`, `setBinding(target, key)` (returns a problem string or undefined), `resetBindings()`, `keyLabel(key)` (`ArrowDown` becomes "down": ASCII words, no arrow glyphs), and `hintText(hint)`.
+    - a stored set with a bad value falls back value by value, and a set that clashes reverts whole.
+  - **API:** `bindings()`, `useBindings()`, `setBinding(target, key)` (returns a problem string or undefined), `resetBindings()`, `parseBindings(raw)`, `DEFAULT_BINDINGS`, `hintText(hint, bindings)` and `matchKey(event.key)`.
   - `useShortcut("new" | "search")` sets `data-shortcut` to the action and `aria-keyshortcuts` to its current key.
-- **A2, handler:** it looks up the key in the bindings at event time.
-  - An arrow moves between rows only when focus is already in a key list. Otherwise it scrolls the page as usual.
-  - Arrows are ignored inside widgets that own them: tablist, radiogroup, menu, listbox, grid, tree, slider, and a dnd-kit handle (`aria-roledescription="draggable"`).
-  - Left and right claim the key only when they move.
-- **A3, hints:** `Panel` `keys` and `KeyHints` take hint ids (`"move" | "column" | "open" | "new" | "search"`). The nav hints, the key list and the hints are all formatted from the bindings.
+- **A2, handler:** it looks up the key in the bindings at event time, through `moveFocus("next" | "previous" | "left" | "right")`.
+- **A3, hints:** `Panel` `keys` and `KeyHints` take hint ids (`"move" | "column" | "open" | "new"`). The nav hints, the key list and the hints are all formatted from the bindings.
 - **A4, Settings:** a key-binding editor (`components/settings/key-bindings.tsx`).
   - It is a table of action, key and a Change button. Change captures the next key; Escape cancels, and leaving the button cancels.
   - A key with a modifier, or one that fails validation or clashes, is refused with a message in a `role="status"` line.
   - "Reset to defaults" restores them all.
 - **Tests, kept lean:**
   - `shortcuts.test` +2: rebind, refuse and reset; fall back on bad storage.
-  - `keyboard-shortcuts.test`: the list test uses arrows and checks that an arrow outside a list does nothing and that a rebound key works.
+  - `keyboard-shortcuts.test`: the list test uses W A S D and checks that a rebound key works.
   - `settings.test` +1: rebind from Settings, refused when taken.
-- **Docs:** arrow keys are not character keys under 2.1.4, but the off switch covers them too; rebinding; the capture interface.
+- **Docs:** W A S D, rebinding, and the capture interface. The off switch still covers every single-key shortcut.
