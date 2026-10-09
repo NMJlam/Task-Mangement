@@ -46,7 +46,13 @@ export function Panel({
   const shortcuts = useShortcutsEnabled();
   const Heading = level === 2 ? "h2" : "h3";
   return (
-    <section aria-labelledby={id} data-slot="panel" className={cn("panel", className)}>
+    // A column whose body grows, so a pane stretched by its grid row keeps its
+    // foot on its bottom edge rather than just under its content.
+    <section
+      aria-labelledby={id}
+      data-slot="panel"
+      className={cn("panel flex flex-col", className)}
+    >
       <div className="panel-rule">
         <span aria-hidden="true" className="panel-line w-3 shrink-0" />
         <Heading id={id} className="min-w-0 truncate px-1.5 font-display text-sm leading-none">
@@ -59,7 +65,7 @@ export function Panel({
         {action && <span className="shrink-0 px-1.5 text-xs">{action}</span>}
         <span aria-hidden="true" className="panel-line w-3 shrink-0" />
       </div>
-      <div className={cn("px-4 pt-2 pb-4", bodyClassName)}>{children}</div>
+      <div className={cn("flex-1 px-4 pt-2 pb-4", bodyClassName)}>{children}</div>
       {keys && shortcuts && (
         <div aria-hidden="true" className="panel-rule panel-foot">
           <span className="panel-line w-3 shrink-0" />
