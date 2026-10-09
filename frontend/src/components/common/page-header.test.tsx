@@ -20,7 +20,7 @@ it("lists the page's keys under its subtitle, as bound, and only while shortcuts
     />,
   );
 
-  const hints = screen.getByText("[w/a/s/d] move · [enter] open · [n] new · [?] all keys");
+  const hints = screen.getByText("[w/a/s/d] move · [enter] open · [n] new · [?] help");
   expect(screen.getByText("Keep club work moving.").compareDocumentPosition(hints)).toBe(
     Node.DOCUMENT_POSITION_FOLLOWING,
   );
@@ -29,5 +29,5 @@ it("lists the page's keys under its subtitle, as bound, and only while shortcuts
   expect(screen.getByText(/\[c\] new/u)).toBeInTheDocument();
 
   act(() => setShortcutsEnabled(false));
-  expect(screen.queryByText(/all keys/u)).not.toBeInTheDocument();
+  expect(screen.queryByText(/\[\?\] help/u)).not.toBeInTheDocument();
 });
