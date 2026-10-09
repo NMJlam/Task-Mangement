@@ -17,7 +17,9 @@ Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
     overlay on every navigation, and an open modal is what the event-page scan
     waits past — `president` fails it for a fixture reason, not a contrast one.
   - `axe` checks the rendered DOM, so a route still on its skeleton passes
-    trivially. Each scan waits for `main` before analysing.
+    trivially. Each scan waits for `main`, and then for every loading line to
+    clear, before analysing. `main` renders before its data does, and waiting
+    for it alone once let the calendar be scanned with no event chips on it.
 - **Radix primitives**: every interactive control comes from shadcn/Radix, which
   supplies keyboard navigation and ARIA labelling (US-21, SC 2.1.1, 1.3.1). Do
   not hand-roll interactive elements; if you must, document the keyboard handling
@@ -166,14 +168,16 @@ Gruvbox — page `#282828`, panel `#32302f`, ink `#ebdbb2`, accent `#fe8019`:
 The axe scans were run once per palette as a local, uncommitted pass, so the suite
 stays two themes long. That pass covered the login page, `/`, `/events`, `/tasks`,
 `/members`, `/settings` and `/calendar`, with each page waited on until its loading
-lines had cleared. There were **0 colour violations**. The calendar reported one
-`nested-interactive` violation, and it does so in every theme, light included. It
-comes from the event chips, not the palettes: when a member cannot move an event,
-the chip has no drag handle. dnd-kit then makes the chip itself a disabled
-`role="button"` with `tabindex="0"`, wrapped around its "Open …" button, which
-leaves a dead tab stop on every chip. The committed calendar scan misses this
-because it runs before the month's events arrive. **Open**: give the chip no
-draggable role when there is no handle, then make the scan wait for the events.
+lines had cleared. There were **0 colour violations**.
+
+That pass also turned up a `nested-interactive` violation on the calendar, in
+every theme. It came from the event chips, not the palettes, and it is now fixed.
+dnd-kit marks up a draggable's handle, or its element when it has no handle, and
+it does so even when the draggable is disabled. A chip the member cannot move has
+no grip, so the chip itself became a disabled `role="button"` with
+`tabindex="0"`, wrapped around its "Open …" button, which also left a dead tab
+stop. Now only a movable chip hands its element to dnd-kit. The committed scans
+missed it because they ran before the month's events arrived; they now wait.
 
 ### Non-text contrast (1.4.11)
 
