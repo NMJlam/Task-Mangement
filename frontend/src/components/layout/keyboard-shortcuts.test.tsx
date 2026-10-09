@@ -249,3 +249,29 @@ it("moves inside an open popup only, and steps past text fields and selects", ()
   expect(fireEvent.keyDown(select, { key: "s" })).toBe(false); // default prevented
   expect(button("Save")).toHaveFocus();
 });
+
+it("moves into a chat box, leaves the keys to typing there, and steps back out on Escape", () => {
+  render(
+    <Harness>
+      <button type="button" data-box="0 0 100 20">
+        Logistics
+      </button>
+      {/* Level with the conversation, but the box below it is where D goes. */}
+      <a href="/events/1" data-box="140 0 80 20">
+        View event
+      </a>
+      <input aria-label="Search messages" data-box="240 0 100 20" />
+      <textarea aria-label="Write a message" data-key-field data-box="120 300 220 60" />
+    </Harness>,
+  );
+  const conversation = screen.getByRole("button", { name: "Logistics" });
+  const box = screen.getByRole("textbox", { name: "Write a message" });
+
+  conversation.focus();
+  press("d");
+  expect(box).toHaveFocus();
+  press("a", "s"); // typing now, not moving
+  expect(box).toHaveFocus();
+  press("Escape");
+  expect(conversation).toHaveFocus();
+});

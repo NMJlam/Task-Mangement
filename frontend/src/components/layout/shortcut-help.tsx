@@ -49,6 +49,7 @@ export function ShortcutHelp({
     [`${actions.previous} / ${actions.next}`, "Previous / next row"],
     [`${actions.left} / ${actions.right}`, "Previous / next column"],
     ["enter", "Open the row"],
+    ["esc", "Leave a chat box"],
   ];
 
   return (

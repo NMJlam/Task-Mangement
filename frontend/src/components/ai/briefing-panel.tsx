@@ -107,6 +107,7 @@ export function BriefingPanel({
             </label>
             <textarea
               id="briefing-question"
+              data-key-field
               rows={2}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
