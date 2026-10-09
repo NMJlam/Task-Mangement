@@ -188,16 +188,25 @@ it("moves inside an open popup by its rows and their controls, and walks a page 
   press("a");
   expect(button("Events")).toHaveFocus();
 
-  // A form: no list, so the moves walk its controls, stepping over the field.
+  // A form: no list, so the moves walk its controls, stepping over the text
+  // field. A select is stepped past too, and the key never reaches it: its
+  // type-ahead would otherwise pick the option starting with "s".
   rerender(
     <Harness>
       <a href="/events">Back</a>
       <input aria-label="Title" />
+      <select aria-label="Event" defaultValue="">
+        <option value="">No event</option>
+        <option value="s">Semester Expo</option>
+      </select>
       <button type="button">Save</button>
     </Harness>,
   );
   press("s");
   expect(screen.getByRole("link", { name: "Back" })).toHaveFocus();
   press("s");
+  const select = screen.getByRole("combobox", { name: "Event" });
+  expect(select).toHaveFocus();
+  expect(fireEvent.keyDown(select, { key: "s" })).toBe(false); // default prevented
   expect(button("Save")).toHaveFocus();
 });
