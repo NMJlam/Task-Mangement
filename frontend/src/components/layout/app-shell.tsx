@@ -12,10 +12,12 @@ import {
   Sparkles,
   UsersRound,
 } from "lucide-react";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import { useCallback, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { AsciiWordmark } from "@/components/common/ascii-wordmark";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts";
+import { ShortcutHelp } from "@/components/layout/shortcut-help";
 import { StatusLine } from "@/components/layout/status-line";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -54,9 +56,14 @@ export function AppShell({
   // there drops this count in the same render (see `useNotifications`).
   const notifications = useNotifications();
   const unread = notifications.state.status === "ok" ? notifications.state.unreadCount : 0;
+  // The key list opens from `?` and from the status line's `keys`.
+  const [helpOpen, setHelpOpen] = useState(false);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
 
   return (
     <>
+      <KeyboardShortcuts onHelp={openHelp} />
+      <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
       <a
         href="#main-content"
         className="fixed top-3 left-3 z-50 -translate-y-20 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-transform focus-visible:translate-y-0"
@@ -126,7 +133,7 @@ export function AppShell({
           >
             {children}
           </div>
-          <StatusLine member={member} />
+          <StatusLine member={member} onHelp={openHelp} />
         </div>
       </div>
     </>

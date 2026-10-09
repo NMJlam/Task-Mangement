@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { NOTIFICATION_POLL_MS, useNotifications } from "@/hooks/use-notifications";
 import { useNow } from "@/hooks/use-now";
 import { promptPath } from "@/lib/prompt-path";
+import { useShortcutsEnabled } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 /** Reads this far apart mean the feed has fallen behind, not merely ticked. */
@@ -21,7 +22,15 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-d
  * once, to the time of the last good read. Not a live region either: the
  * unread count is a link to the Inbox, and the sidebar badge announces it.
  */
-export function StatusLine({ member }: { member: AuthUser }) {
+export function StatusLine({
+  member,
+  onHelp,
+}: {
+  member: AuthUser;
+  /** Opens the key list; the shell passes it, so `keys` sits at the end of the line. */
+  onHelp?: () => void;
+}) {
+  const shortcuts = useShortcutsEnabled();
   const location = useLocation();
   const notifications = useNotifications();
   const now = useNow();
@@ -58,6 +67,22 @@ export function StatusLine({ member }: { member: AuthUser }) {
           )
         ) : (
           <span>connecting…</span>
+        )}
+        {onHelp && (
+          <>
+            <span aria-hidden="true">·</span>
+            {/* The way to the key list for a mouse, and for anyone with the
+                single keys switched off. */}
+            <button
+              type="button"
+              onClick={onHelp}
+              aria-haspopup="dialog"
+              aria-label="keys (keyboard shortcuts)"
+              className="cursor-pointer hover:text-foreground"
+            >
+              {shortcuts && <span aria-hidden="true">? </span>}keys
+            </button>
+          </>
         )}
       </p>
     </footer>
