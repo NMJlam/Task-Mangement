@@ -137,6 +137,7 @@ export function TasksPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Tasks"
+        hints={["move", "open", "new", "search", "help"]}
         description="Keep club work moving from first action to final handoff."
         actions={
           <>

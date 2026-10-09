@@ -44,6 +44,7 @@ export function NotificationsPage() {
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
       <PageHeader
         title="Inbox"
+        hints={["move", "open", "help"]}
         description={`${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}.`}
         actions={
           <Button
@@ -106,7 +107,6 @@ export function NotificationsPage() {
             meta={`${items.length} shown`}
             className="mt-4"
             bodyClassName="p-0"
-            keys={["move", "open"]}
           >
             <div data-key-list="inbox">
               {items.map((notification) => (

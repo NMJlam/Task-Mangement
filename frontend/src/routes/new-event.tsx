@@ -79,6 +79,7 @@ export function NewEventPage() {
       </Link>
       <PageHeader
         title="New Event"
+        hints={["move", "help"]}
         description="Create the event now. Tasks, spending, and discussion can be added afterward."
       />
 

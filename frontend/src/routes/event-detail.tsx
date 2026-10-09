@@ -180,6 +180,13 @@ export function EventDetailPage() {
 
       <PageHeader
         title={event.title}
+        hints={[
+          "move",
+          "open",
+          ...(tab === "tasks" ? (["new"] as const) : []),
+          ...(tab === "thread" ? (["search", "leave"] as const) : []),
+          "help",
+        ]}
         actions={
           <>
             <StatusBadge status={event.status} />
