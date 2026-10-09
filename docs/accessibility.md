@@ -340,11 +340,27 @@ None adds a colour pair: each uses tokens already measured above.
 ## Keyboard shortcuts
 
 The app has a keyboard layer, listed in full behind `?` or the status line's
-`keys` button (a shadcn Dialog):
+`keys` button (a shadcn Dialog). These are the default keys:
 
 - `g` then a letter jumps to a page.
 - `n` is the page's new action, and `/` its search.
-- `j` / `k` walk a list, and `h` / `l` cross the task board's columns.
+- `w` / `s` walk a list up and down, and `a` / `d` cross the task board's columns.
+  That is the arrow cluster's shape on letters. Real arrow keys already scroll the
+  page, and they drive the widgets that own them (tabs, selects, a picked-up drag
+  handle), so the shortcuts leave them alone.
+
+Every key can be changed in **Settings → Keyboard**:
+
+- Each action and each go-to page has a Change button that captures the next key
+  pressed on it. Escape keeps the old key, and leaving the button cancels.
+- A key that is already taken, has a modifier, or is not a single character is
+  refused, with the reason in a `role="status"` line.
+- "Reset to defaults" restores them all.
+- The capture stops the key at the button, so no shortcut fires while you choose
+  one.
+- Letters are matched in lower case, so Caps Lock and Shift do not break a binding.
+- The hints, the key list and `aria-keyshortcuts` are all written from the current
+  bindings, so a rebind re-labels everything at once.
 
 - **WCAG 2.1.4, character key shortcuts.** Every single-key shortcut can be turned
   off in Settings → Keyboard, which matters for speech input, where dictated words
@@ -356,12 +372,12 @@ The app has a keyboard layer, listed in full behind `?` or the status line's
   - with Ctrl, Meta or Alt held;
   - while any dialog or popover is open (Radix marks both `role="dialog"`), so no
     key acts on the page hidden behind it.
-- **`j/k/h/l` move real focus** to a row's first control: a card's Open button, a
+- **The row and column moves shift real focus** to a row's first control: a card's Open button, a
   notification's link, a conversation. A screen reader follows it, and Enter does
   what that control already does. Selection adds no ARIA state of its own. It is
   only how the row holding keyboard focus looks. The open conversation, which is
   current without focus, carries `aria-current="true"`. An Inbox row with neither
-  a link nor Mark Read has nothing to act on, and `j/k` step over it.
+  a link nor Mark Read has nothing to act on, and the moves step over it.
 - **Selection contrast.** A `.tui-row` holding keyboard focus turns inverse video,
   `primary-foreground` on `primary`, which the tables above measure in every
   palette. Its text re-inks to match, apart from tiles that bring their own surface
@@ -372,13 +388,14 @@ The app has a keyboard layer, listed in full behind `?` or the status line's
   bar. The bar is decoration everywhere, because the fill or the border carries the
   state. Mouse focus does not select, since the style keys off `:focus-visible`.
   Under forced colours the fill drops, and the system focus outline remains.
-- **Hints.** The `[g t]` beside each nav link, the `[j/k] move · …` lines in panel
+- **Hints.** The `[g t]` beside each nav link, the `[w/s] move · …` lines in panel
   borders and under the board, and the status line's `?` are `aria-hidden`. The
   key list says the same in full. All of them disappear while shortcuts are off,
   so none names a dead key. The nav hints take their link's own colour, and the
   panel hints are `muted-foreground` straddling `background` and `card`, like the
   panel titles' meta, so neither adds a new contrast pair.
-- **`aria-keyshortcuts`** marks the `n` and `/` controls only while shortcuts are on.
+- **`aria-keyshortcuts`** marks the new-action and search controls with their
+  current key, and only while shortcuts are on.
 
 ## ⚠️ Re-run this after any palette change
 
