@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEvents } from "@/hooks/use-events";
 import { useMe } from "@/hooks/use-me";
+import { useShortcut } from "@/lib/shortcuts";
 
 const eventDate = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -58,6 +59,7 @@ export function EventsPage() {
   // `/events/new` is guarded at minTier 1 — hiding the link keeps a guaranteed
   // bounce off screen.
   const canCreate = me.status === "ok" && me.user.tier >= 1;
+  const newKey = useShortcut("n");
   const identityReady = me.status === "ok";
   const query = useMemo(
     () => ({
@@ -99,7 +101,7 @@ export function EventsPage() {
         actions={
           canCreate && (
             <Button asChild>
-              <Link to="/events/new">
+              <Link to="/events/new" {...newKey}>
                 <Plus aria-hidden="true" />
                 New Event
               </Link>

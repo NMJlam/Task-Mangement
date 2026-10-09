@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ThreadChatModel } from "@/hooks/use-thread-chat";
+import { useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const messageTime = new Intl.DateTimeFormat(undefined, {
@@ -51,6 +52,9 @@ export function ThreadChat({
   const { messages, searchInput, searchQuery } = chat;
   const headingId = useId();
   const searchId = useId();
+  // The conversation's search is the page's `/`, on Messages and on an
+  // event's Thread tab alike.
+  const searchKey = useShortcut("/");
   const draftId = useId();
 
   return (
@@ -80,6 +84,7 @@ export function ThreadChat({
             placeholder="Search messages"
             autoComplete="off"
             className="h-9 pl-8"
+            {...searchKey}
           />
           {searchInput && (
             <Button

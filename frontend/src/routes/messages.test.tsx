@@ -369,6 +369,14 @@ describe("MessagesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /logistics/i }));
     await screen.findByRole("heading", { name: "Logistics" });
     expect(screen.queryByRole("link", { name: "View event" })).not.toBeInTheDocument();
+    // The open conversation is marked as current, not only by its colour.
+    expect(screen.getByRole("button", { name: /logistics/i })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /winter showcase/i })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   describe("the conversation in the URL", () => {
