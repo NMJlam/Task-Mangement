@@ -344,10 +344,31 @@ The app has a keyboard layer, listed in full behind `?` or the status line's
 
 - `g` then a letter jumps to a page.
 - `n` is the page's new action, and `/` its search.
-- `w` / `s` walk a list up and down, and `a` / `d` cross the task board's columns.
-  That is the arrow cluster's shape on letters. Real arrow keys already scroll the
-  page, and they drive the widgets that own them (tabs, selects, a picked-up drag
-  handle), so the shortcuts leave them alone.
+- `w` / `s` walk a list up and down, and `a` / `d` move left and right. That is the
+  arrow cluster's shape on letters. Real arrow keys already scroll the page, and
+  they drive the widgets that own them (tabs, selects, a picked-up drag handle), so
+  the shortcuts leave them alone.
+
+The moves work on every page and in every popup:
+
+- **On a page.** The lists are marked:
+  - the Overview's panels, which `a` / `d` cross;
+  - Events, each Calendar day, the task board's columns, Finance's expenses, the
+    Inbox, Messages, the Members directory, the AI chats, and Settings' themes and
+    key tables.
+- **In a popup.** With a dialog or popover open, the moves stay inside it, and
+  every other shortcut is blocked so no key acts on the page behind it. In the
+  Edit teams popover, `w` / `s` step between teams and `a` / `d` between a team's
+  membership and Lead boxes.
+- **Left and right.** With no sibling list to cross, `a` / `d` move between the
+  controls of the current row, and `w` / `s` keep that column.
+- **With no list at all** (a form, a dialog), the moves walk the controls in order.
+  A page with nothing to land on, like a member's read-only directory, scrolls
+  instead, the way a pager does.
+- **Fields.** A text field is never landed on, because a letter there must type.
+- **Selects.** A `<select>` is landed on and stepped past, and the key is cancelled.
+  Its type-ahead would otherwise turn `s` into a choice.
+- **Type-ahead widgets** (listbox, menu, combobox, tree) keep their letters.
 
 Every key can be changed in **Settings → Keyboard**:
 
