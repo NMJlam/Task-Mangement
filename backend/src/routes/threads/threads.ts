@@ -5,6 +5,7 @@ import {
   listMessagesQuerySchema,
   listThreadsQuerySchema,
   taskParamsSchema,
+  threadMessageParamsSchema,
   threadParamsSchema,
   type CreateAttachment,
   type CreateMessage,
@@ -14,9 +15,10 @@ import {
   type MessageListResponse,
   type MessageResponse,
   type ThreadListResponse,
+  type ThreadMessageParams,
   type ThreadResponse,
 } from "@ctp/shared";
-import { and, desc, eq, ilike, inArray, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import { getDb } from "../../db/client.js";
 import { newId } from "../../db/id.js";
@@ -30,17 +32,24 @@ import {
   tasks,
 } from "../../db/schema/index.js";
 import { authenticate, authorise, validate } from "../../middleware/index.js";
+import { ValidationError } from "../events/service.js";
 import { visibleTasks } from "../tasks/service.js";
 import {
   commentRecipients,
+  deleteGroup,
+  deleteMessage,
   escapeLike,
   findThread,
   hasMember,
   listedThreads,
   listThreads,
+  lockThread,
   mentionNotifications,
-  replyProblem,
+  parentProblem,
   taskThreadFilter,
+  ThreadError,
+  threadArchivedError,
+  threadNotFoundError,
   type Viewer,
 } from "./service.js";
 
@@ -59,22 +68,17 @@ export const threadsRouter = Router();
  * in `tasks.ts` because a comment IS a message: it lands in the task's thread
  * and carries `task_id`, so it shows in both places.
  *
- * Tier 0 throughout, with no new `CAPABILITIES` entry: who may read or post is
- * decided per thread, not by rank.
+ * Tier 0 throughout: who may read or post is decided per thread, not by rank.
+ * Deleting is the one place a named office matters — `message:delete-any` and
+ * the two `group:delete-*` powers — and it is checked against the stored row in
+ * `deleteMessage`/`deleteGroup`, since neither middleware sees the row.
+ *
+ * Every write into a thread takes the thread's row lock first (`lockThread`),
+ * so deleting a group serialises against posting into it.
  */
 
 function threadNotFound(res: Response): void {
-  res.status(404).json({ error: { code: "THREAD_NOT_FOUND", message: "Thread not found." } });
-}
-
-/** 409, not 404: the thread is there and readable, it just takes no new posts. */
-function threadArchived(res: Response): void {
-  res.status(409).json({
-    error: {
-      code: "THREAD_ARCHIVED",
-      message: "This event was cancelled, so its thread is read-only.",
-    },
-  });
+  sendThreadError(res, threadNotFoundError());
 }
 
 function taskNotFound(res: Response): void {
@@ -91,14 +95,22 @@ function fieldError(res: Response, field: string, message: string): void {
   });
 }
 
-/** Rule 11, checked against the stored parent. */
-async function parentProblem(channelId: string, parentId: string): Promise<string | undefined> {
-  const [parent] = await getDb()
-    .select({ channelId: messages.channelId, parentId: messages.parentId })
-    .from(messages)
-    .where(eq(messages.id, parentId))
-    .limit(1);
-  return replyProblem(parent, channelId);
+/** Answers a refusal thrown inside a transaction; false when `error` is not one. */
+function sendThreadError(res: Response, error: unknown): boolean {
+  if (error instanceof ThreadError) {
+    res.status(error.status).json({ error: { code: error.code, message: error.message } });
+  } else if (error instanceof ValidationError) {
+    res.status(422).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+        fields: error.fields,
+      },
+    });
+  } else {
+    return false;
+  }
+  return true;
 }
 
 // ── GET /api/threads ─────────────────────────────────────────────────────────
@@ -178,6 +190,9 @@ threadsRouter.post(
           id: threadId,
           kind: input.kind,
           name: input.kind === "group" ? input.name : null,
+          // From the session, never the body: every creator may later delete
+          // their own group, including officers.
+          createdBy: input.kind === "group" ? me.id : null,
         });
         await tx
           .insert(chanMembers)
@@ -230,7 +245,11 @@ threadsRouter.get(
           sql`(${messages.createdAt}, ${messages.id}) < (SELECT "created_at", "id" FROM ${messages} WHERE "id" = ${cursor.id})`,
         );
       }
-      if (query.q) filters.push(ilike(messages.body, `%${escapeLike(query.q)}%`));
+      // A tombstone's body is empty, so it could not match anyway; saying so
+      // keeps deleted words out of search even if that ever changes.
+      if (query.q) {
+        filters.push(ilike(messages.body, `%${escapeLike(query.q)}%`), isNull(messages.deletedAt));
+      }
 
       // One extra row says whether another page exists.
       const rows = await db
@@ -261,38 +280,32 @@ threadsRouter.post(
   async (req, res, next) => {
     try {
       const input = res.locals.validated as CreateMessage;
-      const db = getDb();
-      const thread = await findThread(db, req.user!, eq(channels.id, req.params.id!));
-      if (!thread?.visible) {
-        threadNotFound(res);
-        return;
-      }
-      if (thread.archived) {
-        threadArchived(res);
-        return;
-      }
-      if (input.parentId) {
-        const problem = await parentProblem(thread.id, input.parentId);
-        if (problem) {
-          fieldError(res, "parentId", problem);
-          return;
+      const viewer = req.user!;
+      // Checked under the thread's lock, so a group deleted while this waited
+      // is found gone rather than written into.
+      const message = await getDb().transaction(async (tx) => {
+        await lockThread(tx, req.params.id!, "share");
+        const thread = await findThread(tx, viewer, eq(channels.id, req.params.id!));
+        if (!thread?.visible) throw threadNotFoundError();
+        if (thread.archived) throw threadArchivedError();
+        if (input.parentId) {
+          const problem = await parentProblem(tx, thread.id, input.parentId);
+          if (problem) throw new ValidationError({ parentId: [problem] });
         }
-      }
 
-      // `author` is stamped from the session, never the body.
-      const message = await db.transaction(async (tx) => {
+        // `author` is stamped from the session, never the body.
         const [row] = await tx
           .insert(messages)
           .values({
             id: newId(),
             channelId: thread.id,
-            author: req.user!.id,
+            author: viewer.id,
             body: input.body,
             parentId: input.parentId ?? null,
           })
           .returning();
 
-        const mentionRows = await mentionNotifications(tx, thread, input.body, req.user!.id, {
+        const mentionRows = await mentionNotifications(tx, thread, input.body, viewer.id, {
           id: row!.id,
         });
         if (mentionRows.length > 0) await tx.insert(notifications).values(mentionRows);
@@ -301,7 +314,44 @@ threadsRouter.post(
       });
       res.status(201).json({ message } satisfies MessageResponse);
     } catch (error) {
-      next(error);
+      if (!sendThreadError(res, error)) next(error);
+    }
+  },
+);
+
+// ── DELETE /api/threads/:id/messages/:messageId ──────────────────────────────
+
+threadsRouter.delete(
+  "/threads/:id/messages/:messageId",
+  authenticate,
+  authorise(0),
+  validate(threadMessageParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      const params = res.locals.validated as ThreadMessageParams;
+      const message = await getDb().transaction((tx) =>
+        deleteMessage(tx, req.user!, params.id, params.messageId),
+      );
+      res.status(200).json({ message } satisfies MessageResponse);
+    } catch (error) {
+      if (!sendThreadError(res, error)) next(error);
+    }
+  },
+);
+
+// ── DELETE /api/threads/:id ──────────────────────────────────────────────────
+
+threadsRouter.delete(
+  "/threads/:id",
+  authenticate,
+  authorise(0),
+  validate(threadParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      await getDb().transaction((tx) => deleteGroup(tx, req.user!, req.params.id!));
+      res.status(204).end();
+    } catch (error) {
+      if (!sendThreadError(res, error)) next(error);
     }
   },
 );
@@ -401,21 +451,19 @@ async function postToTask(
     taskNotFound(res);
     return;
   }
-  // A cancelled event's open tasks stay on the board, but their discussion is
-  // the event's thread, which is now a read-only archive.
-  if (thread.archived) {
-    threadArchived(res);
-    return;
-  }
-  if (values.parentId) {
-    const problem = await parentProblem(thread.id, values.parentId);
-    if (problem) {
-      fieldError(res, "parentId", problem);
-      return;
-    }
-  }
-
   const message = await db.transaction(async (tx) => {
+    // Rechecked under the thread's lock, the same discipline as any post.
+    await lockThread(tx, thread.id, "share");
+    const locked = await findThread(tx, viewer, eq(channels.id, thread.id));
+    if (!locked?.visible) throw new ThreadError(404, "TASK_NOT_FOUND", "Task not found.");
+    // A cancelled event's open tasks stay on the board, but their discussion is
+    // the event's thread, which is now a read-only archive.
+    if (locked.archived) throw threadArchivedError();
+    if (values.parentId) {
+      const problem = await parentProblem(tx, thread.id, values.parentId);
+      if (problem) throw new ValidationError({ parentId: [problem] });
+    }
+
     const [row] = await tx
       .insert(messages)
       .values({ id: newId(), channelId: thread.id, taskId: task.id, author: viewer.id, ...values })
@@ -465,7 +513,7 @@ threadsRouter.post(
         (title) => `New comment on "${title}".`,
       );
     } catch (error) {
-      next(error);
+      if (!sendThreadError(res, error)) next(error);
     }
   },
 );
@@ -488,7 +536,7 @@ threadsRouter.post(
         (title) => `New file on "${title}": ${file.fileName}`,
       );
     } catch (error) {
-      next(error);
+      if (!sendThreadError(res, error)) next(error);
     }
   },
 );

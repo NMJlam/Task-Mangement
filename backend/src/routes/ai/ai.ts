@@ -10,6 +10,8 @@ import {
   aiBriefingSchema,
   aiThreadSummaryResponseSchema,
   aiThreadSummarySchema,
+  aiThreadSummaryValidityQuerySchema,
+  aiThreadSummaryValidityResponseSchema,
   aiMessageRequestSchema,
   aiMessageResponseSchema,
   aiProposalSchema,
@@ -20,6 +22,7 @@ import {
   type AiResolvedProposal,
   type AiMessageRequest,
   type AiProposal,
+  type AiThreadSummaryValidityQuery,
   type Tier,
 } from "@ctp/shared";
 import { and, eq, sql } from "drizzle-orm";
@@ -73,6 +76,7 @@ import {
   memberNamesById,
   mentionsAsNames,
   recordRun,
+  summaryFingerprint,
   type PromptMessage,
   type RunStep,
 } from "./service.js";
@@ -388,8 +392,9 @@ const SUMMARY_CACHE_LIMIT = 50;
 /**
  * A local convenience: reopening a tab during development costs nothing. On
  * Vercel each invocation is a fresh process, so AI_DAILY_RUN_CAP is the quota
- * guard that matters. Keyed on the newest message id, so a summary is never
- * served for a thread that has moved on.
+ * guard that matters. Keyed on the fingerprint of the messages a summary reads,
+ * not the newest message's id: deleting an OLDER message leaves the newest one
+ * where it was, and must still never serve a summary of words that are gone.
  */
 const summaryCache = new Map<string, z.infer<typeof aiThreadSummaryResponseSchema>>();
 
@@ -397,11 +402,20 @@ const threadParamsSchema = z.object({ id: z.uuid() });
 
 class ThreadEmptyError extends Error {}
 
+/** 409 — a source message was deleted while the model was writing the summary. */
+class SummaryStaleError extends Error {}
+
 /**
  * Newest-last, each with its author's display name and its @mentions read as
- * names — the thread as a member reads it.
+ * names — the thread as a member reads it. A deleted message is not part of
+ * it. `asOf` bounds it at that message (inclusive), which is how a summary is
+ * checked later against exactly the stretch it was written from.
  */
-async function threadMessages(db: Queryable, channelId: string): Promise<PromptMessage[]> {
+async function threadMessages(
+  db: Queryable,
+  channelId: string,
+  asOf?: string,
+): Promise<PromptMessage[]> {
   const result = await db.execute<{
     id: string;
     author: string;
@@ -412,7 +426,12 @@ async function threadMessages(db: Queryable, channelId: string): Promise<PromptM
     FROM "message" m
     LEFT JOIN "app_user" au ON au."id" = m."author"
     LEFT JOIN auth."user" u ON u."id" = au."auth_user_id"
-    WHERE m."channel_id" = ${channelId} AND m."body" <> ''
+    WHERE m."channel_id" = ${channelId} AND m."deleted_at" IS NULL AND m."body" <> ''
+      ${
+        asOf
+          ? sql`AND (m."created_at", m."id") <= (SELECT "created_at", "id" FROM "message" WHERE "id" = ${asOf} AND "channel_id" = ${channelId})`
+          : sql``
+      }
     ORDER BY m."created_at" DESC, m."id" DESC
     LIMIT ${SUMMARY_MESSAGE_LIMIT}
   `);
@@ -439,12 +458,18 @@ aiRouter.post(
       const channelId = req.params.id!;
       const db = getDb();
 
-      await assertCanReadChannel(db, { id: me.id, tier: me.tier as Tier }, channelId);
+      const viewer = { id: me.id, tier: me.tier as Tier };
+
+      // Visibility before the cache, every time: a group deleted since, or a
+      // member who has lost access, never gets a cached summary back.
+      await assertCanReadChannel(db, viewer, channelId);
       const thread = await threadMessages(db, channelId);
       const newest = thread.at(-1);
       if (!newest) throw new ThreadEmptyError();
 
-      const key = `${channelId}:${newest.id}`;
+      const kept = budgetMessages(thread, SUMMARY_CHAR_BUDGET);
+      const fingerprint = summaryFingerprint(kept);
+      const key = `${channelId}:${fingerprint}`;
       const cached = summaryCache.get(key);
       if (cached) {
         res.status(200).json(cached);
@@ -452,7 +477,6 @@ aiRouter.post(
       }
 
       await assertUnderDailyCap(db, me.id, config.dailyRunCap);
-      const kept = budgetMessages(thread, SUMMARY_CHAR_BUDGET);
       const started = Date.now();
       const summary = await completeJson(
         geminiComplete,
@@ -469,7 +493,21 @@ aiRouter.post(
         }),
       );
 
-      const body = aiThreadSummaryResponseSchema.parse({ summary, asOfMessageId: newest.id });
+      // The model takes seconds. If a message it read was deleted meanwhile —
+      // or the thread itself went — what it wrote is not the thread any more,
+      // so it is neither cached nor returned as current.
+      await assertCanReadChannel(db, viewer, channelId);
+      const now = budgetMessages(
+        await threadMessages(db, channelId, newest.id),
+        SUMMARY_CHAR_BUDGET,
+      );
+      if (summaryFingerprint(now) !== fingerprint) throw new SummaryStaleError();
+
+      const body = aiThreadSummaryResponseSchema.parse({
+        summary,
+        asOfMessageId: newest.id,
+        sourceFingerprint: fingerprint,
+      });
       summaryCache.set(key, body);
       // A Map iterates in insertion order, so the first key is the oldest entry.
       if (summaryCache.size > SUMMARY_CACHE_LIMIT) {
@@ -483,6 +521,50 @@ aiRouter.post(
           .json({ error: { code: "THREAD_EMPTY", message: "There is nothing to summarise yet." } });
         return;
       }
+      if (error instanceof SummaryStaleError) {
+        res.status(409).json({
+          error: {
+            code: "THREAD_CHANGED",
+            message: "A message was deleted while the summary was being written. Try again.",
+          },
+        });
+        return;
+      }
+      if (!sendAiError(res, error)) next(error);
+    }
+  },
+);
+
+// ── GET /api/ai/threads/:id/summary/validity ─────────────────────────────────
+//
+// Calls no model, so it needs neither the assistant enabled nor any quota: a
+// page asks it on every poll to learn whether the summary it shows was written
+// from messages that have since been deleted.
+
+aiRouter.get(
+  "/ai/threads/:id/summary/validity",
+  authenticate,
+  authorise(0),
+  validate(threadParamsSchema, "params"),
+  validate(aiThreadSummaryValidityQuerySchema, "query"),
+  async (req, res, next) => {
+    try {
+      const me = req.user!;
+      const channelId = req.params.id!;
+      const query = res.locals.validated as AiThreadSummaryValidityQuery;
+      const db = getDb();
+
+      await assertCanReadChannel(db, { id: me.id, tier: me.tier as Tier }, channelId);
+      const source = budgetMessages(
+        await threadMessages(db, channelId, query.asOf),
+        SUMMARY_CHAR_BUDGET,
+      );
+      res.status(200).json(
+        aiThreadSummaryValidityResponseSchema.parse({
+          current: source.length > 0 && summaryFingerprint(source) === query.fingerprint,
+        }),
+      );
+    } catch (error) {
       if (!sendAiError(res, error)) next(error);
     }
   },

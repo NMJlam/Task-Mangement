@@ -12,6 +12,7 @@ import {
   conversationBlock,
   extractJson,
   mentionsAsNames,
+  summaryFingerprint,
 } from "./service.js";
 
 const schema = z.object({ ok: z.boolean() });
@@ -259,5 +260,33 @@ describe("buildSummaryPrompt", () => {
   it("lets an action item go to someone who was @mentioned, not only to a writer", () => {
     const prompt = buildSummaryPrompt([said("Ada", "@Ben Lee can you order pizza?")]);
     expect(prompt).toMatch(/Only use names that appear below, as a "from" or an @mention/u);
+  });
+});
+
+describe("summaryFingerprint", () => {
+  const message = (id: string, author: string, body: string) => ({
+    id,
+    author,
+    body,
+    createdAt: new Date(0),
+  });
+  const thread = [message("1", "Ada", "Room booked"), message("2", "Ben", "Pizza?")];
+
+  it("is stable for the same messages", () => {
+    expect(summaryFingerprint(thread)).toBe(summaryFingerprint([...thread]));
+  });
+
+  it("changes when an older message goes, though the newest stays", () => {
+    expect(summaryFingerprint(thread.slice(1))).not.toBe(summaryFingerprint(thread));
+  });
+
+  it("changes with who said it, not only with what was said", () => {
+    const renamed = [thread[0]!, message("2", "Benjamin", "Pizza?")];
+    expect(summaryFingerprint(renamed)).not.toBe(summaryFingerprint(thread));
+  });
+
+  it("tells apart two messages with the same words", () => {
+    const again = [thread[0]!, message("3", "Ben", "Pizza?")];
+    expect(summaryFingerprint(again)).not.toBe(summaryFingerprint(thread));
   });
 });
