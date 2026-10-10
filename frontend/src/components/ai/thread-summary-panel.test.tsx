@@ -16,6 +16,7 @@ const summary = (first: string) => ({
       actionItems: [{ text: "Order pizza", suggestedAssigneeName: "Ben" }],
     },
     asOfMessageId: "018f3a4b-0000-7000-8000-000000000022",
+    sourceFingerprint: "fp-1",
   }),
 });
 

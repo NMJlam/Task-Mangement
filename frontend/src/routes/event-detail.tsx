@@ -68,7 +68,13 @@ export function EventDetailPage() {
   const tab = TABS.find((known) => known === requestedTab) ?? "overview";
   // Both sit above the early returns: hook order must not change between renders.
   // Each accepts an absent id and stays idle until there is one.
-  const chat = useThreadChat(state.status === "ok" ? state.event.channelId : undefined);
+  // Moves on every message deleted from the Thread tab, so a summary on screen
+  // checks it was not written from that message.
+  const [summarySource, setSummarySource] = useState(0);
+  const noteDeletion = useCallback(() => setSummarySource((current) => current + 1), []);
+  const chat = useThreadChat(state.status === "ok" ? state.event.channelId : undefined, {
+    onDeleted: noteDeletion,
+  });
   // The board reads `/api/tasks?eventId=`, not `event.tasks`: the board owns the
   // task list so a drop can move a card without refetching the whole event.
   // `enabled` keeps an absent id from ever loading the global list.
@@ -87,12 +93,16 @@ export function EventDetailPage() {
   const memberItems = members.state.status === "ok" ? members.state.items : [];
   const me = useMe();
   const selfId = me.status === "ok" ? me.user.id : undefined;
+  const viewer = me.status === "ok" ? { id: me.user.id, role: me.user.role } : undefined;
   // The server refuses to summarise an empty thread, so Summarise waits for a
   // message. Read off an unsearched load only: a search, and its loading, must
   // not unmount the panel and throw away a summary already on screen.
   const threadEmpty =
     chat.messages.state.status === "ok" &&
-    chat.messages.state.items.length === 0 &&
+    chat.messages.state.items.every(
+      (message) => message.deletedAt !== null || message.body === "",
+    ) &&
+    chat.messages.state.nextCursor === null &&
     !chat.searchQuery;
   const [confirming, setConfirming] = useState(false);
   const [editingDates, setEditingDates] = useState(false);
@@ -394,13 +404,19 @@ export function EventDetailPage() {
         <TabsContent value="thread">
           {event.channelId ? (
             <>
-              {!threadEmpty && <ThreadSummaryPanel channelId={event.channelId} />}
+              <ThreadSummaryPanel
+                key={event.channelId}
+                channelId={event.channelId}
+                sourceVersion={summarySource}
+                empty={threadEmpty}
+              />
               <ThreadChat
                 chat={chat}
                 title={event.title}
                 kind="event"
                 members={memberItems}
                 selfId={selfId}
+                viewer={viewer}
                 // A cancelled event's thread is a read-only archive, and Messages
                 // does not list it, so there is neither a box nor a way there.
                 readOnly={
