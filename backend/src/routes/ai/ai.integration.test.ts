@@ -125,7 +125,7 @@ describe("/api/ai", () => {
   async function cleanup() {
     await db.execute(sql`DELETE FROM "ai_run" WHERE "user_id" IN ${ourUsers}`);
     await db.execute(sql`
-      DELETE FROM "channel" WHERE "kind" = 'ai'
+      DELETE FROM "channel" WHERE "kind" IN ('ai', 'group')
         AND "id" IN (SELECT "channel_id" FROM "chan_member" WHERE "user_id" IN ${ourUsers})
     `);
     await db.execute(sql`DELETE FROM "task" WHERE ${ours}`);
@@ -1119,6 +1119,7 @@ describe("/api/ai", () => {
       expect(response.body).toEqual({
         summary: JSON.parse(summaryJson),
         asOfMessageId: ids.at(-1),
+        sourceFingerprint: expect.any(String),
       });
       expect(prompts[0]).toContain("Who does pizza?");
       // The run says what it was and which thread it read — not a chat of the member's.
@@ -1179,6 +1180,138 @@ describe("/api/ai", () => {
       expect(complete).toHaveBeenCalledTimes(1);
     });
 
+    /** What deleting a message leaves behind: the row, without its words. */
+    async function tombstone(id: string) {
+      await db.update(messages).set({ deletedAt: new Date(), body: "" }).where(eq(messages.id, id));
+    }
+
+    it("never shows the model a deleted message", async () => {
+      signedInAs(await member("redacted", "officer"));
+      const { channelId, ids } = await thread(0, ["Room booked", "Secret plan", "Pizza?"]);
+      await tombstone(ids[1]!);
+      script(summaryJson);
+
+      const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(response.status).toBe(200);
+      expect(prompts[0]).toContain("Room booked");
+      expect(prompts[0]).not.toContain("Secret plan");
+    });
+
+    it("summarises afresh once an OLDER message is deleted, though the newest is unchanged", async () => {
+      signedInAs(await member("older", "officer"));
+      const { channelId, ids } = await thread(0, ["Secret plan", "Pizza?"]);
+      script(summaryJson, summaryJson);
+
+      const first = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+      await tombstone(ids[0]!);
+      const second = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+
+      expect(second.status).toBe(200);
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(prompts[1]).not.toContain("Secret plan");
+      expect(second.body.asOfMessageId).toBe(first.body.asOfMessageId);
+      expect(second.body.sourceFingerprint).not.toBe(first.body.sourceFingerprint);
+    });
+
+    it("refuses a deleted group before reaching its cached summary", async () => {
+      const insider = await member("insider", "president");
+      signedInAs(insider);
+      const groupId = newId();
+      await db.insert(channels).values({ id: groupId, kind: "group", name: "test-ai-group" });
+      await db.insert(chanMembers).values({ channelId: groupId, userId: insider.id });
+      await db
+        .insert(messages)
+        .values({ id: newId(), channelId: groupId, author: insider.id, body: "Plans" });
+      script(summaryJson);
+      const first = await request(app).post(`/api/ai/threads/${groupId}/summary`).send();
+      expect(first.status).toBe(200);
+
+      await db
+        .update(channels)
+        .set({ deletedAt: new Date(), deletedBy: insider.id })
+        .where(eq(channels.id, groupId));
+      const second = await request(app).post(`/api/ai/threads/${groupId}/summary`).send();
+
+      expect(second.status).toBe(403);
+      expect(complete).toHaveBeenCalledTimes(1);
+    });
+
+    it("409s a summary whose source was deleted while the model was writing it", async () => {
+      signedInAs(await member("racer", "officer"));
+      const { channelId, ids } = await thread(0, ["Secret plan", "Pizza?"]);
+      script(async () => {
+        await tombstone(ids[0]!);
+        return summaryJson;
+      }, summaryJson);
+
+      const raced = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+      expect(raced.status).toBe(409);
+      expect(raced.body.error.code).toBe("THREAD_CHANGED");
+
+      // Nothing was cached for it: asking again writes a new one, without the words.
+      const again = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+      expect(again.status).toBe(200);
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(prompts[1]).not.toContain("Secret plan");
+    });
+
+    describe("GET /api/ai/threads/:id/summary/validity", () => {
+      async function summarised(bodies: readonly string[]) {
+        const { channelId, ids } = await thread(0, bodies);
+        script(summaryJson);
+        const response = await request(app).post(`/api/ai/threads/${channelId}/summary`).send();
+        const check = () =>
+          request(app).get(`/api/ai/threads/${channelId}/summary/validity`).query({
+            asOf: response.body.asOfMessageId,
+            fingerprint: response.body.sourceFingerprint,
+          });
+        return { channelId, ids, check };
+      }
+
+      it("stays current as new messages arrive, and goes stale when a source message is deleted", async () => {
+        const reader = await member("validity", "officer");
+        signedInAs(reader);
+        const { channelId, ids, check } = await summarised(["Secret plan", "Pizza?"]);
+        expect((await check()).body).toEqual({ current: true });
+
+        await db
+          .insert(messages)
+          .values({ id: newId(), channelId, author: reader.id, body: "Later news" });
+        expect((await check()).body).toEqual({ current: true });
+
+        await tombstone(ids[0]!);
+        expect((await check()).body).toEqual({ current: false });
+        // It never calls the model.
+        expect(complete).toHaveBeenCalledTimes(1);
+      });
+
+      it("goes stale when the newest source message itself is deleted", async () => {
+        signedInAs(await member("newest", "officer"));
+        const { ids, check } = await summarised(["One", "Two"]);
+        await tombstone(ids[1]!);
+        expect((await check()).body).toEqual({ current: false });
+      });
+
+      it("answers with the assistant switched off, since it calls no model", async () => {
+        signedInAs(await member("offline", "officer"));
+        const { check } = await summarised(["One"]);
+        vi.stubEnv("AI_ENABLED", "");
+        expect((await check()).status).toBe(200);
+      });
+
+      it("403s a thread the member cannot open", async () => {
+        signedInAs(await member("peeker", "officer"));
+        const { channelId, ids } = await thread(2, ["Budget talk"]);
+
+        const response = await request(app)
+          .get(`/api/ai/threads/${channelId}/summary/validity`)
+          .query({ asOf: ids[0], fingerprint: "x" });
+
+        expect(response.status).toBe(403);
+      });
+    });
+
     it("409s an empty thread rather than asking the model to invent one", async () => {
       signedInAs(await member("early", "officer"));
       const { channelId } = await thread(0, []);
@@ -1220,6 +1353,15 @@ describe("/api/ai", () => {
         channelId: channel!.id,
         author: ada.id,
         body: `@[${ben.id}] can you book the room?`,
+      });
+      // A deleted message is not part of the thread the assistant reads.
+      await db.insert(messages).values({
+        id: newId(),
+        channelId: channel!.id,
+        author: ben.id,
+        body: "",
+        deletedAt: new Date(),
+        deletedBy: ben.id,
       });
       script(
         callTool("listEvents", { from: "1990-01-01T00:00:00Z", to: "1990-01-02T00:00:00Z" }),

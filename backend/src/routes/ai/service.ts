@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   aiBriefingSchema,
   splitMentions,
@@ -233,6 +234,20 @@ export function buildSummaryPrompt(messages: PromptMessage[]): string {
     "MESSAGES:",
     ...messages.map((message) => JSON.stringify({ from: message.author, text: message.body })),
   ].join("\n");
+}
+
+/**
+ * What a summary was written from, as one opaque string: the ids of the
+ * messages kept and the prompt they made, names and @mentions as the model
+ * read them. Deleting any of those messages — not only the newest — changes
+ * it, so a summary keyed on it can never be served for words that are gone.
+ */
+export function summaryFingerprint(kept: PromptMessage[]): string {
+  return createHash("sha256")
+    .update(JSON.stringify(kept.map((message) => message.id)))
+    .update("\n")
+    .update(buildSummaryPrompt(kept))
+    .digest("base64url");
 }
 
 /**

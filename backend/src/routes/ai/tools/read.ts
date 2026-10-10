@@ -431,7 +431,9 @@ export const readThread: Tool = {
     const rows = await ctx.db
       .select({ author: messages.author, body: messages.body, createdAt: messages.createdAt })
       .from(messages)
-      .where(eq(messages.channelId, channel.id))
+      // A deleted message is gone from the thread as members read it, so the
+      // assistant never reads it either.
+      .where(and(eq(messages.channelId, channel.id), isNull(messages.deletedAt)))
       .orderBy(desc(messages.createdAt))
       .limit(READ_LIMIT);
 
