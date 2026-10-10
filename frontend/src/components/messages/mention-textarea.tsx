@@ -1,12 +1,27 @@
-import { mentionToken } from "@ctp/shared";
 import {
+  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type SyntheticEvent,
   type TextareaHTMLAttributes,
 } from "react";
+import {
+  applyEdit,
+  inferEdit,
+  insertMention,
+  mentionAt,
+  recordEdit,
+  redoDraft,
+  undoDraft,
+  type DraftState,
+  type EditKind,
+  type MentionDraft,
+  type Selection,
+} from "@/lib/mention-draft";
 import { cn } from "@/lib/utils";
 
 interface MentionCandidate {
@@ -16,7 +31,7 @@ interface MentionCandidate {
 }
 
 /** The `@partial` run right before the caret, if any — `start` is where the
- * `@` itself sits, so a pick can splice the token in over exactly this span. */
+ * `@` itself sits, so a pick can put the mention in over exactly this span. */
 interface OpenQuery {
   start: number;
   text: string;
@@ -27,22 +42,52 @@ function label(candidate: MentionCandidate): string {
   return candidate.name || candidate.email;
 }
 
+/** Exact names, emails and email usernames beat broad substring matches,
+ * so a short username cannot disappear behind the six-result limit. */
+function matchRank(candidate: MentionCandidate, needle: string): number {
+  if (!needle) return 0;
+  const fields = [candidate.name ?? "", candidate.email, candidate.email.split("@")[0] ?? ""].map(
+    (field) => field.toLowerCase(),
+  );
+  if (fields.some((field) => field === needle)) return 0;
+  if (fields.some((field) => field.startsWith(needle))) return 1;
+  return 2;
+}
+
+function selectionOf(box: HTMLTextAreaElement): Selection {
+  return { start: box.selectionStart, end: box.selectionEnd };
+}
+
+/** Which undo step an edit belongs to; see `recordEdit`. */
+function kindOf(edit: { start: number; end: number; text: string }, inputType?: string): EditKind {
+  if (inputType === "deleteByCut" || inputType?.startsWith("insertFrom")) return "other";
+  if (edit.text === "") return "delete";
+  return edit.start === edit.end ? "insert" : "other";
+}
+
 /**
  * A plain `<textarea>` with an @mention popup layered on top. Typing `@`
- * opens it; picking someone splices `@[user-id]` in over the partial name —
- * the raw token stays visible while composing (see `message.ts`'s own note
- * on why: names aren't stored, only ids, so there is nothing prettier to show
- * yet). `MessageRow`'s `splitMentions` render is what turns it into a name
- * once the message is actually sent.
+ * opens it; picking someone puts "@Their Name" in the box — the name, never
+ * the id — and the draft (`lib/mention-draft.ts`) remembers that those
+ * characters are a mention of that member. The `@[user-id]` token the API
+ * stores is built only when the message is sent.
+ *
+ * Because the box shows names, it has to follow every edit to keep the
+ * mentions over the right characters: the selection just before each change
+ * (from `beforeinput`) says where it happened, and an edit that reaches into a
+ * mention turns it back into plain text. Undo and Redo go through the draft's
+ * own history, which carries the mentions with the text — the browser's would
+ * bring back the words but not whom they name.
  *
  * Focus never leaves the textarea, so the list is driven from it the way a
  * combobox is: ↑/↓ move the highlight, Enter or Tab picks it, Escape closes
  * the list, and `aria-activedescendant` tells a screen reader which option is
  * highlighted. The options are still buttons, for a pointer.
  *
- * With the list closed, Enter submits the enclosing form and Shift+Enter is a
- * newline. That has to live here rather than in a caller's `onKeyDown`: the
- * caller's handler runs first, so it could not tell a send from a pick.
+ * With the list closed, Enter submits the enclosing form; Shift+Enter is
+ * always a newline. That has to live here rather than in a caller's
+ * `onKeyDown`: the caller's handler runs first, so it could not tell a send
+ * from a pick. An IME's Enter is committing characters, so it does neither.
  */
 export function MentionTextarea({
   value,
@@ -51,10 +96,11 @@ export function MentionTextarea({
   selfId,
   onKeyDown,
   onBlur,
+  onSelect,
   ...props
 }: {
-  value: string;
-  onChange: (value: string) => void;
+  value: DraftState;
+  onChange: (value: DraftState) => void;
   candidates: readonly MentionCandidate[];
   selfId: string | undefined;
 } & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
@@ -62,6 +108,14 @@ export function MentionTextarea({
   const listId = useId();
   const [query, setQuery] = useState<OpenQuery | null>(null);
   const [highlighted, setHighlighted] = useState(0);
+  // Where the selection was just before the browser changed the text, and how.
+  const beforeInput = useRef<{ selection: Selection; inputType: string } | undefined>(undefined);
+  // The last selection seen, for a change no `beforeinput` announced.
+  const lastSelection = useRef<Selection>({ start: 0, end: 0 });
+  // Where the caret goes once a change made here (a pick, an undo) is on screen.
+  const pendingCaret = useRef<Selection | undefined>(undefined);
+  // `value` as of the last render, for the native listener below.
+  const current = useRef(value);
 
   const needle = query?.text.toLowerCase() ?? "";
   const matches = query
@@ -72,37 +126,123 @@ export function MentionTextarea({
             field.toLowerCase().includes(needle),
           ),
         )
+        .sort((left, right) => matchRank(left, needle) - matchRank(right, needle))
         .slice(0, 6)
     : [];
   const open = matches.length > 0;
   const active = Math.min(highlighted, matches.length - 1);
   const optionId = (index: number) => `${listId}-option-${index}`;
 
-  function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
-    const next = event.target.value;
-    onChange(next);
-    const caret = event.target.selectionStart;
-    const upToCaret = next.slice(0, caret);
-    // The run of non-space characters after the most recent "@" that hasn't
-    // itself been closed off by a space — an "@" mid-word (an email address,
-    // say) never opens this, because there is no word boundary before it.
-    const match = /(?:^|\s)@([^\s@]*)$/.exec(upToCaret);
-    setQuery(match ? { start: caret - match[1]!.length - 1, text: match[1]! } : null);
+  useLayoutEffect(() => {
+    current.current = value;
+    const caret = pendingCaret.current;
+    const box = ref.current;
+    if (!caret || !box) return;
+    pendingCaret.current = undefined;
+    box.setSelectionRange(caret.start, caret.end);
+    lastSelection.current = caret;
+  }, [value]);
+
+  /** Opens the list over an `@partial` just before the caret — never over a mention already picked. */
+  function updateQuery(draft: MentionDraft, caret: number) {
+    const match = /(?:^|\s)@([^\s]*)$/.exec(draft.text.slice(0, caret));
+    const start = match ? caret - match[1]!.length - 1 : -1;
+    setQuery(match && !mentionAt(draft, start) ? { start, text: match[1]! } : null);
     setHighlighted(0);
+  }
+
+  /** Applies an undo or redo step from the draft's own history. */
+  function step(direction: "undo" | "redo", state: DraftState, before?: Selection) {
+    const box = ref.current;
+    const selection = before ?? (box ? selectionOf(box) : { start: 0, end: 0 });
+    const result = direction === "undo" ? undoDraft(state, selection) : redoDraft(state, selection);
+    if (!result) return;
+    pendingCaret.current = result.selection;
+    setQuery(null);
+    onChange(result.state);
+  }
+  const stepRef = useRef(step);
+  useLayoutEffect(() => {
+    stepRef.current = step;
+  });
+
+  // `beforeinput` is the one event that fires before the text changes, so it
+  // is where the selection the change replaces can still be read. React's
+  // `onBeforeInput` is not it — it never fires for a deletion.
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    function onBeforeInput(event: InputEvent) {
+      if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+        if (event.cancelable) {
+          event.preventDefault();
+          stepRef.current(event.inputType === "historyUndo" ? "undo" : "redo", current.current);
+        } else {
+          beforeInput.current = { selection: selectionOf(box!), inputType: event.inputType };
+        }
+        return;
+      }
+      beforeInput.current = { selection: selectionOf(box!), inputType: event.inputType };
+    }
+    box.addEventListener("beforeinput", onBeforeInput);
+    return () => box.removeEventListener("beforeinput", onBeforeInput);
+  }, []);
+
+  function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    const box = event.target;
+    const inputType = (event.nativeEvent as InputEvent).inputType;
+    // Browser edit commands may emit input without beforeinput. Treat that
+    // history event as an undo/redo, rather than recording it as a fresh edit
+    // and clearing the redo stack (or losing restored mention metadata).
+    if (inputType === "historyUndo" || inputType === "historyRedo") {
+      const selectionBefore = beforeInput.current?.selection ?? lastSelection.current;
+      beforeInput.current = undefined;
+      step(inputType === "historyUndo" ? "undo" : "redo", value, selectionBefore);
+      return;
+    }
+    const announced = beforeInput.current;
+    beforeInput.current = undefined;
+    // Mid-composition the selection is the IME's, not the member's: only the
+    // text itself can say what changed.
+    const composing = (event.nativeEvent as InputEvent).isComposing === true;
+    const selectionBefore = composing ? undefined : (announced?.selection ?? lastSelection.current);
+    const edit = inferEdit(value.draft.text, box.value, selectionBefore, announced?.inputType);
+    const next = applyEdit(value.draft, edit);
+    const caret = box.selectionStart;
+    lastSelection.current = selectionOf(box);
+    onChange(
+      recordEdit(value, next, {
+        kind: kindOf(edit, announced?.inputType),
+        selectionBefore: selectionBefore ?? { start: edit.start, end: edit.end },
+        caretAfter: caret,
+        inserted: edit.text,
+      }),
+    );
+    updateQuery(next, caret);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
+    lastSelection.current = selectionOf(event.currentTarget);
+    const composing = event.nativeEvent.isComposing;
+
+    // The draft's own history, not the browser's: see above.
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y")) {
+      event.preventDefault();
+      step(key === "y" || event.shiftKey ? "redo" : "undo", value);
+      return;
+    }
+
     if (!open) {
-      // Enter sends, Shift+Enter keeps a newline — the chat convention. An
-      // IME's Enter is committing characters, not finishing the message.
-      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      if (event.key === "Enter" && !event.shiftKey && !composing) {
         event.preventDefault();
         event.currentTarget.form?.requestSubmit();
       }
       return;
     }
+    if (composing) return;
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -113,6 +253,14 @@ export function MentionTextarea({
         setHighlighted((active - 1 + matches.length) % matches.length);
         break;
       case "Enter":
+        // Shift+Enter is a newline even with the list open.
+        if (event.shiftKey) {
+          setQuery(null);
+          break;
+        }
+        event.preventDefault();
+        pick(matches[active]!);
+        break;
       case "Tab":
         event.preventDefault();
         pick(matches[active]!);
@@ -126,28 +274,36 @@ export function MentionTextarea({
 
   function pick(candidate: MentionCandidate) {
     if (!query) return;
-    const before = value.slice(0, query.start);
-    const after = value.slice(query.start + 1 + query.text.length);
-    const inserted = `${mentionToken(candidate.id)} `;
-    const nextValue = `${before}${inserted}${after}`;
-    onChange(nextValue);
+    const end = query.start + 1 + query.text.length;
+    const { draft, caret } = insertMention(
+      value.draft,
+      { start: query.start, end },
+      label(candidate),
+      candidate.id,
+    );
+    pendingCaret.current = { start: caret, end: caret };
     setQuery(null);
-    const caret = before.length + inserted.length;
-    // The value prop hasn't re-rendered into the DOM yet at this point in the
-    // handler, so the selection has to be set on the next tick.
-    requestAnimationFrame(() => {
-      ref.current?.setSelectionRange(caret, caret);
-      ref.current?.focus();
-    });
+    onChange(
+      recordEdit(value, draft, {
+        kind: "mention",
+        selectionBefore: { start: end, end },
+        caretAfter: caret,
+      }),
+    );
+    ref.current?.focus();
   }
 
   return (
     <div className="relative">
       <textarea
         ref={ref}
-        value={value}
+        value={value.draft.text}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onSelect={(event: SyntheticEvent<HTMLTextAreaElement>) => {
+          lastSelection.current = selectionOf(event.currentTarget);
+          onSelect?.(event);
+        }}
         // A pick's onClick fires after this blur unless the mousedown that
         // starts it is prevented from moving focus in the first place.
         onBlur={(event) => {
