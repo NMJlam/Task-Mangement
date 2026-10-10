@@ -104,7 +104,7 @@ backend/src/
     tasks/tasks.ts       task CRUD, overdue, bulk
     threads/             threads, messages, read state, task comments + files
       threads.ts           the Router + handlers
-      service.ts           visibility, unread counts, reply rule
+      service.ts           visibility, unread counts, reply rule, deletion (row-locked)
     events/              events + calendar — the feature with a service layer
       events.ts            the Router + handlers
       service.ts           money/status/progress rules, framework-free

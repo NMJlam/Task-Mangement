@@ -371,6 +371,33 @@ derived from `role`, so there is nothing else to keep in sync.
 The page is registered only in dev builds and never reaches a production bundle.
 See `plan-dev-harness.md` for why the role change is a CLI and not an endpoint.
 
+### Live messaging regression tests
+
+Create two local password accounts using the steps above. Give the first the
+`director` role (or `president`) and the second the `officer` role. Export
+`E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD` for the first account and
+`E2E_OTHER_EMAIL` / `E2E_OTHER_PASSWORD` for the second in the shell that runs
+Playwright; do not commit credentials. Start the app with `DEV_PASSWORD_AUTH=1`.
+
+Run `npx playwright install chromium`, then
+`npx playwright test e2e/messages.spec.ts e2e/messages-review.spec.ts --workers=1`.
+The tests exercise real API/database traffic, including mentions between the two
+members, deletion permissions and propagation, delayed send responses, concurrent
+history loading, and conversation changes with a confirmation open. Desktop and
+390px mobile screenshots are attached to the real-mention test's results. The
+history case creates 150 messages and allows up to two minutes. Tests create
+fresh groups; use dedicated test accounts in a local database. The two-member
+suite skips when its credentials are not supplied. The membership regression
+also needs a third club member outside its group; optionally set
+`E2E_OUTSIDER_EMAIL` to choose that member (no password needed). It checks the
+Members dialog, member-only autocomplete and rejected sends that retain drafts.
+
+Open, visible conversations refresh their messages every **3 seconds** without
+requiring clicks, typing or touch. Conversation lists refresh every 15 seconds.
+Hidden tabs pause these polls and refresh immediately on return. The live suite
+checks receipt within five seconds on an untouched screen and verifies that an
+officer can delete a group they created. Full email mention queries and exact email-username ranking are covered.
+
 ## Repo-owner checklist (GitHub / Vercel UI — can't be scripted here)
 
 - [ ] Push to a remote and set the default branch to `main`.

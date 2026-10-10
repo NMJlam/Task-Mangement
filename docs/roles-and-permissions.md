@@ -24,14 +24,14 @@ treasurer. Only their capabilities differ.
 
 ## Roles
 
-| Role             | Tier | Capabilities                                                                              |
-| ---------------- | ---- | ----------------------------------------------------------------------------------------- |
-| `president`      | 2    | `member:role-change`, `invite:create`, `event:cancel`, `expense:approve`, `budget:manage` |
-| `vice_president` | 2    | `member:role-change`                                                                      |
-| `secretary`      | 2    | `invite:create`                                                                           |
-| `treasurer`      | 2    | `expense:approve`, `budget:manage`                                                        |
-| `director`       | 1    | `invite:create`                                                                           |
-| `officer`        | 0    | —                                                                                         |
+| Role             | Tier | Capabilities                                                                                                                                                |
+| ---------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `president`      | 2    | `member:role-change`, `invite:create`, `event:cancel`, `expense:approve`, `budget:manage`, `group:delete-any`, `group:delete-created`, `message:delete-any` |
+| `vice_president` | 2    | `member:role-change`, `group:delete-created`                                                                                                                |
+| `secretary`      | 2    | `invite:create`, `group:delete-created`                                                                                                                     |
+| `treasurer`      | 2    | `expense:approve`, `budget:manage`, `group:delete-created`                                                                                                  |
+| `director`       | 1    | `invite:create`, `group:delete-created`                                                                                                                     |
+| `officer`        | 0    | `group:delete-created`                                                                                                                                      |
 
 ## Groups
 
@@ -81,6 +81,8 @@ signed-in account with club membership: 401 without a session, 403
 | `DELETE /api/tasks/:id`, `POST /api/tasks/bulk`                                                    | tier 1     | As above                                                                                                                               |
 | `GET`, `POST /api/threads`                                                                         | tier 0     | Lists only threads you can see — rule 9                                                                                                |
 | `GET`, `POST /api/threads/:id/messages`, `POST /api/threads/:id/read`                              | tier 0     | The thread must be visible to you, else 404 — rule 9                                                                                   |
+| `DELETE /api/threads/:id/messages/:messageId`                                                      | tier 0     | Visible thread (rule 9), not an archive; your own message, **or** `message:delete-any` — rule 13                                       |
+| `DELETE /api/threads/:id`                                                                          | tier 0     | A `group` you're in (rule 9); `group:delete-any`, **or** `group:delete-created` on a group you opened — rule 14                        |
 | `POST /api/tasks/:id/comments`, `POST /api/tasks/:id/attachments`                                  | tier 0     | The task (rule 10) and its thread (rule 9) must be visible, else 404                                                                   |
 | `PUT`, `DELETE /api/teams/:teamId/members/:userId`                                                 | tier 1     | Tier 1: only a team they lead. Tier 2: any team.                                                                                       |
 | `POST /api/invites`                                                                                | tier 1     | `invite:create`; the invited role's tier ≤ yours                                                                                       |
@@ -147,6 +149,21 @@ signed-in account with club membership: 401 without a session, 403
     `PUT /api/budget/allocations/:eventId` checks. Sending the stored value back
     unchanged is not a change, so the edit form keeps working for everyone
     else.
+13. **Anyone may delete their own message; only the president anyone's.** In a
+    thread you can see and write to, your own message is yours to delete, with
+    no time limit. `message:delete-any` (the president) also deletes other
+    members' messages, former members' included. A cancelled event's thread is
+    an archive: `409 THREAD_ARCHIVED` for everyone, the president included. The
+    author is read from the stored row under a lock, never from the request.
+14. **Every creator may delete their own group; the president may moderate.**
+    Membership comes first: neither power reaches a group you're not in, which
+    stays a 404. `group:delete-any` (the president) covers any group they are
+    in, including groups with no recorded creator. `group:delete-created`
+    (every role, including officers) covers a group whose stored `created_by`
+    is them, even after a role change. Legacy groups with `created_by = null`
+    are not assigned a guessed owner. Deleting a group does not grant moderating
+    its messages. A `dm`, `team` or `event` thread can't be deleted this way
+    (`409 THREAD_DELETE_NOT_ALLOWED`).
 
 ## Deliberate, but easy to trip over
 
@@ -158,6 +175,10 @@ signed-in account with club membership: 401 without a session, 403
   target.
 - An officer who is set as a team's lead still can't add or remove its members.
   Staffing starts at tier 1.
+- **Group deletion and message moderation are separate powers.** A director
+  who may delete a group they opened still can't delete someone else's message
+  in it; the president can do both. The VP, treasurer, secretary and officers
+  can delete only their own groups, with no message moderation power.
 - An **officer can edit an event they own** — `PATCH /api/events/:id` is tier 0
   plus an owner check, not tier 1. Creating one is still tier 1, so an officer
   only ever owns an event someone handed them.

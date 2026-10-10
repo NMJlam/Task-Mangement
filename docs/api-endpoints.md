@@ -614,6 +614,12 @@ summarised. Posting to it, and commenting or attaching on that event's tasks, is
 restoring the event (`cancelled → planning`) reopens the thread with its
 history.
 
+**A deleted group is gone for everyone in it.** `DELETE /api/threads/:id`
+soft-deletes a custom group: it leaves every member's `GET /api/threads`, and
+reading, posting to, marking read, deleting from or summarising it is `404
+THREAD_NOT_FOUND` from then on. Its rows stay in the database, but no route
+serves them; there is no restore.
+
 **`ai` channels are never served here**, not even to their owner: they are
 missing from the list, and reading, posting to or marking one read is `404
 THREAD_NOT_FOUND`. They are assistant chats, read and written only through
@@ -630,6 +636,7 @@ A thread object:
   "eventId": null,
   "minTier": 0,
   "createdAt": "2026-09-17T00:00:00.000Z",
+  "createdBy": "<uuid>",
   "memberIds": ["<uuid>", "<uuid>"],
   "lastReadAt": "2026-09-17T09:00:00.000Z",
   "unreadCount": 2,
@@ -643,6 +650,12 @@ A thread object:
   team or event thread you've never marked read, `lastReadAt` is `null` and every
   message counts.
 - **`name` is `null` only on a `dm`** — show the other member's name.
+- **`createdBy` is who opened a `group`**, stamped from the session by
+  `POST /api/threads`. It is `null` on every other kind, on a group opened
+  before creators were recorded (they are not guessed), and once that member
+  has left the club. Every creator, including officers, may delete their own
+  group while they remain a member; presidents may also delete other groups
+  they belong to.
 
 A message object:
 
@@ -660,21 +673,32 @@ A message object:
   "fileMime": null,
   "aiRunId": null,
   "createdAt": "2026-09-17T10:00:00.000Z",
-  "editedAt": null
+  "editedAt": null,
+  "deletedAt": null,
+  "deletedBy": null
 }
 ```
 
 `author` is stamped from your session; names come from `GET /api/members`.
 
-| Endpoint                          | Who    | Input                    | Success                                          |
-| --------------------------------- | ------ | ------------------------ | ------------------------------------------------ |
-| `GET /api/threads`                | tier 0 | `?kind`                  | `200 { threads: [] }`, latest activity first     |
-| `POST /api/threads`               | tier 0 | body below               | `201 { thread }` — `200` for a dm that exists    |
-| `GET /api/threads/:id/messages`   | tier 0 | `?q&before&limit`        | `200 { messages: [], nextCursor }`, newest first |
-| `POST /api/threads/:id/messages`  | tier 0 | `{ "body", "parentId" }` | `201 { message }`                                |
-| `POST /api/threads/:id/read`      | tier 0 | —                        | `200 { thread }`, with `unreadCount: 0`          |
-| `POST /api/tasks/:id/comments`    | tier 0 | `{ "body", "parentId" }` | `201 { message }`                                |
-| `POST /api/tasks/:id/attachments` | tier 0 | body below               | `201 { message }`                                |
+**A deleted message is a tombstone.** `deletedAt` is set and `body`, `fileKey`,
+`fileName`, `fileSizeBytes` and `fileMime` are all empty; its id, `author`,
+`createdAt`, `taskId` and `parentId` stay. It still appears in the thread's
+history (show "Message deleted"), still works as a `before` cursor, and its
+replies keep their `parentId`. `deletedBy` goes `null` if the member who
+deleted it leaves the club; `deletedAt` stays.
+
+| Endpoint                                      | Who                                                             | Input                    | Success                                          |
+| --------------------------------------------- | --------------------------------------------------------------- | ------------------------ | ------------------------------------------------ |
+| `GET /api/threads`                            | tier 0                                                          | `?kind`                  | `200 { threads: [] }`, latest activity first     |
+| `POST /api/threads`                           | tier 0                                                          | body below               | `201 { thread }` — `200` for a dm that exists    |
+| `GET /api/threads/:id/messages`               | tier 0                                                          | `?q&before&limit`        | `200 { messages: [], nextCursor }`, newest first |
+| `POST /api/threads/:id/messages`              | tier 0                                                          | `{ "body", "parentId" }` | `201 { message }`                                |
+| `POST /api/threads/:id/read`                  | tier 0                                                          | —                        | `200 { thread }`, with `unreadCount: 0`          |
+| `DELETE /api/threads/:id/messages/:messageId` | author, or `message:delete-any`                                 | —                        | `200 { message }` — the tombstone                |
+| `DELETE /api/threads/:id`                     | `group:delete-any`, or `group:delete-created` on your own group | —                        | `204`                                            |
+| `POST /api/tasks/:id/comments`                | tier 0                                                          | `{ "body", "parentId" }` | `201 { message }`                                |
+| `POST /api/tasks/:id/attachments`             | tier 0                                                          | body below               | `201 { message }`                                |
 
 ### `POST /api/threads` · tier 0
 
@@ -703,22 +727,84 @@ Starts a conversation. You're always a member, so leave yourself out.
   as `?before=`. It is `null` on the last page. A `before` that isn't a message
   in this thread is `422 INVALID_CURSOR`.
 - **`q` searches message text**, case-insensitive. `%` and `_` match themselves.
+  A deleted message never matches.
+- **Deleted messages stay in the history**, as tombstones, so a page never has
+  a hole where one was and a cursor on one still works.
 - Replies come back in the same list; group them by `parentId`.
 
 ### `POST /api/threads/:id/messages` · tier 0
 
 **Replies are one level deep.** `parentId` must be a message in this thread
-that isn't itself a reply, or it's a `422` on field `parentId`.
+that isn't itself a reply, or it's a `422` on field `parentId`. A deleted
+message takes no new replies — also a `422` on `parentId` — though the replies
+it already has stay.
 
-**@mentions.** A message body may carry `@[user-id]` tokens — the composer's
-job, not this route's; the API takes whatever text the client sends and looks
-for the pattern itself. Anyone tokened in who can also see this thread gets a
-`mention` notification; anyone tokened in who cannot (wrong tier, not a member
-of a `group`/`dm` channel, or not a real user at all) is silently
-dropped — no error, no partial-failure response, since a mention notifying
-someone into a thread they cannot open would itself be the access leak.
-Mentioning yourself never notifies. The same rule applies to
-`POST /api/tasks/:id/comments` below, against that task's own thread.
+**Posting waits for a group being deleted.** Every write into a thread takes the
+thread's row lock first, so a post either lands before the group goes (and goes
+with it) or finds it gone: `404 THREAD_NOT_FOUND`.
+
+**@mentions.** Message bodies use `@[user-id]` tokens, which the composer
+displays as names. In a **group or DM**, every mentioned ID must belong to that
+conversation. A nonmember or unknown ID returns `422 VALIDATION_ERROR` on
+`body`, with a generic membership message; the transaction saves neither the
+message nor any notifications. Self-mentions remain valid and never notify;
+repeated mentions create only one notification.
+
+In team/event threads, recipients must meet the thread's visibility rules;
+ineligible or unknown recipients are silently excluded from notifications.
+Task comments use that same check against their task's thread. Ordinary names
+and email addresses typed as text are not mention tokens.
+
+### `DELETE /api/threads/:id/messages/:messageId` · author, or `message:delete-any`
+
+Deletes one message for everyone, leaving its tombstone. Your own message, in a
+thread you can see and write to, whatever your role and however old it is. The
+president (`message:delete-any`) may also delete anyone else's, a former
+member's included. A task comment is the same message, so it goes from the task
+as well.
+
+- `404 THREAD_NOT_FOUND` — the thread is hidden from you, deleted, or an `ai`
+  chat. Checked first, so nothing is said about the message.
+- `404 MESSAGE_NOT_FOUND` — no such message **in this thread**; an id from
+  another thread is treated the same as none.
+- `409 THREAD_ARCHIVED` — a cancelled event's thread is a read-only archive, for
+  the president too.
+- `403 FORBIDDEN` — someone else's message, and you lack `message:delete-any`.
+- **Repeating it is safe.** Deleting a tombstone you may delete returns it again
+  with `200`, and writes no second audit row.
+- **What else it does**, in the same transaction: removes notifications aimed at
+  this message (`entityType: "message"` — its mentions), and writes a
+  `message.deleted` audit row recording who, which message and thread, and
+  whether it was the `author` or a `moderator` — never the words. A task
+  comment's `task_commented` notifications point at the task, carry no words,
+  and stay.
+- **Files:** the attachment fields are cleared. No file storage exists yet
+  (`TODO(R11)`), so there is no stored object to remove; when there is, its
+  cleanup belongs to that storage's lifecycle.
+
+### `DELETE /api/threads/:id` · `group:delete-any`, or `group:delete-created`
+
+Deletes a custom group for everyone in it. Answers `204` with no body.
+
+| Caller                               | May delete                                   |
+| ------------------------------------ | -------------------------------------------- |
+| President (`group:delete-any`)       | any group they are a member of               |
+| Director (`group:delete-created`)    | a group they opened (`createdBy`) and are in |
+| Vice president, secretary, treasurer | a group they opened and are in               |
+| Officer                              | a group they opened and are in               |
+| Anyone not in the group              | no — it is `404`, whatever their role        |
+
+- `404 THREAD_NOT_FOUND` — not a group you're in, already deleted, or an `ai`
+  chat. Visibility is checked before anything else, so a president cannot find
+  out a private group exists.
+- `409 THREAD_DELETE_NOT_ALLOWED` — a `dm`, `team` or `event` thread you can
+  see. A dm belongs to both people; team and event threads follow their team or
+  event.
+- `403 FORBIDDEN` — a group you're in that you may not delete.
+- **It is a soft delete.** The group's `deleted_at` and `deleted_by` are set and
+  its rows stay; every route then treats it as missing. Notifications aimed at
+  its messages, or at the thread itself, are removed and a `group.deleted` audit
+  row is written, in the same transaction.
 
 ### `POST /api/tasks/:id/comments` and `/attachments` · tier 0
 
@@ -873,17 +959,18 @@ and this page follows them. Design and the full tool inventory:
 with chats as amended by
 [`superpowers/specs/2026-09-30-ai-multi-chat-design.md`](superpowers/specs/2026-09-30-ai-multi-chat-design.md).
 
-| Endpoint                                | Who      | Input                                 | Success                                                    |
-| --------------------------------------- | -------- | ------------------------------------- | ---------------------------------------------------------- |
-| `POST /api/ai/messages`                 | tier 0   | `{ "chatId"?, "text": "…", "seed"? }` | `200 { chatId, runId, reply, proposal }`                   |
-| `POST /api/ai/proposals/apply`          | tier 0 † | `{ runId, operations, stats }`        | `201 { events: [{ id, title }], tasks: [{ id, title }] }`  |
-| `POST /api/ai/proposals/:runId/discard` | tier 0 ‡ | —                                     | `204`                                                      |
-| `GET /api/ai/chats`                     | tier 0 ‡ | —                                     | `200 { chats: AiChat[] }`                                  |
-| `GET /api/ai/chats/:id/messages`        | tier 0 ‡ | —                                     | `200 { chat: AiChat, messages: AiChatMessage[] }`          |
-| `PATCH /api/ai/chats/:id`               | tier 0 ‡ | `{ "title": "…" }` (1–80 characters)  | `200 { chat: AiChat }`                                     |
-| `DELETE /api/ai/chats/:id`              | tier 0 ‡ | —                                     | `204`                                                      |
-| `POST /api/ai/threads/:id/summary`      | tier 0   | —                                     | `200 { summary: { summary, actionItems }, asOfMessageId }` |
-| `GET /api/ai/briefing`                  | tier 0   | —                                     | `200 { briefing: { summary, bullets }, generatedAt }`      |
+| Endpoint                                   | Who      | Input                                 | Success                                                                       |
+| ------------------------------------------ | -------- | ------------------------------------- | ----------------------------------------------------------------------------- |
+| `POST /api/ai/messages`                    | tier 0   | `{ "chatId"?, "text": "…", "seed"? }` | `200 { chatId, runId, reply, proposal }`                                      |
+| `POST /api/ai/proposals/apply`             | tier 0 † | `{ runId, operations, stats }`        | `201 { events: [{ id, title }], tasks: [{ id, title }] }`                     |
+| `POST /api/ai/proposals/:runId/discard`    | tier 0 ‡ | —                                     | `204`                                                                         |
+| `GET /api/ai/chats`                        | tier 0 ‡ | —                                     | `200 { chats: AiChat[] }`                                                     |
+| `GET /api/ai/chats/:id/messages`           | tier 0 ‡ | —                                     | `200 { chat: AiChat, messages: AiChatMessage[] }`                             |
+| `PATCH /api/ai/chats/:id`                  | tier 0 ‡ | `{ "title": "…" }` (1–80 characters)  | `200 { chat: AiChat }`                                                        |
+| `DELETE /api/ai/chats/:id`                 | tier 0 ‡ | —                                     | `204`                                                                         |
+| `POST /api/ai/threads/:id/summary`         | tier 0   | —                                     | `200 { summary: { summary, actionItems }, asOfMessageId, sourceFingerprint }` |
+| `GET /api/ai/threads/:id/summary/validity` | tier 0 ‡ | `?asOf&fingerprint`                   | `200 { current: boolean }`                                                    |
+| `GET /api/ai/briefing`                     | tier 0   | —                                     | `200 { briefing: { summary, bullets }, generatedAt }`                         |
 
 † Tier 0 gets you in the door. **Each operation inside `operations` is gated
 separately**, against the same check its equivalent route uses:
@@ -1032,11 +1119,29 @@ they still count towards the daily cap.
 ### `POST /api/ai/threads/:id/summary`
 
 `:id` is a channel id. Summarises the newest 100 messages, trimmed from the
-oldest end to a character budget. `403 FORBIDDEN` on a channel the caller
-cannot read (the threads route's own visibility rule), `409 THREAD_EMPTY` on a
-thread with no messages. A repeat for an unchanged thread is served from an
+oldest end to a character budget. Deleted messages are never read. `403
+FORBIDDEN` on a channel the caller cannot read (the threads route's own
+visibility rule, checked on every request before any cache), `409 THREAD_EMPTY`
+on a thread with no messages. A repeat for an unchanged thread is served from an
 in-process cache — a local convenience; on Vercel the daily cap is what guards
 the quota.
+
+- **The cache is keyed on what the summary reads**, `sourceFingerprint`: the
+  ids, authors and words of the exact messages kept, @mentions as names. Deleting
+  any of them — not only the newest — changes it, so a summary of words that are
+  gone is never served.
+- **`409 THREAD_CHANGED`** — a message the model was reading was deleted, or the
+  thread went, while it wrote. The summary is neither cached nor returned; ask
+  again.
+
+### `GET /api/ai/threads/:id/summary/validity`
+
+Whether a summary on screen still describes its thread. Pass back its
+`asOfMessageId` as `asOf` and its `sourceFingerprint` as `fingerprint`. Calls no
+model, needs no quota and answers with the assistant switched off, so a page
+can ask on every poll. Messages posted after `asOf` do not make it stale — it is
+a summary as of then — but deleting one it was written from does: `{ "current":
+false }`. `403 FORBIDDEN` on a channel the caller cannot read.
 
 ### `GET /api/ai/briefing`
 
