@@ -326,6 +326,13 @@ Two visibility mechanisms, and `kind` decides which applies:
 Mixing them makes both incoherent. A private management channel is a `group`;
 "directors and up" is a `team` channel with `min_tier = 1`.
 
+_Added in migration 0012 (message and group deletion):_ `created_by` SET NULL —
+who opened a `group`, stamped from the session, `null` on older groups (not
+backfilled) and on other kinds; `deleted_at`, `deleted_by` SET NULL — a soft
+delete, allowed on `group` only (`channel_deletion_only_on_group_check`). A
+deleted group is invisible to every thread route; its rows stay. The deleter
+may leave the club (`deleted_by` goes `null`) without undoing the deletion.
+
 ```
 CHECK (CASE kind
     WHEN 'team'  THEN team_id  IS NOT NULL AND event_id IS NULL
@@ -382,6 +389,15 @@ hottest read path, no orphan cleanup. Storage keys, not URLs — sign on read.
 
 Mentions are `@[user-id]` tokens in the body, resolved client-side against the
 roster. Display names aren't unique and break on rename.
+
+_Added in migration 0012:_ `deleted_at`, `deleted_by` SET NULL. A deleted message
+is a **tombstone**, not a missing row: its id still anchors pagination cursors,
+its replies keep their `parent_id`, and a task comment stays the same row in the
+task drawer. `message_has_content_check` now reads both ways — a live message
+has a body or a file, and a tombstone has an empty body and all four file
+columns null — and `message_deleter_only_when_deleted_check` keeps `deleted_by`
+off a live message. Unread counts, last activity, search and the assistant's
+reads all leave tombstones out.
 
 ```
 CHECK (body <> '' OR file_key IS NOT NULL)
