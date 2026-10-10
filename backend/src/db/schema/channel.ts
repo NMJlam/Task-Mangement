@@ -1,6 +1,7 @@
 import { channelKindSchema, type ChannelKind } from "@ctp/shared";
 import { sql } from "drizzle-orm";
 import { check, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { appUsers } from "./app-user.js";
 import { events } from "./event.js";
 import { sqlEnumValues } from "./sql-enum.js";
 import { uuidShape } from "./sql-uuid.js";
@@ -19,6 +20,10 @@ import { teams } from "./team.js";
  * PAGE, not a dedicated schema. Each assistant CHAT is one such channel with
  * its owner as the only member, so a member may have many; `name` is the
  * chat's title. They are served only by routes/ai, never as threads.
+ *
+ * A custom group can be DELETED for everyone (`DELETE /api/threads/:id`). That
+ * is a soft delete: `deleted_at` is set and `visibleThreads` treats the group
+ * as missing from then on, but its rows stay. Nothing restores one yet.
  */
 export const channels = pgTable(
   "channel",
@@ -40,6 +45,17 @@ export const channels = pgTable(
     minTier: smallint("min_tier").notNull().default(0),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+    // Who opened a group, stamped from the session — never from a request body.
+    // Null on a group opened before this column existed: ownership is not
+    // guessed from the oldest message or membership order. SET NULL when that
+    // member leaves, as `audit_log.actor_id` does.
+    createdBy: uuid("created_by").references(() => appUsers.id, { onDelete: "set null" }),
+
+    // Soft deletion, groups only. `deleted_by` goes NULL if the deleter leaves
+    // the club; `deleted_at` is the fact and stays.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by").references(() => appUsers.id, { onDelete: "set null" }),
   },
   (table) => [
     // One board per team is the actual model. Events are deliberately NOT
@@ -81,9 +97,24 @@ export const channels = pgTable(
       "channel_seed_only_on_ai_check",
       sql`${table.seedEventId} IS NULL OR ${table.kind} = 'ai'`,
     ),
+    // Only a custom group can be deleted: a dm belongs to both people, team and
+    // event threads follow their parent, and an assistant chat is hard-deleted
+    // by its owner (routes/ai/chats.ts). A deleter is only ever recorded with a
+    // deletion time.
+    check(
+      "channel_deletion_only_on_group_check",
+      sql`(${table.deletedAt} IS NULL AND ${table.deletedBy} IS NULL) OR (${table.kind} = 'group' AND ${table.deletedAt} IS NOT NULL)`,
+    ),
     check(
       "channel_uuid_shape_check",
-      uuidShape(table.id, table.eventId, table.teamId, table.seedEventId),
+      uuidShape(
+        table.id,
+        table.eventId,
+        table.teamId,
+        table.seedEventId,
+        table.createdBy,
+        table.deletedBy,
+      ),
     ),
   ],
 );
