@@ -58,6 +58,14 @@ export const messages = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
+
+    // A deleted message stays as a TOMBSTONE rather than going: its id anchors
+    // pagination cursors, its replies keep their parent_id, and a task comment
+    // is the same row in the task drawer. Its words and file go (see
+    // message_has_content_check); who wrote it and when stay.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    // SET NULL if the deleter leaves the club; deleted_at stays.
+    deletedBy: uuid("deleted_by").references(() => appUsers.id, { onDelete: "set null" }),
   },
   (table) => [
     // THE hottest read in the system: one channel's history, newest first.
@@ -73,7 +81,20 @@ export const messages = pgTable(
       .on(table.parentId)
       .where(sql`${table.parentId} IS NOT NULL`),
 
-    check("message_has_content_check", sql`${table.body} <> '' OR ${table.fileKey} IS NOT NULL`),
+    // A live message says something or carries a file. A tombstone carries
+    // nothing at all: clearing the words and the file is what deletion IS, so
+    // the database refuses a "deleted" row that still holds either.
+    check(
+      "message_has_content_check",
+      sql`CASE WHEN ${table.deletedAt} IS NULL
+        THEN ${table.body} <> '' OR ${table.fileKey} IS NOT NULL
+        ELSE ${table.body} = '' AND num_nulls(${table.fileKey}, ${table.fileName}, ${table.fileSizeBytes}, ${table.fileMime}) = 4
+      END`,
+    ),
+    check(
+      "message_deleter_only_when_deleted_check",
+      sql`${table.deletedBy} IS NULL OR ${table.deletedAt} IS NOT NULL`,
+    ),
     check(
       "message_file_all_or_nothing_check",
       sql`num_nulls(${table.fileKey}, ${table.fileName}, ${table.fileSizeBytes}, ${table.fileMime}) IN (0, 4)`,
@@ -95,6 +116,7 @@ export const messages = pgTable(
         table.parentId,
         table.author,
         table.aiRunId,
+        table.deletedBy,
       ),
     ),
   ],

@@ -300,8 +300,29 @@ export type AiThreadSummary = z.infer<typeof aiThreadSummarySchema>;
 export const aiThreadSummaryResponseSchema = z.object({
   summary: aiThreadSummarySchema,
   asOfMessageId: z.uuid(),
+  // A digest of the exact messages the summary was written from, as of
+  // `asOfMessageId`. Opaque to the client: it hands it back to the validity
+  // check below, which says whether deleting a message has since changed them.
+  sourceFingerprint: z.string().min(1).max(128),
 });
 export type AiThreadSummaryResponse = z.infer<typeof aiThreadSummaryResponseSchema>;
+
+// ── GET /api/ai/threads/:id/summary/validity ─────────────────────────────────
+
+/**
+ * Whether a summary on screen still describes the thread it came from. Calls no
+ * model, so a page can ask on every poll. Messages posted after `asOf` do not
+ * make it stale — it is a summary as of then — but a deleted source message
+ * does.
+ */
+export const aiThreadSummaryValidityQuerySchema = z.object({
+  asOf: z.uuid(),
+  fingerprint: z.string().min(1).max(128),
+});
+export type AiThreadSummaryValidityQuery = z.infer<typeof aiThreadSummaryValidityQuerySchema>;
+
+export const aiThreadSummaryValidityResponseSchema = z.object({ current: z.boolean() });
+export type AiThreadSummaryValidityResponse = z.infer<typeof aiThreadSummaryValidityResponseSchema>;
 
 // ── Chats (/api/ai/chats) ────────────────────────────────────────────────────
 

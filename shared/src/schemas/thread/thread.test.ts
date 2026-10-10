@@ -5,6 +5,9 @@ import {
   createThreadSchema,
   listMessagesQuerySchema,
   MAX_ATTACHMENT_BYTES,
+  messageResponseSchema,
+  threadMessageParamsSchema,
+  threadSchema,
 } from "./thread.js";
 
 const ID = "018f3a4b-0000-7000-8000-000000000001";
@@ -79,5 +82,68 @@ describe("createAttachmentSchema", () => {
         .success,
     ).toBe(false);
     expect(createAttachmentSchema.safeParse({ ...file, fileMime: "pdf" }).success).toBe(false);
+  });
+});
+
+describe("threadMessageParamsSchema", () => {
+  it("takes the thread and the message, both as uuids", () => {
+    expect(threadMessageParamsSchema.parse({ id: ID, messageId: ID })).toEqual({
+      id: ID,
+      messageId: ID,
+    });
+    expect(threadMessageParamsSchema.safeParse({ id: ID, messageId: "latest" }).success).toBe(
+      false,
+    );
+    expect(threadMessageParamsSchema.safeParse({ id: ID }).success).toBe(false);
+  });
+});
+
+describe("deletion fields", () => {
+  const tombstone = {
+    id: ID,
+    channelId: ID,
+    taskId: null,
+    parentId: null,
+    author: ID,
+    body: "",
+    fileKey: null,
+    fileName: null,
+    fileSizeBytes: null,
+    fileMime: null,
+    aiRunId: null,
+    createdAt: "2026-10-01T00:00:00.000Z",
+    editedAt: null,
+    deletedAt: "2026-10-02T00:00:00.000Z",
+    deletedBy: ID,
+  };
+
+  it("reads a tombstone, with its deletion time as a date", () => {
+    const parsed = messageResponseSchema.parse({ message: tombstone });
+    expect(parsed.message.deletedAt).toEqual(new Date("2026-10-02T00:00:00.000Z"));
+    expect(parsed.message.body).toBe("");
+  });
+
+  it("requires the deletion fields, so a server from before the migration fails loudly", () => {
+    const { deletedAt: _deletedAt, deletedBy: _deletedBy, ...old } = tombstone;
+    expect(messageResponseSchema.safeParse({ message: old }).success).toBe(false);
+  });
+
+  it("requires a thread's creator, null allowed", () => {
+    const thread = {
+      id: ID,
+      kind: "group",
+      name: "Logistics",
+      teamId: null,
+      eventId: null,
+      minTier: 0,
+      createdAt: "2026-10-01T00:00:00.000Z",
+      memberIds: [ID],
+      lastReadAt: null,
+      unreadCount: 0,
+      lastMessageAt: null,
+    };
+    expect(threadSchema.safeParse(thread).success).toBe(false);
+    expect(threadSchema.parse({ ...thread, createdBy: null }).createdBy).toBeNull();
+    expect(threadSchema.parse({ ...thread, createdBy: ID }).createdBy).toBe(ID);
   });
 });

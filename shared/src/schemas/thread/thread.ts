@@ -9,7 +9,14 @@ import { channelKindSchema } from "../channel/channel.js";
  * table's — so the id `GET /api/events/:id?include=channel` returns is a thread
  * id. Not to be confused with a reply chain, which is `parentId` on a message.
  */
-const bodySchema = z.string().trim().min(1, "Message is required").max(4000);
+/**
+ * The longest message body the API stores, counted as SENT: an @mention goes
+ * over the wire as its `@[user-id]` token, which is longer than the name the
+ * composer shows, so a composer must measure what it will send.
+ */
+export const MESSAGE_BODY_MAX = 4000;
+
+const bodySchema = z.string().trim().min(1, "Message is required").max(MESSAGE_BODY_MAX);
 
 export const threadSchema = z.object({
   id: z.uuid(),
@@ -20,6 +27,11 @@ export const threadSchema = z.object({
   eventId: z.uuid().nullable(),
   minTier: z.number().int(),
   createdAt: z.coerce.date(),
+  // Who opened a group, stamped from the session by `POST /api/threads`. Null
+  // on every other kind, on a group opened before creators were recorded, and
+  // once that member has left the club. Every creator may delete their own
+  // group while still a member (`groupDeletionAuthority`).
+  createdBy: z.uuid().nullable(),
   // The member list of a group, dm or ai thread. Always empty on team and event
   // threads: those are gated by minTier, so no list says who is in them.
   memberIds: z.array(z.uuid()),
@@ -33,8 +45,13 @@ export const threadSchema = z.object({
 
 export type Thread = z.infer<typeof threadSchema>;
 
-/** Route params for every /threads/:id endpoint. */
+/** Route params for every /threads/:id endpoint, `DELETE /threads/:id` included. */
 export const threadParamsSchema = z.object({ id: z.uuid() });
+
+/** Route params for `DELETE /threads/:id/messages/:messageId`. */
+export const threadMessageParamsSchema = z.object({ id: z.uuid(), messageId: z.uuid() });
+
+export type ThreadMessageParams = z.infer<typeof threadMessageParamsSchema>;
 
 // ── GET /api/threads ─────────────────────────────────────────────────────────
 
@@ -70,6 +87,10 @@ export type CreateThread = z.infer<typeof createThreadSchema>;
  * Mirrors the `message` table column for column, so a bare `.select()`
  * satisfies it. `channelId` keeps the column's name — it is the thread id.
  * `fileKey` is a storage key, not a URL.
+ *
+ * A deleted message is a tombstone: `deletedAt` is set, and `body` and every
+ * file field are empty. It keeps its id, author, time and task/reply links, so
+ * it still anchors pagination and its replies still point somewhere.
  */
 export const messageSchema = z.object({
   id: z.uuid(),
@@ -85,6 +106,9 @@ export const messageSchema = z.object({
   aiRunId: z.uuid().nullable(),
   createdAt: z.coerce.date(),
   editedAt: z.coerce.date().nullable(),
+  deletedAt: z.coerce.date().nullable(),
+  // Null once the member who deleted it has left the club; `deletedAt` stays.
+  deletedBy: z.uuid().nullable(),
 });
 
 export type Message = z.infer<typeof messageSchema>;
@@ -94,8 +118,9 @@ export type Message = z.infer<typeof messageSchema>;
 /**
  * Newest first. `before` is the `nextCursor` of the previous page: a message
  * id, not an offset, because new messages arriving while you scroll back would
- * shift every offset by one. `q` is a case-insensitive keyword match on the
- * body (R10).
+ * shift every offset by one — a deleted message's id still works as one. `q` is
+ * a case-insensitive keyword match on the body (R10), and never matches a
+ * deleted message.
  */
 export const listMessagesQuerySchema = z.object({
   q: z.string().trim().min(1).max(100).optional(),
@@ -143,6 +168,7 @@ export type CreateAttachment = z.infer<typeof createAttachmentSchema>;
 
 export const threadResponseSchema = z.object({ thread: threadSchema });
 export const threadListResponseSchema = z.object({ threads: z.array(threadSchema) });
+// Also the `200` from `DELETE /threads/:id/messages/:messageId`: the tombstone.
 export const messageResponseSchema = z.object({ message: messageSchema });
 export const messageListResponseSchema = z.object({
   messages: z.array(messageSchema),

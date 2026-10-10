@@ -309,6 +309,45 @@ describe("channel constraints", () => {
       ),
     ).toBe("channel_named_unless_dm_check");
   });
+
+  it("rejects deleting any channel but a custom group", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "channel" ("id", "kind", "deleted_at") VALUES ('${newId()}', 'dm', now())`,
+      ),
+    ).toBe("channel_deletion_only_on_group_check");
+  });
+
+  it("rejects a deleter recorded without a deletion time", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "channel" ("id", "kind", "name", "deleted_by")
+         VALUES ('${newId()}', 'group', 'X', '${userA}')`,
+      ),
+    ).toBe("channel_deletion_only_on_group_check");
+  });
+
+  it("keeps a group's deletion when its creator and deleter leave the club", async () => {
+    const leaver = newId();
+    const group = newId();
+    await db.execute(sql`
+      INSERT INTO "app_user" ("id", "auth_user_id", "role") VALUES (${leaver}::uuid, ${AUTH_SPARE}, 'director')
+    `);
+    await db.execute(sql`
+      INSERT INTO "channel" ("id", "kind", "name", "created_by", "deleted_at", "deleted_by")
+      VALUES (${group}::uuid, 'group', 'test-constraint-deleted', ${leaver}::uuid, now(), ${leaver}::uuid)
+    `);
+    await db.execute(sql`DELETE FROM "app_user" WHERE "id" = ${leaver}::uuid`);
+
+    const result = await db.execute<{
+      created_by: string | null;
+      deleted_by: string | null;
+      deleted: boolean;
+    }>(sql`
+      SELECT "created_by", "deleted_by", "deleted_at" IS NOT NULL AS "deleted" FROM "channel" WHERE "id" = ${group}::uuid
+    `);
+    expect(result.rows).toEqual([{ created_by: null, deleted_by: null, deleted: true }]);
+  });
 });
 
 describe("message constraints", () => {
@@ -337,6 +376,43 @@ describe("message constraints", () => {
          VALUES ('${newId()}', '${channelId}', 'x', 'k/1', 'a.png', 0, 'image/png')`,
       ),
     ).toBe("message_file_size_positive_check");
+  });
+
+  it("rejects a tombstone that keeps its words", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "message" ("id", "channel_id", "body", "deleted_at")
+         VALUES ('${newId()}', '${channelId}', 'still here', now())`,
+      ),
+    ).toBe("message_has_content_check");
+  });
+
+  it("rejects a tombstone that keeps its file", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "message"
+           ("id", "channel_id", "body", "file_key", "file_name", "file_size_bytes", "file_mime", "deleted_at")
+         VALUES ('${newId()}', '${channelId}', '', 'k/1', 'a.png', 1, 'image/png', now())`,
+      ),
+    ).toBe("message_has_content_check");
+  });
+
+  it("rejects a deleter on a live message", async () => {
+    expect(
+      await violatedConstraint(
+        `INSERT INTO "message" ("id", "channel_id", "body", "deleted_by")
+         VALUES ('${newId()}', '${channelId}', 'x', '${userA}')`,
+      ),
+    ).toBe("message_deleter_only_when_deleted_check");
+  });
+
+  it("accepts an empty tombstone, its deleter since gone", async () => {
+    const id = newId();
+    const inserted = await db.execute(sql`
+      INSERT INTO "message" ("id", "channel_id", "body", "deleted_at")
+      VALUES (${id}::uuid, ${channelId}::uuid, '', now()) RETURNING "id"
+    `);
+    expect(inserted.rows).toHaveLength(1);
   });
 
   it("rejects a message that is its own parent", async () => {
