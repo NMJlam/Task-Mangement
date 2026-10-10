@@ -4,12 +4,24 @@ import { useThreadSummary } from "@/hooks/use-thread-summary";
 
 /**
  * A catch-up for a long thread, run only when asked. Once one is showing, the
- * same control re-runs it — the server answers from cache until someone posts,
- * so asking again on an unchanged thread costs nothing.
+ * same control re-runs it — the server answers from cache until the messages
+ * it reads change, so asking again on an unchanged thread costs nothing.
+ *
+ * `sourceVersion` moves whenever a message is deleted from the thread on this
+ * page; the summary then checks it was not written from that message, and is
+ * taken down if it was.
  */
-export function ThreadSummaryPanel({ channelId }: { channelId: string }) {
-  const { state, summarise } = useThreadSummary(channelId);
-  if (state.status === "disabled") return null;
+export function ThreadSummaryPanel({
+  channelId,
+  sourceVersion,
+  empty = false,
+}: {
+  channelId: string;
+  sourceVersion?: number;
+  empty?: boolean;
+}) {
+  const { state, summarise } = useThreadSummary(channelId, sourceVersion);
+  if (state.status === "disabled" || (empty && state.status !== "stale")) return null;
 
   const showing = state.status === "ok";
   return (
@@ -19,15 +31,17 @@ export function ThreadSummaryPanel({ channelId }: { channelId: string }) {
           <Sparkles aria-hidden="true" className="size-4 text-muted-foreground" />
           Catch up
         </h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void summarise()}
-          disabled={state.status === "loading"}
-        >
-          {showing ? <RefreshCw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-          {showing ? "Summarise again" : "Summarise thread"}
-        </Button>
+        {!empty && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void summarise()}
+            disabled={state.status === "loading"}
+          >
+            {showing ? <RefreshCw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+            {showing ? "Summarise again" : "Summarise thread"}
+          </Button>
+        )}
       </div>
 
       {state.status === "loading" && (
@@ -38,6 +52,14 @@ export function ThreadSummaryPanel({ channelId }: { channelId: string }) {
       {state.status === "error" && (
         <p className="mt-3 text-sm text-destructive" role="alert">
           {state.message}
+        </p>
+      )}
+      {state.status === "stale" && (
+        <p className="mt-3 text-sm text-muted-foreground" role="status">
+          A message this summary was written from has been deleted, so it was taken down.
+          {empty
+            ? " There are no messages left to summarise."
+            : " Summarise again for a current one."}
         </p>
       )}
       {showing && (

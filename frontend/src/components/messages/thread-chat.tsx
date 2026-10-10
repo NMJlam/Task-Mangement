@@ -1,14 +1,22 @@
-import type { Message, RosterMember, Thread } from "@ctp/shared";
-import { splitMentions } from "@ctp/shared";
-import { Paperclip, Search, Send, X } from "lucide-react";
-import { useId, type ReactNode } from "react";
+import type { DeletingViewer, Message, RosterMember, Thread } from "@ctp/shared";
+import { canDeleteMessage, splitMentions } from "@ctp/shared";
+import { Paperclip, Search, Send, Trash2, X } from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { LoadingLine } from "@/components/common/loading-line";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { MentionTextarea } from "@/components/messages/mention-textarea";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ThreadChatModel } from "@/hooks/use-thread-chat";
+import { continuations } from "@/lib/message-groups";
 import { useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +24,8 @@ const messageTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+const clockTime = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 
 /**
  * One conversation as a chat: its name and a search over it, the messages,
@@ -26,7 +36,9 @@ export function ThreadChat({
   title,
   kind,
   members,
+  mentionMembers = members,
   selfId,
+  viewer,
   titleAction,
   readOnly,
   className,
@@ -35,7 +47,16 @@ export function ThreadChat({
   title: string;
   kind: Thread["kind"];
   members: RosterMember[];
+  /** Eligible composer targets; the full roster still resolves historical authors. */
+  mentionMembers?: RosterMember[];
   selfId: string | undefined;
+  /**
+   * Who is reading, for which messages they may delete. Undefined while it
+   * loads, and then no message offers to be deleted: a control that appears
+   * and vanishes again, or one the API would refuse, is worse than a moment
+   * without one.
+   */
+  viewer?: DeletingViewer;
   /**
    * Sits beside the title. Messages puts the way to an event thread's event
    * here, and the event's Thread tab the way back to Messages.
@@ -44,7 +65,7 @@ export function ThreadChat({
   /**
    * Why the thread takes no new posts, shown where the box to write in would
    * be. A cancelled event's thread is a read-only archive, and the API answers
-   * a post to it with 409 THREAD_ARCHIVED.
+   * a post — or a deletion — in it with 409 THREAD_ARCHIVED.
    */
   readOnly?: string;
   className?: string;
@@ -56,13 +77,42 @@ export function ThreadChat({
   // event's Thread tab alike.
   const searchKey = useShortcut("search");
   const draftId = useId();
+  const draftErrorId = useId();
+  // The message whose deletion is being confirmed.
+  const [confirmation, setConfirmation] = useState<{ message: Message }>();
+  const confirming = confirmation?.message;
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  const gone = messages.state.status === "gone";
+  const chronological = messages.state.status === "ok" ? [...messages.state.items].reverse() : [];
+  const continued = continuations(chronological, { searching: searchQuery.trim() !== "" });
+  const deletable = (message: Message) =>
+    !readOnly &&
+    viewer !== undefined &&
+    message.deletedAt === null &&
+    canDeleteMessage(viewer, message);
+  // A modal belongs to the conversation that opened it, never to the next
+  // one shown by browser history or a remote deletion.
+  if (confirming && (gone || !deletable(confirming) || confirming.channelId !== chat.threadId)) {
+    setConfirmation(undefined);
+  }
+  const confirmError = confirming ? messages.deleteErrors[confirming.id] : undefined;
+  const confirmBusy = confirming ? messages.deleting.has(confirming.id) : false;
+
+  function closeConfirm() {
+    if (confirming) messages.clearDeleteError(confirming.id);
+    setConfirmation(undefined);
+  }
 
   return (
     <section aria-labelledby={headingId} className={cn("flex min-w-0 flex-col", className)}>
       <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-4 sm:px-6">
-        <div className="min-w-0">
+        <div className="max-w-full min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 id={headingId} className="font-semibold tracking-tight">
+            <h2
+              id={headingId}
+              className="min-w-0 font-semibold tracking-tight [overflow-wrap:anywhere]"
+            >
               {title}
             </h2>
             {titleAction}
@@ -84,6 +134,7 @@ export function ThreadChat({
             placeholder="Search messages"
             autoComplete="off"
             className="h-9 pl-8"
+            disabled={gone}
             {...searchKey}
           />
           {searchInput && (
@@ -108,6 +159,11 @@ export function ThreadChat({
         {messages.state.status === "error" && (
           <p className="text-sm text-destructive" role="alert">
             {messages.state.message}. Try again.
+          </p>
+        )}
+        {gone && (
+          <p className="py-12 text-center text-sm text-muted-foreground" role="status">
+            This conversation is no longer available. It may have been deleted.
           </p>
         )}
         {messages.state.status === "ok" && messages.state.items.length === 0 && (
@@ -136,15 +192,22 @@ export function ThreadChat({
           </div>
         )}
         {messages.state.status === "ok" && (
-          <div className="grid gap-5">
-            {[...messages.state.items].reverse().map((message) => (
-              <MessageRow key={message.id} message={message} members={members} />
+          <div>
+            {chronological.map((message, index) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                members={members}
+                continued={continued[index]!}
+                first={index === 0}
+                onDelete={deletable(message) ? () => setConfirmation({ message }) : undefined}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {readOnly ? (
+      {gone ? null : readOnly ? (
         <p className="border-t p-4 text-sm text-muted-foreground sm:p-5">{readOnly}</p>
       ) : (
         <form
@@ -159,10 +222,16 @@ export function ThreadChat({
               {messages.sendError}. Try again.
             </p>
           )}
+          {chat.draftError && (
+            <p id={draftErrorId} className="mb-3 text-sm text-destructive" role="alert">
+              {chat.draftError}
+            </p>
+          )}
           <label htmlFor={draftId} className="sr-only">
             Message {title}
           </label>
           <MentionTextarea
+            key={chat.threadId}
             id={draftId}
             name="message"
             rows={3}
@@ -172,9 +241,11 @@ export function ThreadChat({
             data-key-field
             className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring"
             required
+            aria-invalid={chat.draftError ? true : undefined}
+            aria-describedby={chat.draftError ? draftErrorId : undefined}
             value={chat.draft}
             onChange={chat.setDraft}
-            candidates={members}
+            candidates={mentionMembers}
             selfId={selfId}
           />
           <div className="mt-2 flex justify-end">
@@ -185,49 +256,167 @@ export function ThreadChat({
           </div>
         </form>
       )}
+
+      <Dialog open={confirming !== undefined} onOpenChange={(open) => !open && closeConfirm()}>
+        <DialogContent
+          // Cancel is where focus starts: Enter on a dialog that just opened
+          // must never be the thing that deletes.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            cancelRef.current?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Delete this message for everyone?</DialogTitle>
+            <DialogDescription>
+              Everyone in this conversation will see “Message deleted” in its place. This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          {confirmError && (
+            <p className="text-sm text-destructive" role="alert">
+              {confirmError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button ref={cancelRef} variant="ghost" disabled={confirmBusy} onClick={closeConfirm}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={confirmBusy}
+              onClick={() => {
+                const message = confirming;
+                if (!message) return;
+                void chat.deleteMessage(message).then((deleted) => {
+                  if (deleted) {
+                    setConfirmation((current) => (current === confirmation ? undefined : current));
+                  }
+                });
+              }}
+            >
+              {confirmBusy ? "Deleting…" : "Delete message"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
 
-function MessageRow({ message, members }: { message: Message; members: RosterMember[] }) {
+/**
+ * One message. The first of a run from one sender shows who and when; the
+ * rest of the run (`continued`) line up under its text with no header of
+ * their own. Each is still its own article, named for its sender and time, so
+ * a screen reader — and the always-visible time for keyboard/touch users — never
+ * loses either.
+ */
+function MessageRow({
+  message,
+  members,
+  continued,
+  first,
+  onDelete,
+}: {
+  message: Message;
+  members: RosterMember[];
+  continued: boolean;
+  first: boolean;
+  onDelete: (() => void) | undefined;
+}) {
   const author = members.find((member) => member.id === message.author);
   // A message the assistant wrote is posted under the member who ran it, so
   // `aiRunId`, not the author, says whose words these are.
   const name = message.aiRunId ? "MAC Assistant" : author?.name || author?.email || "Former Member";
+  const deleted = message.deletedAt !== null;
+  const when = messageTime.format(message.createdAt);
 
   return (
-    <article className="flex items-start gap-3">
-      <UserAvatar name={name} />
+    <article
+      aria-label={`${name}, ${when}`}
+      className={cn(
+        "group relative flex items-start gap-3 focus-within:bg-accent/40 hover:bg-accent/40",
+        // Tighter inside a run, the usual gap before a new one.
+        !first && (continued ? "mt-0.5" : "mt-4"),
+        continued && "pl-17",
+      )}
+    >
+      {!continued && (
+        <div className="flex w-14 shrink-0 justify-end">
+          <UserAvatar name={name} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h3 className="text-sm font-semibold">{name}</h3>
+        {continued ? (
+          // Always readable, including on touch and rows without actions.
           <time
             dateTime={message.createdAt.toISOString()}
-            className="text-xs text-muted-foreground"
+            title={when}
+            className="absolute top-0.5 left-0 w-14 text-right text-[0.625rem] whitespace-nowrap text-muted-foreground tabular-nums"
           >
-            {messageTime.format(message.createdAt)}
+            {clockTime.format(message.createdAt)}
           </time>
-        </div>
-        {message.body && (
-          <p className="mt-1 text-sm leading-6 whitespace-pre-wrap">
-            {splitMentions(message.body).map((part, index) =>
-              typeof part === "string" ? (
-                <span key={index}>{part}</span>
-              ) : (
-                <span key={index} className="bg-primary/10 px-1 py-0.5 font-medium text-primary">
-                  @{mentionName(part.userId, members)}
-                </span>
-              ),
-            )}
-          </p>
+        ) : (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{name}</h3>
+            <time
+              dateTime={message.createdAt.toISOString()}
+              className="text-xs text-muted-foreground"
+            >
+              {when}
+            </time>
+          </div>
         )}
-        {message.fileName && (
-          <p className="mt-2 inline-flex items-center gap-1.5 bg-accent px-2 py-1 text-xs">
-            <Paperclip aria-hidden="true" className="size-3.5" />
-            {message.fileName}
+        {deleted ? (
+          <p className={cn("text-sm text-muted-foreground italic", !continued && "mt-1")}>
+            Message deleted
           </p>
+        ) : (
+          <>
+            {message.body && (
+              <p
+                className={cn(
+                  "text-sm leading-6 [overflow-wrap:anywhere] whitespace-pre-wrap",
+                  !continued && "mt-1",
+                )}
+              >
+                {splitMentions(message.body).map((part, index) =>
+                  typeof part === "string" ? (
+                    <span key={index}>{part}</span>
+                  ) : (
+                    <span
+                      key={index}
+                      className="bg-primary/10 px-1 py-0.5 font-medium text-primary"
+                    >
+                      @{mentionName(part.userId, members)}
+                    </span>
+                  ),
+                )}
+              </p>
+            )}
+            {message.fileName && (
+              <p className="mt-2 inline-flex max-w-full items-center gap-1.5 bg-accent px-2 py-1 text-xs [overflow-wrap:anywhere]">
+                <Paperclip aria-hidden="true" className="size-3.5 shrink-0" />
+                {message.fileName}
+              </p>
+            )}
+          </>
         )}
       </div>
+      {onDelete && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Delete message from ${name}, ${when}`}
+          onClick={onDelete}
+          // Shown when the row is pointed at or anything in it has focus, and
+          // always on a touch screen, which has no hover to reveal it.
+          className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+        >
+          <Trash2 aria-hidden="true" />
+        </Button>
+      )}
     </article>
   );
 }

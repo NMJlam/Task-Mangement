@@ -1,5 +1,5 @@
-import type { RosterMember, Thread } from "@ctp/shared";
-import { CalendarDays, Hash, MessageCircle, Plus } from "lucide-react";
+import { canDeleteGroup, type RosterMember, type Thread } from "@ctp/shared";
+import { CalendarDays, Hash, MessageCircle, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { LoadingLine } from "@/components/common/loading-line";
@@ -7,6 +7,8 @@ import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { Panel } from "@/components/common/panel";
 import { ShellEmpty } from "@/components/common/shell-empty";
+import { DeleteGroupDialog } from "@/components/messages/delete-group-dialog";
+import { GroupMembersDialog } from "@/components/messages/group-members-dialog";
 import { NewConversationDialog } from "@/components/messages/new-conversation-dialog";
 import { ThreadChat } from "@/components/messages/thread-chat";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,8 @@ export function MessagesPage() {
   const requested = searchParams.get("thread") ?? undefined;
   const [selectedId, setSelectedId] = useState(requested);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // The group whose deletion is being confirmed.
+  const [deletingGroup, setDeletingGroup] = useState<Thread>();
   const newKey = useShortcut("new");
   const threadItems = threads.state.status === "ok" ? threads.state.items : [];
   const unreadTotal = threadItems.reduce((total, thread) => total + thread.unreadCount, 0);
@@ -70,14 +74,59 @@ export function MessagesPage() {
     );
   }
 
-  const chat = useThreadChat(active?.id, threads.noteActivity);
+  // A deleted message changes the conversation's unread count and last
+  // activity, and a conversation the server stopped showing (deleted by
+  // someone else, or access lost) should leave the list: either way, re-read it.
+  const reloadThreads = threads.reload;
+  const chat = useThreadChat(active?.id, {
+    onSent: threads.noteActivity,
+    onDeleted: reloadThreads,
+    onGone: reloadThreads,
+  });
   const memberItems = members.state.status === "ok" ? members.state.items : [];
+  const mentionMembers =
+    active?.kind === "group" || active?.kind === "dm"
+      ? memberItems.filter((member) => active.memberIds.includes(member.id))
+      : memberItems;
   const markThreadRead = threads.markRead;
   const selfId = me.status === "ok" ? me.user.id : undefined;
+  const viewer = me.status === "ok" ? { id: me.user.id, role: me.user.role } : undefined;
+  const mayDeleteActive =
+    active !== undefined &&
+    viewer !== undefined &&
+    canDeleteGroup(viewer, {
+      kind: active.kind,
+      createdBy: active.createdBy,
+      isMember: active.memberIds.includes(viewer.id),
+    });
+
+  // A confirmation belongs to the conversation and permission on screen.
+  if (deletingGroup && (deletingGroup.id !== active?.id || !mayDeleteActive)) {
+    setDeletingGroup(undefined);
+  }
 
   useEffect(() => {
     if (active) void markThreadRead(active);
   }, [active, markThreadRead]);
+
+  // A `?thread=` the list no longer has — deleted here or elsewhere, or never
+  // listed — is replaced by the conversation shown in its place, or dropped
+  // when there is none, so a refresh or a shared link never names a dead one.
+  const activeId = active?.id;
+  const listed = threads.state.status === "ok";
+  const requestedListed = threadItems.some((thread) => thread.id === requested);
+  useEffect(() => {
+    if (!listed || !requested || requestedListed) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (activeId) next.set("thread", activeId);
+        else next.delete("thread");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [listed, requested, requestedListed, activeId, setSearchParams]);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -123,6 +172,30 @@ export function MessagesPage() {
           Couldn&apos;t load conversations: {threads.state.message}. Refresh the page to try again.
         </LogLine>
       )}
+      {deletingGroup && (
+        <DeleteGroupDialog
+          name={threadName(deletingGroup, memberItems, selfId)}
+          busy={threads.deletingId === deletingGroup.id}
+          error={
+            threads.deleteError?.threadId === deletingGroup.id
+              ? threads.deleteError.message
+              : undefined
+          }
+          onClose={() => {
+            setDeletingGroup(undefined);
+            threads.clearDeleteError();
+          }}
+          // On success the group leaves the list, the next conversation opens
+          // in its place and the URL follows; on failure it all stays put.
+          onConfirm={() =>
+            void threads.deleteGroup(deletingGroup).then((deleted) => {
+              if (deleted)
+                setDeletingGroup((current) => (current === deletingGroup ? undefined : current));
+            })
+          }
+        />
+      )}
+
       {threads.state.status === "ok" && threadItems.length === 0 && (
         <div className="mt-8 rounded-xl border border-dashed">
           <ShellEmpty command="ls threads/" message="No conversations are available yet." />
@@ -131,10 +204,11 @@ export function MessagesPage() {
       {threads.state.status === "ok" && active && (
         // Two panes, lazygit's way: the conversations titled in their border,
         // with their keys in the foot, and the open conversation beside them.
-        <div className="mt-8 grid min-h-[36rem] gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <div className="mt-8 grid min-h-[36rem] grid-cols-1 gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
           <Panel
             title="Conversations"
             meta={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
+            className="min-w-0"
             bodyClassName="p-1"
           >
             {/* A key list: j/k walk the conversations, enter opens one. The
@@ -181,18 +255,48 @@ export function MessagesPage() {
               title={threadName(active, memberItems, selfId)}
               kind={active.kind}
               members={memberItems}
+              mentionMembers={mentionMembers}
               selfId={selfId}
+              viewer={viewer}
               titleAction={
-                // The same conversation, on its event's page — beside the
-                // event's tasks and the thread summary.
-                active.eventId && (
-                  <Button asChild variant="outline" size="xs">
-                    <Link to={`/events/${active.eventId}?tab=thread`}>
-                      <CalendarDays aria-hidden="true" />
-                      View event
-                    </Link>
-                  </Button>
-                )
+                <>
+                  {/* The same conversation, on its event's page — beside the
+                      event's tasks and the thread summary. */}
+                  {active.eventId && (
+                    <Button asChild variant="outline" size="xs">
+                      <Link to={`/events/${active.eventId}?tab=thread`}>
+                        <CalendarDays aria-hidden="true" />
+                        View event
+                      </Link>
+                    </Button>
+                  )}
+                  {active.kind === "group" && (
+                    <GroupMembersDialog
+                      key={active.id}
+                      name={threadName(active, memberItems, selfId)}
+                      memberIds={active.memberIds}
+                      members={memberItems}
+                      selfId={selfId}
+                      createdBy={active.createdBy}
+                      rosterStatus={members.state.status}
+                    />
+                  )}
+                  {/* Only for a group, and only to those the API would let
+                      delete it: the president, or the member who opened it. */}
+                  {mayDeleteActive && (
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      onClick={() => {
+                        threads.clearDeleteError();
+                        setDeletingGroup(active);
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Delete group
+                    </Button>
+                  )}
+                </>
               }
               className="flex-1"
             />

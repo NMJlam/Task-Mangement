@@ -483,6 +483,35 @@ describe("EventDetailPage", () => {
       expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
     });
 
+    it("offers no summary when a thread contains only file attachments", async () => {
+      stubEvent({
+        messages: [
+          {
+            ...message(),
+            body: "",
+            fileKey: "threads/plan.pdf",
+            fileName: "plan.pdf",
+            fileSizeBytes: 20,
+            fileMime: "application/pdf",
+          },
+        ],
+      });
+      renderDetail("?tab=thread");
+      expect(await screen.findByText("plan.pdf")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
+    });
+
+    it("offers no summary when a thread contains only tombstones", async () => {
+      stubEvent({
+        messages: [
+          { ...message(), body: "", deletedAt: "2026-06-03T00:00:00.000Z", deletedBy: ME_ID },
+        ],
+      });
+      renderDetail("?tab=thread");
+      expect(await screen.findByText("Message deleted")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
+    });
+
     /**
      * A cancelled event's thread is a read-only archive (the API answers a post
      * with 409 THREAD_ARCHIVED), and Messages does not list it, so there is no
@@ -502,6 +531,68 @@ describe("EventDetailPage", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText(/message winter showcase/i)).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Open in Messages" })).not.toBeInTheDocument();
+    });
+
+    it("offers no deletion in a cancelled event's archive, to the president either", async () => {
+      stubEvent({
+        role: "president",
+        tier: 2,
+        event: { ...eventFixture, status: "cancelled" },
+        messages: [message()],
+        members: [roster()],
+      });
+      renderDetail("?tab=thread");
+
+      expect(await screen.findByText("Lighting rig is booked.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Delete message/ })).not.toBeInTheDocument();
+    });
+
+    it("deletes a message from the Thread tab, and takes down a summary written from it", async () => {
+      const user = userEvent.setup({ delay: null });
+      const fetchMock = stubEvent({
+        role: "president",
+        tier: 2,
+        messages: [message()],
+        members: [roster()],
+      });
+      const answer = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === "DELETE" && url.includes("/messages/")) {
+          return Promise.resolve(
+            ok({
+              message: {
+                ...message(),
+                body: "",
+                deletedAt: "2026-06-03T00:00:00.000Z",
+                deletedBy: ME_ID,
+              },
+            }),
+          );
+        }
+        if (url.includes("/summary/validity")) return Promise.resolve(ok({ current: false }));
+        return answer(url, init);
+      });
+      renderDetail("?tab=thread");
+
+      await user.click(await screen.findByRole("button", { name: "Summarise thread" }));
+      expect(await screen.findByText(SUMMARY_POINT)).toBeInTheDocument();
+
+      // Someone else's message: the president moderates it.
+      await user.click(screen.getByRole("button", { name: /^Delete message from Ada Lovelace/ }));
+      const dialog = await screen.findByRole("dialog", {
+        name: "Delete this message for everyone?",
+      });
+      await user.click(within(dialog).getByRole("button", { name: "Delete message" }));
+
+      expect(await screen.findByText("Message deleted")).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/threads/${CHANNEL_ID}/messages/${message().id}`,
+        expect.objectContaining({ method: "DELETE" }),
+      );
+      await waitFor(() => expect(screen.queryByText(SUMMARY_POINT)).not.toBeInTheDocument());
+      expect(screen.getByText(/has been deleted, so it was taken down/)).toBeInTheDocument();
+      expect(screen.getByText(/There are no messages left to summarise/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Summarise thread" })).not.toBeInTheDocument();
     });
 
     it("names a message the assistant wrote as the assistant", async () => {
@@ -820,6 +911,8 @@ function message() {
     aiRunId: null,
     createdAt: "2026-06-02T00:00:00.000Z",
     editedAt: null,
+    deletedAt: null,
+    deletedBy: null,
   };
 }
 
@@ -896,6 +989,7 @@ function stubEvent({
         ok({
           summary: { summary: [SUMMARY_POINT], actionItems: [] },
           asOfMessageId: message().id,
+          sourceFingerprint: "fp-1",
         }),
       );
     }

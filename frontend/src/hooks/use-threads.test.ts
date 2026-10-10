@@ -1,6 +1,7 @@
+import type { Thread } from "@ctp/shared";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useThreadMessages } from "./use-threads";
+import { useThreadMessages, useThreads } from "./use-threads";
 
 const THREAD_A = "018f3a4b-0000-7000-8000-0000000000a1";
 const THREAD_B = "018f3a4b-0000-7000-8000-0000000000b2";
@@ -26,6 +27,9 @@ function message(channelId: string, body: string) {
     aiRunId: null,
     createdAt: new Date(Date.UTC(2026, 9, 1, 0, sequence)).toISOString(),
     editedAt: null,
+    // Typed wide, so a test can turn one into its tombstone.
+    deletedAt: null as string | null,
+    deletedBy: null as string | null,
   };
 }
 
@@ -514,4 +518,496 @@ describe("loading older pages", () => {
     expect(bodies(hook.result.current.state)).toHaveLength(50);
     expect(hook.result.current.loadingOlder).toBe(false);
   });
+});
+
+type Held = ReturnType<typeof useThreadMessages>["state"];
+
+/** The held message with `id`, as the hook holds it. */
+const held = (state: Held, id: string) =>
+  state.status === "ok" ? state.items.find((item) => item.id === id) : undefined;
+
+/** What the route answers a deletion with: the same row, emptied. */
+const tombstoneOf = (fixture: Fixture) => ({
+  ...fixture,
+  body: "",
+  deletedAt: new Date(Date.UTC(2026, 9, 2)).toISOString(),
+  deletedBy: AUTHOR,
+});
+
+describe("deleting a message", () => {
+  it("shows the tombstone only once the server has agreed", async () => {
+    const said = message(THREAD_A, "Oops");
+    const removal = deferred<Answer>();
+    const fetchMock = stubFetch((url, method) =>
+      method === "DELETE" ? removal.promise : respond({ messages: [said], nextCursor: null }),
+    );
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["Oops"]));
+
+    let result: Promise<unknown> = Promise.resolve();
+    act(() => {
+      result = hook.result.current.deleteMessage(held(hook.result.current.state, said.id)!);
+    });
+    expect(hook.result.current.deleting.has(said.id)).toBe(true);
+    expect(bodies(hook.result.current.state)).toEqual(["Oops"]);
+
+    await act(async () => {
+      removal.resolve(respond({ message: tombstoneOf(said) }));
+      await result;
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/threads/${THREAD_A}/messages/${said.id}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(held(hook.result.current.state, said.id)).toMatchObject({ body: "" });
+    expect(held(hook.result.current.state, said.id)!.deletedAt).not.toBeNull();
+    expect(hook.result.current.deleting.has(said.id)).toBe(false);
+  });
+
+  it("keeps the message, with the server's reason, when it refuses", async () => {
+    const said = message(THREAD_A, "Not yours");
+    stubFetch((url, method) =>
+      method === "DELETE"
+        ? respond(
+            { error: { code: "FORBIDDEN", message: "You can only delete your own messages." } },
+            403,
+          )
+        : respond({ messages: [said], nextCursor: null }),
+    );
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["Not yours"]));
+
+    let result: unknown;
+    await act(async () => {
+      result = await hook.result.current.deleteMessage(held(hook.result.current.state, said.id)!);
+    });
+
+    expect(result).toBeUndefined();
+    expect(bodies(hook.result.current.state)).toEqual(["Not yours"]);
+    expect(hook.result.current.deleteErrors[said.id]).toBe(
+      "You can only delete your own messages.",
+    );
+  });
+
+  it("takes a deleted message out of the search results", async () => {
+    const said = message(THREAD_A, "venue booked");
+    stubFetch((url, method) =>
+      method === "DELETE"
+        ? respond({ message: tombstoneOf(said) })
+        : respond({ messages: [said], nextCursor: null }),
+    );
+    const hook = renderHook(() => useThreadMessages(THREAD_A, "venue"));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["venue booked"]));
+
+    await act(async () => {
+      await hook.result.current.deleteMessage(held(hook.result.current.state, said.id)!);
+    });
+
+    expect(bodies(hook.result.current.state)).toEqual([]);
+  });
+
+  it("never lets a read that started before the deletion bring the words back", async () => {
+    const said = message(THREAD_A, "Secret");
+    const stale = deferred<Answer>();
+    let holding = false;
+    stubFetch((url, method) => {
+      if (method === "DELETE") return respond({ message: tombstoneOf(said) });
+      return holding ? stale.promise : respond({ messages: [said], nextCursor: null });
+    });
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["Secret"]));
+
+    // A refresh reads the live message, and is slow to land.
+    holding = true;
+    returnToTab();
+    await act(async () => {
+      await hook.result.current.deleteMessage(held(hook.result.current.state, said.id)!);
+    });
+    stale.resolve(respond({ messages: [said], nextCursor: null }));
+    await settle();
+
+    expect(held(hook.result.current.state, said.id)).toMatchObject({ body: "" });
+  });
+});
+
+describe("deletions made elsewhere", () => {
+  it("show on the next refresh, even in an older page already loaded", async () => {
+    let all = history(THREAD_A, 0, 60);
+    stubFetch((url) => paged(all, url));
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toHaveLength(50));
+    await act(async () => {
+      await hook.result.current.loadOlder();
+    });
+    expect(bodies(hook.result.current.state)).toContain("m5");
+
+    // Deleted by someone else, well below the newest page.
+    const target = all[5]!;
+    all = all.map((item) => (item.id === target.id ? tombstoneOf(item) : item));
+    returnToTab();
+
+    await waitFor(() => expect(bodies(hook.result.current.state)).not.toContain("m5"));
+    expect(held(hook.result.current.state, target.id)!.deletedAt).not.toBeNull();
+    expect(bodies(hook.result.current.state)).toHaveLength(60);
+    expect(cursorOf(hook.result.current.state)).toBeNull();
+  });
+
+  it("drop a search hit the server no longer returns", async () => {
+    let all: Fixture[] = [message(THREAD_A, "venue one"), message(THREAD_A, "venue two")];
+    stubFetch((url) =>
+      paged(
+        all.filter((item) => item.deletedAt === null && item.body.includes("venue")),
+        url,
+      ),
+    );
+    const hook = renderHook(() => useThreadMessages(THREAD_A, "venue"));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toHaveLength(2));
+
+    all = all.map((item) => (item.body === "venue one" ? tombstoneOf(item) : item));
+    returnToTab();
+
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["venue two"]));
+  });
+
+  it("clear a thread the server stops showing, and say so", async () => {
+    let gone = false;
+    stubFetch(() =>
+      gone
+        ? respond({ error: { code: "THREAD_NOT_FOUND", message: "Thread not found." } }, 404)
+        : respond({ messages: [message(THREAD_A, "hello")], nextCursor: null }),
+    );
+    const onGone = vi.fn();
+    const hook = renderHook(() => useThreadMessages(THREAD_A, "", { onGone }));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["hello"]));
+
+    gone = true;
+    returnToTab();
+
+    await waitFor(() => expect(hook.result.current.state.status).toBe("gone"));
+    expect(onGone).toHaveBeenCalledWith(THREAD_A);
+  });
+
+  it("leave what is on screen when a refresh fails for any other reason", async () => {
+    let failing = false;
+    stubFetch(() =>
+      failing
+        ? respond({}, 500)
+        : respond({ messages: [message(THREAD_A, "hello")], nextCursor: null }),
+    );
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toEqual(["hello"]));
+
+    failing = true;
+    returnToTab();
+    await settle();
+
+    expect(bodies(hook.result.current.state)).toEqual(["hello"]);
+  });
+});
+
+describe("deleting a group", () => {
+  const GROUP = THREAD_A;
+  const OTHER = THREAD_B;
+  const group = (id: string, name: string) => ({
+    id,
+    kind: "group",
+    name,
+    teamId: null,
+    eventId: null,
+    minTier: 0,
+    createdAt: "2026-10-01T00:00:00.000Z",
+    createdBy: AUTHOR,
+    memberIds: [AUTHOR],
+    lastReadAt: null,
+    unreadCount: 1,
+    lastMessageAt: null,
+  });
+  const names = (state: ReturnType<typeof useThreads>["state"]) =>
+    state.status === "ok" ? state.items.map((item) => item.name) : [];
+  const first = (state: ReturnType<typeof useThreads>["state"]) =>
+    (state as { items: Thread[] }).items[0]!;
+
+  /** `GET /api/threads` answers in turn from `lists`, the last one repeating. */
+  function stubList(
+    lists: (Answer | Promise<Answer>)[],
+    onWrite: (url: string, method: string) => Answer | Promise<Answer>,
+  ) {
+    let reads = 0;
+    return stubFetch((url, method) => {
+      if (method !== "GET") return onWrite(url, method);
+      const answer = lists[Math.min(reads, lists.length - 1)]!;
+      reads += 1;
+      return answer;
+    });
+  }
+
+  it("drops it once the server agrees, and a list read from before cannot bring it back", async () => {
+    const stale = deferred<Answer>();
+    const both = respond({ threads: [group(GROUP, "Logistics"), group(OTHER, "Sponsors")] });
+    const fetchMock = stubList(
+      [both, stale.promise, respond({ threads: [group(OTHER, "Sponsors")] })],
+      () => respond(null, 204),
+    );
+    const hook = renderHook(() => useThreads());
+    await waitFor(() =>
+      expect(names(hook.result.current.state)).toEqual(["Logistics", "Sponsors"]),
+    );
+
+    returnToTab();
+    let deleted: unknown;
+    await act(async () => {
+      deleted = await hook.result.current.deleteGroup(first(hook.result.current.state));
+    });
+    stale.resolve(both);
+    await settle();
+
+    expect(deleted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/threads/${GROUP}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(names(hook.result.current.state)).toEqual(["Sponsors"]);
+  });
+
+  it("leaves it, with the reason, when the server refuses", async () => {
+    stubList([respond({ threads: [group(GROUP, "Logistics")] })], () =>
+      respond({ error: { code: "FORBIDDEN", message: "You cannot delete this group." } }, 403),
+    );
+    const hook = renderHook(() => useThreads());
+    await waitFor(() => expect(names(hook.result.current.state)).toEqual(["Logistics"]));
+
+    let deleted: unknown;
+    await act(async () => {
+      deleted = await hook.result.current.deleteGroup(first(hook.result.current.state));
+    });
+
+    expect(deleted).toBe(false);
+    expect(names(hook.result.current.state)).toEqual(["Logistics"]);
+    expect(hook.result.current.deleteError).toEqual({
+      threadId: GROUP,
+      message: "You cannot delete this group.",
+    });
+  });
+
+  it("treats a group someone else already deleted as deleted", async () => {
+    stubList([respond({ threads: [group(GROUP, "Logistics")] }), respond({ threads: [] })], () =>
+      respond({ error: { code: "THREAD_NOT_FOUND", message: "Thread not found." } }, 404),
+    );
+    const hook = renderHook(() => useThreads());
+    await waitFor(() => expect(names(hook.result.current.state)).toEqual(["Logistics"]));
+
+    await act(async () => {
+      await hook.result.current.deleteGroup(first(hook.result.current.state));
+    });
+
+    expect(names(hook.result.current.state)).toEqual([]);
+    expect(hook.result.current.deleteError).toBeUndefined();
+  });
+
+  it("never lets a late mark-read answer put it back", async () => {
+    const read = deferred<Answer>();
+    stubList(
+      [respond({ threads: [group(GROUP, "Logistics")] }), respond({ threads: [] })],
+      (url, method) => (method === "POST" ? read.promise : respond(null, 204)),
+    );
+    const hook = renderHook(() => useThreads());
+    await waitFor(() => expect(names(hook.result.current.state)).toEqual(["Logistics"]));
+    const logistics = first(hook.result.current.state);
+
+    let marking: Promise<unknown> = Promise.resolve();
+    act(() => {
+      marking = hook.result.current.markRead(logistics);
+    });
+    await act(async () => {
+      await hook.result.current.deleteGroup(logistics);
+    });
+    await act(async () => {
+      read.resolve(respond({ thread: { ...group(GROUP, "Logistics"), unreadCount: 0 } }));
+      await marking;
+    });
+
+    expect(names(hook.result.current.state)).toEqual([]);
+  });
+});
+
+describe("review regressions", () => {
+  it("preserves the older page loaded while a refresh crosses its original floor", async () => {
+    let all = history(THREAD_A, 0, 150);
+    const delayed = deferred<Answer>();
+    let refreshing = false;
+    let delayedUrl: string | undefined;
+    stubFetch((url) => {
+      if (refreshing && url.includes("before=" + all[101]!.id)) {
+        delayedUrl = url;
+        return delayed.promise;
+      }
+      return paged(all, url);
+    });
+    const hook = renderHook(() => useThreadMessages(THREAD_A));
+    await waitFor(() => expect(bodies(hook.result.current.state)).toHaveLength(50));
+    all = [...all, ...history(THREAD_A, 150, 1)];
+    refreshing = true;
+    returnToTab();
+    await waitFor(() => expect(delayedUrl).toBeDefined());
+    await act(async () => {
+      await hook.result.current.loadOlder();
+    });
+    expect(bodies(hook.result.current.state)).toHaveLength(100);
+    delayed.resolve(paged(all, delayedUrl!));
+    await settle();
+    expect(bodies(hook.result.current.state)).toHaveLength(101);
+    expect(bodies(hook.result.current.state)).toContain("m99");
+    expect(cursorOf(hook.result.current.state)).toBe(all[50]!.id);
+    refreshing = false;
+    await act(async () => {
+      await hook.result.current.loadOlder();
+    });
+    expect(new Set(bodies(hook.result.current.state)).size).toBe(151);
+  });
+
+  it.each(["", "venue"])(
+    "never revives a known deletion from a late send, query %j",
+    async (query) => {
+      const post = deferred<Answer>();
+      const live = message(THREAD_A, "venue booked");
+      let visible = false;
+      stubFetch((_url, method) => {
+        if (method === "POST") return post.promise;
+        if (method === "DELETE") return respond({ message: tombstoneOf(live) });
+        return respond({ messages: visible ? [live] : [], nextCursor: null });
+      });
+      const hook = renderHook(() => useThreadMessages(THREAD_A, query));
+      await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+      let sending: Promise<unknown> = Promise.resolve();
+      act(() => {
+        sending = hook.result.current.send(live.body);
+      });
+      visible = true;
+      returnToTab();
+      await waitFor(() => expect(bodies(hook.result.current.state)).toEqual([live.body]));
+      await act(async () => {
+        await hook.result.current.deleteMessage(held(hook.result.current.state, live.id)!);
+      });
+      await act(async () => {
+        post.resolve(respond({ message: live }, 201));
+        await sending;
+      });
+      expect(bodies(hook.result.current.state)).toEqual(query ? [] : [""]);
+    },
+  );
+});
+
+it("keeps the API sequence when distinct database timestamps round to the same millisecond", async () => {
+  const newer = {
+    ...message(THREAD_A, "newer microsecond"),
+    createdAt: "2026-10-10T12:00:00.000Z",
+  };
+  const older = { ...message(THREAD_A, "older microsecond"), createdAt: newer.createdAt };
+  // The newer transaction started later but allocated its UUID earlier. Dates
+  // in the JSON response lose PostgreSQL's microseconds; its sequence must win.
+  const fetchMock = stubFetch(() => respond({ messages: [newer, older], nextCursor: older.id }));
+  const hook = renderHook(() => useThreadMessages(THREAD_A));
+  await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(hook.result.current.state).toMatchObject({
+      items: [{ id: newer.id }, { id: older.id }],
+    }),
+  );
+});
+
+it("retains a delayed send already seen at the history boundary by a read", async () => {
+  const all = Array.from({ length: 150 }, (_, i) => message(THREAD_A, "history " + i));
+  const pending = deferred<Answer>();
+  stubFetch((url, method) =>
+    method === "POST"
+      ? pending.promise
+      : url.includes("q=missing")
+        ? respond({ messages: [], nextCursor: null })
+        : respond({ messages: all.slice(100).reverse(), nextCursor: all[100]!.id }),
+  );
+  const hook = renderHook(({ q }) => useThreadMessages(THREAD_A, q), {
+    initialProps: { q: "missing" },
+  });
+  await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+  let sending!: Promise<unknown>;
+  act(() => {
+    sending = hook.result.current.send(all[100]!.body);
+  });
+  hook.rerender({ q: "" });
+  await waitFor(() =>
+    expect(hook.result.current.state).toMatchObject({ items: Array(50).fill({}) }),
+  );
+  await act(async () => {
+    pending.resolve(respond({ message: all[100] }, 201));
+    await sending;
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await waitFor(() =>
+    expect(hook.result.current.state).toMatchObject({
+      items: all
+        .slice(100)
+        .reverse()
+        .map((item) => ({ id: item.id })),
+    }),
+  );
+});
+
+it("receives messages and tombstones on a three-second poll without focus or input", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const incoming = message(THREAD_A, "Arrived while idle");
+  let page = { messages: [] as ReturnType<typeof message>[], nextCursor: null };
+  stubFetch(() => respond(page));
+  const hook = renderHook(() => useThreadMessages(THREAD_A));
+  await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+  try {
+    page = { messages: [incoming], nextCursor: null };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(bodies(hook.result.current.state)).toEqual([incoming.body]);
+    page = {
+      messages: [{ ...incoming, body: "", deletedAt: new Date().toISOString(), deletedBy: AUTHOR }],
+      nextCursor: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(bodies(hook.result.current.state)).toEqual([""]);
+  } finally {
+    hook.unmount();
+    vi.useRealTimers();
+  }
+});
+
+it("shows a rejected mention's reason without adding a message", async () => {
+  stubFetch((_url, method) =>
+    method === "POST"
+      ? respond(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Request validation failed",
+              fields: {
+                body: ["Mention only people who belong to this conversation."],
+              },
+            },
+          },
+          422,
+        )
+      : undefined,
+  );
+  const hook = renderHook(() => useThreadMessages(THREAD_A));
+  await waitFor(() => expect(hook.result.current.state.status).toBe("ok"));
+  await act(async () => {
+    await hook.result.current.send("@[" + AUTHOR + "]");
+  });
+  expect(hook.result.current.sendError).toBe(
+    "Mention only people who belong to this conversation.",
+  );
+  expect(bodies(hook.result.current.state)).toEqual([]);
 });
