@@ -788,7 +788,7 @@ Club risk is `critical` when committed spend exceeds the pool or an event is
 over its allocation. Otherwise it reuses the event progress rule: `at_risk`
 when an event's spend is ahead of its planning runway, and `on_track` otherwise.
 
-The Finance page re-reads this and `GET /api/expenses` every 15 seconds while
+The Finance page re-reads this and `GET /api/expenses` every 3 seconds (`VITE_FINANCE_POLL_MS`) while
 its tab is visible (and on returning to it), so a payment or an allocation
 change made elsewhere shows up without a reload. A refresh asks for as many
 ledger rows as are already on screen, in pages of at most 100, so paging down

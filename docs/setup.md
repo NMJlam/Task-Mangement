@@ -292,6 +292,21 @@ It is a **frontend** variable: Vite inlines `VITE_*` values at build time, so on
 Vercel add it under **Settings → Environment Variables** and then **redeploy**.
 Saving the variable alone changes nothing until the next build.
 
+### Finance poll interval — `VITE_FINANCE_POLL_MS`
+
+The Finance page re-reads the budget and the expense ledger every **3000 ms**
+while a tab is in front (background tabs don't poll), so a change made in one
+window shows up in another within a few seconds. A tick is two requests per open
+tab, and it is skipped while the previous read is still in flight. Slow it down
+on a tight quota:
+
+```dotenv
+VITE_FINANCE_POLL_MS=10000   # milliseconds; unset or invalid → 3000
+```
+
+Like the inbox interval it is a **frontend** variable, inlined at build time:
+on Vercel, add it and **redeploy**.
+
 ### Browse the database — Drizzle Studio
 
 ```bash

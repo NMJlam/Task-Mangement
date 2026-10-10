@@ -26,10 +26,26 @@ const MAX_PAGE = 100;
  * several people act on at once — a payment entered, an expense approved, an
  * allocation changed from an event page — and without this a tab left open
  * showed whatever was true when it loaded until someone happened to refocus it.
- * The same cadence as the thread poll; `useRevalidate` only fires it while the
- * tab is visible, so a forgotten background tab costs nothing.
+ *
+ * Three seconds, so a change made in one window shows in another quickly enough
+ * to demonstrate. Each tick is two requests (the budget and a ledger page) per
+ * visible tab, so a deployment on a tight quota can slow it with
+ * `VITE_FINANCE_POLL_MS` (docs/setup.md). `useRevalidate` only fires it while
+ * the tab is visible, so a forgotten background tab costs nothing.
  */
-const POLL_MS = 15_000;
+const DEFAULT_POLL_MS = 3_000;
+
+/**
+ * The poll interval a deployment asked for. Anything but a positive whole number
+ * of milliseconds falls back to the default rather than polling in a tight loop
+ * or never.
+ */
+export function financePollIntervalFrom(raw: string | undefined): number {
+  const ms = Number(raw);
+  return Number.isInteger(ms) && ms > 0 ? ms : DEFAULT_POLL_MS;
+}
+
+const POLL_MS = financePollIntervalFrom(import.meta.env.VITE_FINANCE_POLL_MS);
 
 /**
  * Reads the first `rows` of the ledger, in pages the server will accept.
@@ -109,6 +125,12 @@ export function useFinance() {
   // Bumped whenever the user's own action changes what is on screen. A read
   // that started before it is older than the screen and must not land on it.
   const mutations = useRef(0);
+  // The read now running, if any. A poll that finds one in flight skips its
+  // tick: at a short interval, starting a new read cancels the old one before
+  // its response lands, and a server slower than the interval would then never
+  // get a single read onto the screen.
+  const readId = useRef(0);
+  const reading = useRef(false);
 
   useEffect(() => {
     if (expenses.status === "ok") loadedRef.current = expenses.loaded;
@@ -120,11 +142,22 @@ export function useFinance() {
     let active = true;
     const rows = Math.max(PAGE_SIZE, loadedRef.current);
     const mutationsAtStart = mutations.current;
+    const mine = ++readId.current;
+    reading.current = true;
     // Anything the user did while this read was in flight has already put
     // fresher state on screen than these responses can; the next poll catches up.
     const stale = () => !active || mutations.current !== mutationsAtStart;
 
     void (async () => {
+      try {
+        await read();
+      } finally {
+        // A newer read may have taken over; only the latest one clears the flag.
+        if (readId.current === mine) reading.current = false;
+      }
+    })();
+
+    async function read() {
       const [budgetResponse, ledgerResponses] = await Promise.allSettled([
         fetch("/api/budget", { credentials: "include" }),
         Promise.all(ledgerRequests(rows)),
@@ -164,16 +197,20 @@ export function useFinance() {
           current.status === "ok" ? current : { status: "error", message },
         );
       }
-    })();
+    }
 
     return () => {
       active = false;
     };
   }, [generation]);
 
+  const poll = useCallback(() => {
+    if (!reading.current) reload();
+  }, [reload]);
+
   // Someone else's approval, payment or allocation lands here without a reload:
   // on every return to the tab, and on a poll while it stays visible.
-  useRevalidate(reload, { intervalMs: POLL_MS });
+  useRevalidate(poll, { intervalMs: POLL_MS });
 
   /**
    * Appends the next page. The list caps at 25, and before this the 26th claim
