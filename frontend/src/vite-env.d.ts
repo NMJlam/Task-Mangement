@@ -8,4 +8,6 @@
 interface ImportMetaEnv {
   /** Inbox poll interval in milliseconds. Unset or invalid → 1000. */
   readonly VITE_NOTIFICATION_POLL_MS?: string;
+  /** Finance page poll interval in milliseconds. Unset or invalid → 3000. */
+  readonly VITE_FINANCE_POLL_MS?: string;
 }

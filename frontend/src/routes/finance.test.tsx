@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { FinancePage } from "./finance";
+import { financePollIntervalFrom } from "@/hooks/use-finance";
 import { downloadTextFile } from "@/lib/csv";
 
 vi.mock("@/lib/csv", async (importOriginal) => {
@@ -283,7 +284,7 @@ describe("FinancePage", () => {
       expense({ status, decider, decidedAt: "2026-09-19T00:00:00.000Z" });
     const pollOnce = () =>
       act(async () => {
-        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(3_000);
       });
 
     it("picks up a change someone else made, without a reload", async () => {
@@ -336,6 +337,47 @@ describe("FinancePage", () => {
       // the first 25 would quietly drop the one just paged in.
       expect(fetchMock).toHaveBeenCalledWith("/api/budget", expect.anything());
       expect(fetchMock).toHaveBeenCalledWith("/api/expenses?limit=26", expect.anything());
+    });
+
+    it("polls every three seconds unless a deployment says otherwise", () => {
+      expect(financePollIntervalFrom(undefined)).toBe(3_000);
+      expect(financePollIntervalFrom("1000")).toBe(1_000);
+      for (const raw of ["", "0", "-5", "1.5", "fast"]) {
+        expect(financePollIntervalFrom(raw)).toBe(3_000);
+      }
+    });
+
+    it("skips a tick while the previous read is still in flight", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let slow = false;
+      let release: (() => void) | undefined;
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/budget")) return Promise.resolve(response({ budget: budget() }));
+        const body = response({ expenses: [expense()], total: 1 });
+        if (!slow) return Promise.resolve(body);
+        return new Promise((resolve) => {
+          release = () => resolve(body);
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderPage();
+      await screen.findByText("Printing");
+
+      slow = true;
+      fetchMock.mockClear();
+      await pollOnce(); // starts a read that does not answer
+      await pollOnce(); // would cancel it if it were not skipped
+      await pollOnce();
+
+      // One read begun (budget + ledger); the later ticks left it to finish.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      slow = false;
+      release?.();
+      await pollOnce();
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(2);
     });
 
     it("does not let a poll that started before an action overwrite its result", async () => {
