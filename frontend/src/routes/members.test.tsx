@@ -54,11 +54,13 @@ describe("MembersPage", () => {
     {
       teams = [media, marketing],
       roster = [member],
-    }: { teams?: unknown[]; roster?: unknown[] } = {},
+      invites = [],
+    }: { teams?: unknown[]; roster?: unknown[]; invites?: unknown[] } = {},
   ) {
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (init?.method) return writes[`${init.method} ${input}`] ?? response({});
       if (input === "/api/teams") return response({ teams });
+      if (input === "/api/invites") return response({ invites });
       return response({ members: roster });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -287,6 +289,49 @@ describe("MembersPage", () => {
 
     await screen.findByRole("list", { name: "Teams for Alex Morgan" });
     expect(screen.queryByRole("button", { name: /edit teams/i })).not.toBeInTheDocument();
+  });
+  it("invites by email and revokes a pending invite", async () => {
+    const invite = {
+      id: "018f3a4b-0000-7000-8000-0000000000b1",
+      email: "new@example.com",
+      role: "officer",
+      expiresAt: null,
+      acceptedAt: null,
+      revokedAt: null,
+      status: "pending",
+    };
+    const fetchMock = stubApi({
+      "POST /api/invites": response({ invite }),
+      [`DELETE /api/invites/${invite.id}`]: { ok: true, status: 204, json: async () => ({}) },
+    });
+
+    render(<MembersPage />);
+
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: " New@Example.com " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+
+    expect(await screen.findByText(/invited new@example.com/i)).toBeInTheDocument();
+    const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(String(init!.body))).toMatchObject({
+      email: "new@example.com",
+      role: "officer",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /revoke invite for new@example.com/i }));
+    await waitFor(() => expect(screen.queryByText("new@example.com")).not.toBeInTheDocument());
+    expect(screen.getByText("No pending invites.")).toBeInTheDocument();
+  });
+
+  it("hides invites from a role without the invite capability", async () => {
+    Object.assign(viewer, { role: "vice_president", tier: 2 });
+    stubApi();
+
+    render(<MembersPage />);
+
+    await waitFor(() => expect(screen.getByText("Alex Morgan")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 });
 

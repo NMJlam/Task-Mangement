@@ -12,6 +12,7 @@ import { LogLine } from "@/components/common/log-line";
 import { PageHeader } from "@/components/common/page-header";
 import { ShellEmpty } from "@/components/common/shell-empty";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { InvitesPanel } from "@/components/members/invites-panel";
 import { canSetLead, MemberTeams, staffableTeams } from "@/components/members/member-teams";
 import { RoleChangeDialog, roleLabel } from "@/components/members/role-change-dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -58,6 +59,10 @@ export function MembersPage() {
             : "The club directory and committee roles."
         }
       />
+
+      {me.status === "ok" && can(me.user.role, "invite:create") && (
+        <InvitesPanel maxTier={me.user.tier} />
+      )}
 
       {pending && (
         <RoleChangeDialog

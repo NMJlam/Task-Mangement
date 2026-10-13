@@ -31,8 +31,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
           WHERE "email" = ${session.user.email.toLowerCase()}
             AND "accepted_at" IS NULL
             AND "revoked_at" IS NULL
-            AND "expires_at" > now()
-          ORDER BY "expires_at" DESC
+            AND ("expires_at" IS NULL OR "expires_at" > now())
+          ORDER BY "created_at" DESC
           LIMIT 1
           FOR UPDATE
       ), inserted AS (
