@@ -11,7 +11,7 @@ import { uuidShape } from "./sql-uuid.js";
  * STATUS IS DERIVED from three facts, never stored:
  *   revoked_at IS NOT NULL   -> revoked
  *   accepted_at IS NOT NULL  -> accepted
- *   expires_at < now()       -> expired
+ *   expires_at < now()       -> expired (NULL never expires; the app sets none)
  *   otherwise                -> pending
  * A stored status column would be a fourth fact and the only one capable of
  * being wrong.
@@ -22,7 +22,7 @@ export const invites = pgTable(
     id: uuid("id").primaryKey(),
     email: text("email").notNull(),
     role: text("role").$type<Role>().notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -36,7 +36,7 @@ export const invites = pgTable(
   // That is not hypothetical: the previous schema shipped exactly that index,
   // which is why seed.ts had to revoke stale invites before inserting.
   // Duplicate live invites are harmless — authenticate.ts takes the newest with
-  // ORDER BY expires_at DESC LIMIT 1 FOR UPDATE and consumes it.
+  // ORDER BY created_at DESC LIMIT 1 FOR UPDATE and consumes it.
   (table) => [
     index("invite_email_idx").on(table.email),
     check("invite_email_lowercase_check", sql`${table.email} = lower(${table.email})`),

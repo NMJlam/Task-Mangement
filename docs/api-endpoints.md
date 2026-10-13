@@ -193,19 +193,38 @@ idempotent — adding twice or removing someone who was never on the team is sti
 ### `POST /api/invites` · tier 1 + `invite:create`
 
 ```json
-{ "email": "newcomer@example.com", "role": "officer", "expiresAt": "2026-10-01T00:00:00.000Z" }
+{ "email": "newcomer@example.com", "role": "officer" }
 ```
 
-`email` is lowercased for you. `expiresAt` must be in the future.
+`email` is lowercased for you. Invites don't expire: one stays live until it's
+accepted or revoked.
 
-| Response                                                                                                 | When                                                              |
-| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `201 { "invite": { id, email, role, expiresAt, acceptedAt: null, revokedAt: null, status: "pending" } }` | Created.                                                          |
-| `403 FORBIDDEN`                                                                                          | "Invite role exceeds your tier." or "Role cannot create invites." |
-| `422 VALIDATION_ERROR`                                                                                   | Bad email, unknown role, or a past `expiresAt`.                   |
+| Response                                                                                                       | When                                                              |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `201 { "invite": { id, email, role, expiresAt: null, acceptedAt: null, revokedAt: null, status: "pending" } }` | Created.                                                          |
+| `403 FORBIDDEN`                                                                                                | "Invite role exceeds your tier." or "Role cannot create invites." |
+| `422 VALIDATION_ERROR`                                                                                         | Bad email or unknown role.                                        |
 
 The invited person becomes a member on their first signed-in request, as long as
 their email is verified — see `authenticate.ts`.
+
+No email is sent: whoever invited them tells them to sign in with Google using
+that address.
+
+### `GET /api/invites` · tier 1 + `invite:create`
+
+`200 { "invites": [invite, …] }`: pending invites only, newest first, for every
+role at or below your tier. Accepted invites show up as members; accepted and
+revoked rows stay in the table as history but are never listed.
+
+### `DELETE /api/invites/:id` · tier 1 + `invite:create`
+
+Revokes: stamps `revokedAt`, the row stays.
+
+| Response               | When                                                                     |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `204`                  | Revoked.                                                                 |
+| `404 INVITE_NOT_FOUND` | No such invite, already accepted or revoked, or its role is above yours. |
 
 ## Tasks
 
