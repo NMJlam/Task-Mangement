@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AiQuotaError } from "../../lib/ai/client.js";
 import {
   AiOutputError,
+  briefingFingerprint,
   briefingText,
   budgetMessages,
   buildBriefingPrompt,
@@ -135,18 +136,27 @@ describe("clubDayKey", () => {
 
 describe("buildBriefingPrompt", () => {
   const input = {
+    today: "Tuesday, 14 October 2026",
     memberName: "Alice",
-    openTasks: [{ title: "Book the room", priority: "high", dueAt: "2026-10-16T12:59:00.000Z" }],
-    overdueCount: 2,
-    weekEvents: [
-      { title: "Hack Night", startsAt: "2026-10-17T08:00:00.000Z", openTasks: 3, doneTasks: 5 },
+    openTasks: [{ title: "Book the room", priority: "high", dueAt: "Thursday, 16 October 2026" }],
+    overdueTasks: [{ title: "Order pizza", priority: "medium", dueAt: "Monday, 13 October 2026" }],
+    upcomingEvents: [
+      { title: "Hack Night", startsAt: "Friday, 24 October 2026", openTasks: 3, doneTasks: 5 },
     ],
     committeeLoad: [{ name: "Ben", openTaskCount: 9 }],
   };
 
   it("carries the figures it was given, so the model has nothing to guess", () => {
     const prompt = buildBriefingPrompt(input);
-    for (const fact of ["Alice", "Book the room", "Hack Night", "Ben", "9"]) {
+    for (const fact of [
+      "14 October",
+      "Alice",
+      "Book the room",
+      "Order pizza",
+      "Hack Night",
+      "Ben",
+      "9",
+    ]) {
       expect(prompt).toContain(fact);
     }
   });
@@ -155,6 +165,13 @@ describe("buildBriefingPrompt", () => {
     const prompt = buildBriefingPrompt(input);
     expect(prompt).toContain('"bullets"');
     expect(prompt).toMatch(/only.*names?/iu);
+  });
+
+  it("fingerprints the input, so a changed task makes a new briefing", () => {
+    expect(briefingFingerprint(input)).toBe(briefingFingerprint({ ...input }));
+    expect(briefingFingerprint({ ...input, overdueTasks: [] })).not.toBe(
+      briefingFingerprint(input),
+    );
   });
 });
 

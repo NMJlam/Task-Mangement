@@ -175,6 +175,27 @@ describe("/api/ai", () => {
       });
     });
 
+    it("knows who is asking, so 'my overdue tasks' are theirs and not the club's", async () => {
+      const me = await member("me", "officer");
+      const other = await member("other", "officer");
+      const yesterday = new Date(Date.now() - 86_400_000);
+      await seedTask(null, [me.id], { title: "test-ai-mine", dueAt: yesterday });
+      await seedTask(null, [other.id], { title: "test-ai-theirs", dueAt: yesterday });
+      signedInAs(me);
+      script(callTool("listOverdueTasks", { assigneeHandle: "M1" }), reply());
+
+      const response = await request(app)
+        .post("/api/ai/messages")
+        .send({ text: "What are my overdue tasks?" });
+
+      expect(response.status).toBe(200);
+      expect(prompts[0]).toContain("test-ai-me (M1)");
+      const titles = (toolResult(prompts[1]!, "listOverdueTasks") as { title: string }[]).map(
+        (task) => task.title,
+      );
+      expect(titles).toEqual(["test-ai-mine"]);
+    });
+
     it("answers a question that stages nothing with a reply and no proposal", async () => {
       signedInAs(await member("asker", "officer"));
       script(reply("Nothing is overdue."));
@@ -1065,6 +1086,23 @@ describe("/api/ai", () => {
       expect(second.status).toBe(200);
       expect(second.body.generatedAt).toBe(first.body.generatedAt);
       expect(complete).toHaveBeenCalledTimes(1);
+    });
+
+    it("writes a fresh briefing once the member's work has changed since", async () => {
+      const reader = await member("changed", "officer");
+      signedInAs(reader);
+      script(briefingJson, briefingJson);
+
+      await request(app).get("/api/ai/briefing");
+      await seedTask(null, [reader.id], {
+        title: "test-ai-late",
+        dueAt: new Date(Date.now() - 86_400_000),
+      });
+      const second = await request(app).get("/api/ai/briefing");
+
+      expect(second.status).toBe(200);
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(prompts[1]).toMatch(/YOUR OVERDUE TASKS: \[\{"title":"test-ai-late"/u);
     });
 
     it("503s when the assistant is not enabled", async () => {
