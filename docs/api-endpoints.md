@@ -1180,12 +1180,14 @@ false }`. `403 FORBIDDEN` on a channel the caller cannot read.
 
 ### `GET /api/ai/briefing`
 
-Today's briefing for the caller, one per club day: generated from what their
-dashboard already shows, read through the assistant's own tools (so it sees only
-what they can), then stored on its own `ai_run` (`kind: "briefing"`) — in no
-chat — and re-served from there. A page refresh is not a model call, and a
-second visit reports the same `generatedAt`. Asking about it starts a chat (the
-`{ "briefing": true }` seed above).
+Today's briefing for the caller, written to them: their overdue and open tasks,
+the next three events and committee load, read through the assistant's own tools
+(so it sees only what they can), then stored on its own `ai_run`
+(`kind: "briefing"`) — in no chat — with a fingerprint of that input. It is
+re-served while the input is unchanged that club day: a page refresh is not a
+model call, and a second visit reports the same `generatedAt`. Once a task or
+event it reads changes, the next visit writes a fresh one. Asking about it starts
+a chat (the `{ "briefing": true }` seed above).
 
 ### Things worth knowing before you test
 

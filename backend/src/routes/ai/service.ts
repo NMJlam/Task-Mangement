@@ -264,12 +264,14 @@ export function clubDayKey(now: Date, timeZone: string): string {
   }).format(now);
 }
 
-/** What the dashboard already shows the member, as the briefing's only source. */
+/** What the dashboard already shows the member, as the briefing's only source.
+ * Dates are already club-calendar text, so the model never converts from UTC. */
 export type BriefingInput = {
+  today: string;
   memberName: string;
   openTasks: { title: string; priority: string; dueAt: string | null }[];
-  overdueCount: number;
-  weekEvents: { title: string; startsAt: string; openTasks: number; doneTasks: number }[];
+  overdueTasks: { title: string; priority: string; dueAt: string | null }[];
+  upcomingEvents: { title: string; startsAt: string; openTasks: number; doneTasks: number }[];
   committeeLoad: { name: string; openTaskCount: number }[];
 };
 
@@ -281,16 +283,23 @@ export type BriefingInput = {
 export function buildBriefingPrompt(input: BriefingInput): string {
   return [
     `Write ${input.memberName}'s daily briefing for their university club committee.`,
+    `Today is ${input.today}. Speak to them directly as "you", and lead with their own work:`,
+    "what is overdue, then what is due soonest, then the next event. Committee load comes last.",
     "Reply with ONE JSON object and nothing else. No markdown, no commentary:",
     '{"summary": "one or two sentences on what matters today", "bullets": ["up to four short points"]}',
     "",
-    "Only use names and events that appear below. Invent nothing; if a list is empty, say so plainly.",
+    "Only use names, tasks and events that appear below. Invent nothing; if a list is empty, say so plainly.",
     "",
-    `THEIR OPEN TASKS: ${JSON.stringify(input.openTasks)}`,
-    `THEIR OVERDUE TASKS: ${input.overdueCount}`,
-    `EVENTS IN THE NEXT 7 DAYS: ${JSON.stringify(input.weekEvents)}`,
+    `YOUR OVERDUE TASKS: ${JSON.stringify(input.overdueTasks)}`,
+    `YOUR OPEN TASKS: ${JSON.stringify(input.openTasks)}`,
+    `UPCOMING EVENTS: ${JSON.stringify(input.upcomingEvents)}`,
     `COMMITTEE LOAD (open tasks each): ${JSON.stringify(input.committeeLoad)}`,
   ].join("\n");
+}
+
+/** What a briefing was written from. A briefing whose input has changed since is stale. */
+export function briefingFingerprint(input: BriefingInput): string {
+  return createHash("sha256").update(buildBriefingPrompt(input)).digest("base64url");
 }
 
 /** What a briefing run is recorded as asking — a label for the audit trail, not a discriminator. */
@@ -303,13 +312,16 @@ export function briefingText(briefing: AiBriefing): string {
 
 /**
  * Today's briefing, if one was already generated: the newest briefing run of
- * the caller's on the club's calendar day. It lives on the run itself (spec
- * M4), so it needs no chat and a second visit is not a model call.
+ * the caller's on the club's calendar day — and, given a `fingerprint`, only
+ * one written from that same input, so a task assigned since is never missing
+ * from it. It lives on the run itself (spec M4), so it needs no chat and a
+ * second visit with nothing changed is not a model call.
  */
 export async function findTodaysBriefing(
   db: Queryable,
   userId: string,
   dayKey: string,
+  fingerprint?: string,
 ): Promise<{ briefing: AiBriefing; generatedAt: Date; runId: string } | undefined> {
   const result = await db.execute<{ id: string; result: unknown; createdAt: Date }>(sql`
     SELECT r."id", r."result", r."created_at" AS "createdAt"
@@ -318,6 +330,7 @@ export async function findTodaysBriefing(
       AND r."kind" = 'briefing'
       AND r."result" IS NOT NULL
       AND to_char(r."created_at" AT TIME ZONE ${CLUB_TIMEZONE}, 'YYYY-MM-DD') = ${dayKey}
+      ${fingerprint ? sql`AND r."steps"->0->'detail'->>'fingerprint' = ${fingerprint}` : sql``}
     ORDER BY r."created_at" DESC
     LIMIT 1
   `);

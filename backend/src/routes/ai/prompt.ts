@@ -3,7 +3,7 @@ import { CLUB_TIMEZONE } from "../../config/club.js";
 import type { Tool } from "./tools/registry.js";
 
 /** "Wednesday, 30 September 2026", on the club's calendar rather than the server's. */
-function clubDate(now: Date): string {
+export function clubDate(now: Date): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-AU", {
       timeZone: CLUB_TIMEZONE,
@@ -26,17 +26,27 @@ function clubDate(now: Date): string {
  * Everything the model needs to act is said here or in a tool's description,
  * because it has nothing else to go on: it does not know the date unless told,
  * and "plan a hackathon" gives it no date to propose unless told to choose one.
+ * Nor does it know who is asking: without the caller's handle, "my overdue
+ * tasks" can only become the whole club's.
  */
-export function buildSystemPrompt(tools: Tool[], context: string, now: Date = new Date()): string {
+export function buildSystemPrompt(
+  tools: Tool[],
+  context: string,
+  caller: { handle: string; name: string; role: string },
+  now: Date = new Date(),
+): string {
   return [
     "You are the committee assistant for the Monash Association of Coding, a university club.",
     "You help members find work, plan events and balance workload. Be brief and concrete.",
     `Today is ${clubDate(now)} (${CLUB_TIMEZONE}).`,
+    `You are talking to ${caller.name || "a member"} (${caller.handle}), the club's ${caller.role}.`,
     "",
     "TOOLS you may call:",
     ...tools.map((tool) => `- ${tool.name}: ${tool.describe}`),
     "",
     "RULES:",
+    `- "I", "me" and "my" mean ${caller.handle}. For their own tasks or overdue work, pass`,
+    `  assigneeHandle ${caller.handle}. List everyone's only when they ask about the club or someone else.`,
     "- Refer to every existing task, event or member by the handle a tool gave you (T1, E2, M3).",
     "  Never invent a handle, and never write an id of any other form.",
     "- Use a ref like $event1 for an event you are proposing in this same turn.",

@@ -56,12 +56,13 @@ import {
   requireChat,
 } from "./chats.js";
 import { HandleMap } from "./handles.js";
-import { buildSystemPrompt } from "./prompt.js";
+import { buildSystemPrompt, clubDate } from "./prompt.js";
 import { resolveProposal } from "./resolve.js";
 import {
   AiOutputError,
   assertUnderDailyCap,
   BRIEFING_RUN_PROMPT,
+  briefingFingerprint,
   briefingText,
   budgetMessages,
   CHAT_HISTORY_CHAR_BUDGET,
@@ -236,8 +237,14 @@ aiRouter.post(
             ]
           : [];
 
+      // Issued first, so the caller is always M1 and "my tasks" resolves to them.
+      const caller = {
+        handle: ctx.handles.issue("M", me.id),
+        name: (await memberNamesById(db, [me.id])).get(me.id) ?? "",
+        role: me.role,
+      };
       let transcript = [
-        buildSystemPrompt(toolsFor(me.tier), seeded.context),
+        buildSystemPrompt(toolsFor(me.tier), seeded.context, caller),
         conversationBlock(history, CHAT_HISTORY_CHAR_BUDGET),
         `MEMBER: ${body.text}`,
       ]
@@ -576,6 +583,9 @@ type TaskRow = { title: string; status: string; priority: string; dueAt: string 
 type EventRow = { handle: string; title: string; startsAt: string };
 type MemberRow = { handle: string; name: string; openTaskCount: number };
 
+/** The next few events, however far off — a fixed week said "nothing on" with one ten days away. */
+const BRIEFING_EVENTS = 3;
+
 /**
  * The dashboard's figures, read through the assistant's own tools so the
  * briefing sees exactly what the member could see there — and nothing a
@@ -585,32 +595,36 @@ async function briefingInput(ctx: ToolContext, now: Date): Promise<BriefingInput
   const myHandle = ctx.handles.issue("M", ctx.userId);
   const mine = (await listTasks.run(ctx, { assigneeHandle: myHandle })) as TaskRow[];
   const overdue = (await listOverdueTasks.run(ctx, { assigneeHandle: myHandle })) as TaskRow[];
-  const week = (await listEvents.run(ctx, {
-    from: now.toISOString(),
-    to: new Date(now.getTime() + 7 * 86_400_000).toISOString(),
-  })) as EventRow[];
+  const upcoming = ((await listEvents.run(ctx, { from: now.toISOString() })) as EventRow[]).slice(
+    0,
+    BRIEFING_EVENTS,
+  );
   const roster = (await listMembers.run(ctx, {})) as MemberRow[];
 
-  const weekEvents = await Promise.all(
-    week.map(async (event) => {
+  const upcomingEvents = await Promise.all(
+    upcoming.map(async (event) => {
       const eventTasks = (await listTasks.run(ctx, { eventHandle: event.handle })) as TaskRow[];
       const doneTasks = eventTasks.filter((task) => task.status === "done").length;
       return {
         title: event.title,
-        startsAt: event.startsAt,
+        startsAt: clubDate(new Date(event.startsAt)),
         openTasks: eventTasks.length - doneTasks,
         doneTasks,
       };
     }),
   );
+  const brief = ({ title, priority, dueAt }: TaskRow) => ({
+    title,
+    priority,
+    dueAt: dueAt ? clubDate(new Date(dueAt)) : null,
+  });
 
   return {
+    today: clubDate(now),
     memberName: roster.find((row) => row.handle === myHandle)?.name ?? "the member",
-    openTasks: mine
-      .filter((task) => task.status !== "done")
-      .map(({ title, priority, dueAt }) => ({ title, priority, dueAt })),
-    overdueCount: overdue.length,
-    weekEvents,
+    openTasks: mine.filter((task) => task.status !== "done").map(brief),
+    overdueTasks: overdue.map(brief),
+    upcomingEvents,
     committeeLoad: roster
       .filter((row) => row.openTaskCount > 0)
       .sort((a, b) => b.openTaskCount - a.openTaskCount)
@@ -626,9 +640,20 @@ aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) 
     const me = req.user!;
     const db = getDb();
     const now = new Date();
+    const ctx: ToolContext = {
+      db,
+      userId: me.id,
+      tier: me.tier,
+      handles: new HandleMap(),
+      staged: {},
+    };
 
-    // One per member per club day (D15): a second visit reads the stored one.
-    const today = await findTodaysBriefing(db, me.id, clubDayKey(now, CLUB_TIMEZONE));
+    // Reading the input is a few queries; writing from it is a model call. So
+    // the input is always read, and a briefing is re-served only while it
+    // still matches — a task assigned at lunch is in the afternoon's.
+    const input = await briefingInput(ctx, now);
+    const fingerprint = briefingFingerprint(input);
+    const today = await findTodaysBriefing(db, me.id, clubDayKey(now, CLUB_TIMEZONE), fingerprint);
     if (today) {
       res.status(200).json(
         aiBriefingResponseSchema.parse({
@@ -640,17 +665,10 @@ aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) 
     }
 
     await assertUnderDailyCap(db, me.id, config.dailyRunCap);
-    const ctx: ToolContext = {
-      db,
-      userId: me.id,
-      tier: me.tier,
-      handles: new HandleMap(),
-      staged: {},
-    };
     const started = Date.now();
     const briefing = await completeJson(
       geminiComplete,
-      buildBriefingPrompt(await briefingInput(ctx, now)),
+      buildBriefingPrompt(input),
       aiBriefingSchema,
     );
 
@@ -663,7 +681,7 @@ aiRouter.get("/ai/briefing", authenticate, authorise(0), async (req, res, next) 
         kind: "briefing",
         channelId: null,
         prompt: BRIEFING_RUN_PROMPT,
-        steps: [{ tool: "dailyBriefing", ms: Date.now() - started }],
+        steps: [{ tool: "dailyBriefing", ms: Date.now() - started, detail: { fingerprint } }],
         result: briefing,
         createdAt: generatedAt,
       }),
