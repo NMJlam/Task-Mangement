@@ -43,11 +43,6 @@ async function post(page: Page, id: string, body: string) {
 }
 async function open(page: Page, id: string) {
   await page.goto(`/messages?thread=${id}`);
-  const prompt = page.getByRole("dialog", { name: "Change Role" });
-  const me = ((await (await page.request.get("/api/me")).json()) as MeResponse).user;
-  if (me.role === "president" || me.role === "vice_president") {
-    await prompt.getByRole("button", { name: "Cancel" }).click();
-  }
   await expect(page.getByRole("log")).toBeVisible();
   await page.evaluate(async () => {
     await document.fonts.ready;

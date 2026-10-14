@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 import { RequireAuth } from "./require-auth";
@@ -93,15 +93,13 @@ it("does not blame a server error on a missing invite", () => {
   expect(screen.getByText(/unable to verify club membership/i)).toBeInTheDocument();
 });
 
-it("raises the step-down to officer as a modal, and reports a refusal inside it", async () => {
+it("lets a president in without asking them to step down", () => {
   const member = {
     id: "019ff060-2362-7399-9032-b4bbcc3a25d5",
     email: "president@example.com",
     role: "president",
     tier: 2,
   };
-  const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403, json: async () => ({}) });
-  vi.stubGlobal("fetch", fetchMock);
   useAuth.mockReturnValue({
     account: { id: "account" },
     isLoading: false,
@@ -116,19 +114,6 @@ it("raises the step-down to officer as a modal, and reports a refusal inside it"
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("dialog")).toHaveTextContent(
-    "Change president@example.com from President to Officer?",
-  );
-  fireEvent.click(screen.getByRole("button", { name: /confirm role change/i }));
-
-  await waitFor(() =>
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/api/members/${member.id}/role`,
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "officer" }) }),
-    ),
-  );
-  // The refusal belongs next to the button that caused it, not behind the overlay.
-  expect(await screen.findByRole("alert")).toHaveTextContent("Role change failed. Try again.");
-
-  vi.unstubAllGlobals();
+  expect(screen.getByText("secret")).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
