@@ -12,7 +12,6 @@ export function CreateEventRow({
   value,
   onChange,
   errors,
-  portalTarget = null,
 }: {
   rowKey: string;
   label: string;
@@ -21,7 +20,6 @@ export function CreateEventRow({
   value: ResolvedCreateEvent;
   onChange: (value: ResolvedCreateEvent) => void;
   errors: RowErrors;
-  portalTarget?: HTMLElement | null;
 }) {
   const venueId = `ai-${rowKey}-venue`;
   return (
@@ -43,7 +41,6 @@ export function CreateEventRow({
           onChange={(startsAt) => startsAt && onChange({ ...value, startsAt })}
           allowClear={false}
           disabled={!checked}
-          portalTarget={portalTarget}
         />
         <DateTimePicker
           id={`ai-${rowKey}-ends`}
@@ -52,7 +49,6 @@ export function CreateEventRow({
           value={value.endsAt ?? null}
           onChange={(endsAt) => onChange({ ...value, endsAt })}
           disabled={!checked}
-          portalTarget={portalTarget}
         />
         <label htmlFor={venueId} className="sr-only">
           Venue

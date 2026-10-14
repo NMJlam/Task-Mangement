@@ -61,14 +61,12 @@ export function ProposalCard({
   onApply,
   onDiscard,
   busy = false,
-  portalTarget = null,
 }: {
   proposal: AiResolvedProposal;
   members: RosterMember[];
   onApply: (operations: AiApplyOperation[], stats: ApplyStats) => void;
   onDiscard: () => void;
   busy?: boolean;
-  portalTarget?: HTMLElement | null;
 }) {
   const [entries, setEntries] = useState<Entry[]>(() =>
     deriveSections(proposal).flatMap((section) =>
@@ -137,7 +135,6 @@ export function ProposalCard({
           label={entry.original?.value.title || "New event"}
           value={row.value}
           onChange={(value) => update(row.key, { row: { ...row, value } })}
-          portalTarget={portalTarget}
         />
       );
     }
@@ -153,7 +150,6 @@ export function ProposalCard({
           onChange={(value) => update(row.key, { row: { ...row, value } })}
           members={members}
           disabled={orphaned(entry)}
-          portalTarget={portalTarget}
         />
       );
     }

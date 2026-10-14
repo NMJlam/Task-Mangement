@@ -15,7 +15,6 @@ export function CreateTaskRow({
   errors,
   members,
   disabled = false,
-  portalTarget = null,
 }: {
   rowKey: string;
   label: string;
@@ -26,7 +25,6 @@ export function CreateTaskRow({
   errors: RowErrors;
   members: RosterMember[];
   disabled?: boolean;
-  portalTarget?: HTMLElement | null;
 }) {
   const inert = disabled || !checked;
   return (
@@ -56,7 +54,6 @@ export function CreateTaskRow({
               })),
             })
           }
-          portalTarget={portalTarget}
           subject={value.title || "this task"}
           idPrefix={`ai-${rowKey}`}
           busy={inert}
@@ -70,7 +67,6 @@ export function CreateTaskRow({
           value={value.dueAt}
           onChange={(dueAt) => onChange({ ...value, dueAt })}
           disabled={inert}
-          portalTarget={portalTarget}
         />
       </div>
     </RowShell>
