@@ -45,7 +45,11 @@ describe("aiConfig", () => {
   });
 
   it("defaults the key, model and daily cap, and takes each from the environment", () => {
-    expect(withEnv({})).toMatchObject({ apiKey: "", model: DEFAULT_GEMINI_MODEL, dailyRunCap: 50 });
+    expect(withEnv({})).toMatchObject({
+      apiKey: "",
+      model: DEFAULT_GEMINI_MODEL,
+      dailyRunCap: 200,
+    });
     expect(
       withEnv({
         GEMINI_API_KEY: "some-key",
