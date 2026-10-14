@@ -12,10 +12,7 @@ Evidence for the WCAG 2.1 AA audit in Increment 4. Two harnesses back this up:
     at it with `E2E_MEMBER_EMAIL` / `E2E_MEMBER_PASSWORD`. Without both the
     scans **skip** with that reason rather than failing — a machine with no dev
     member cannot answer the question, and a scan that silently covered only the
-    login page would be worse than one that says it did not run. Use `officer` or
-    `lead`: a **tier-2 office that is not `officer`** renders the self-demotion
-    overlay on every navigation, and an open modal is what the event-page scan
-    waits past — `president` fails it for a fixture reason, not a contrast one.
+    login page would be worse than one that says it did not run.
   - `axe` checks the rendered DOM, so a route still on its skeleton passes
     trivially. Each scan waits for `main`, and then for every loading line to
     clear, before analysing. `main` renders before its data does, and waiting

@@ -41,21 +41,9 @@ async function openGroup(page: Page): Promise<{ id: string; name: string }> {
   return { id: ((await response.json()) as { thread: { id: string } }).thread.id, name };
 }
 
-/**
- * A president or vice president is asked, on every page, whether to hand back
- * `member:role-change` (require-auth.tsx). That is not what these tests are
- * about, so the prompt is dismissed when it appears.
- */
 async function open(page: Page, path: string) {
   await page.goto(path);
   await expect(page.getByRole("main")).toBeVisible();
-  const role = ((await (await page.request.get("/api/me")).json()) as { user: { role: string } })
-    .user.role;
-  if (role === "president" || role === "vice_president") {
-    const prompt = page.getByRole("dialog", { name: "Change Role" });
-    await prompt.getByRole("button", { name: "Cancel" }).click();
-    await expect(prompt).toBeHidden();
-  }
 }
 
 test("groups a run, excludes nonparticipants, and deletes a message and the group", async ({
