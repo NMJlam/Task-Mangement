@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { CalendarPage } from "./calendar";
 
 /**
@@ -257,7 +257,18 @@ function drop(fromIndex: number, toIndex: number) {
 }
 
 describe("CalendarPage", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  // A chip whose event has ended is greyed out and named "past", so the clock
+  // is pinned to 08:00 today: the 10:00–13:00 showcase is then still ahead
+  // whatever hour the suite runs at. Only `Date` is faked; timers stay real so
+  // `waitFor` and `userEvent` keep working.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(at(8));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it("asks for events only, over exactly the days each view shows", async () => {
     const user = userEvent.setup({ delay: null });
@@ -791,6 +802,18 @@ describe("CalendarPage", () => {
         name: `Open Winter Showcase, Live, on ${dateFormat.format(at(0))}`,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("greys out an event that has already ended, and names it past", async () => {
+    stubFetch([{ ...showcase, startsAt: at(5), endsAt: at(6), status: "live" }]);
+    renderPage();
+
+    const chip = await screen.findByRole("button", {
+      name: `Open Winter Showcase, Live, past, on ${dateFormat.format(at(0))}`,
+    });
+    // The neutral wash replaces the status tint.
+    expect(chip.parentElement).toHaveClass("bg-foreground/5");
+    expect(chip.parentElement).not.toHaveClass("bg-ok/15");
   });
 });
 
