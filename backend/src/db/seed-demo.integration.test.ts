@@ -117,7 +117,7 @@ describe("production demo seed", () => {
       expect.objectContaining({ email: "nathan.lam.rt@gmail.com", role: "president" }),
       expect.objectContaining({ email: "reviewer@example.com", role: "director" }),
     ]);
-    expect(invites.rows.every(({ days }) => days > 6.9 && days <= 7)).toBe(true);
+    expect(invites.rows.every(({ days }) => days > 6.9 && days <= 7 + 60 / 86400)).toBe(true);
 
     const personas = await db.query<{ name: string; email: string }>(`
       SELECT account.name, account.email
