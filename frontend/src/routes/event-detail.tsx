@@ -9,7 +9,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ThreadSummaryPanel } from "@/components/ai/thread-summary-panel";
 import { LoadingLine } from "@/components/common/loading-line";
 import { LogLine } from "@/components/common/log-line";
@@ -105,6 +105,8 @@ export function EventDetailPage() {
     chat.messages.state.nextCursor === null &&
     !chat.searchQuery;
   const [confirming, setConfirming] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
+  const navigate = useNavigate();
   const [editingDates, setEditingDates] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   // The Tasks tab's create form. Any member may open it: `POST /api/tasks` sits
@@ -150,6 +152,12 @@ export function EventDetailPage() {
     setStatusMessages(result.ok ? [] : result.messages);
   }
 
+  async function deleteEvent() {
+    const result = await detail.deleteEvent();
+    if (result.ok) void navigate("/events", { replace: true });
+    else setDeleteError(result.message);
+  }
+
   if (state.status === "loading") {
     return (
       <PageState heading="Event" role="status">
@@ -160,7 +168,7 @@ export function EventDetailPage() {
   if (state.status === "not_found") {
     return (
       <PageState heading="Event not found" role="alert">
-        This event could not be found. It may have been cancelled.
+        This event could not be found. It may have been deleted.
       </PageState>
     );
   }
@@ -221,9 +229,9 @@ export function EventDetailPage() {
                   {STATUS_ACTIONS[next]}
                 </Button>
               ))}
-            {canCancel && event.status !== "cancelled" && (
+            {canCancel && (
               <Button variant="outline" onClick={() => setConfirming(true)}>
-                Cancel Event
+                {event.status === "cancelled" ? "Delete Event" : "Cancel Event"}
               </Button>
             )}
           </>
@@ -247,7 +255,7 @@ export function EventDetailPage() {
         </div>
       )}
 
-      {confirming && (
+      {confirming && event.status !== "cancelled" && (
         <Card className="mt-6 shadow-none">
           <CardHeader>
             <h2 className="font-semibold">Cancel this event?</h2>
@@ -265,6 +273,29 @@ export function EventDetailPage() {
               onClick={() => void detail.cancelEvent().then((done) => done && setConfirming(false))}
             >
               {detail.busy ? "Cancelling…" : "Confirm Cancellation"}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+      {confirming && event.status === "cancelled" && (
+        <Card className="mt-6 shadow-none">
+          <CardHeader>
+            <h2 className="font-semibold">Delete this event?</h2>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Deleting removes the event, its tasks and its thread for good. This cannot be undone.
+            {deleteError && (
+              <p className="mt-2 text-destructive" role="alert">
+                {deleteError}
+              </p>
+            )}
+          </CardContent>
+          <CardFooter className="gap-2">
+            <Button variant="outline" disabled={detail.busy} onClick={() => setConfirming(false)}>
+              Keep Event
+            </Button>
+            <Button disabled={detail.busy} onClick={() => void deleteEvent()}>
+              {detail.busy ? "Deleting…" : "Delete Permanently"}
             </Button>
           </CardFooter>
         </Card>

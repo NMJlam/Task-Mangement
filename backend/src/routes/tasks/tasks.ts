@@ -166,6 +166,9 @@ function assignedTo(userId: string): SQL {
   return sql`EXISTS (SELECT 1 FROM ${taskAssignees} WHERE ${taskAssignees.taskId} = ${tasks.id} AND ${taskAssignees.userId} = ${userId})`;
 }
 
+/** Standing work (no event) is never on a cancelled event, and NOT EXISTS keeps it. */
+const notOnCancelledEvent = sql`NOT EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${tasks.eventId} AND ${events.status} = 'cancelled')`;
+
 /**
  * Replaces a task's whole assignment set. Delete-then-insert rather than a
  * diff: the submitted array IS the new set, `[]` included, and a diff would
@@ -261,6 +264,7 @@ tasksRouter.get(
         // `assignee=` is membership, not identity: a multi-assignee task comes
         // back once for any member holding it, which EXISTS guarantees.
         query.assignee ? assignedTo(query.assignee) : undefined,
+        query.hideCancelled ? notOnCancelledEvent : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
       const rows = await db
@@ -304,6 +308,7 @@ tasksRouter.get(
         query.teamId ? eq(tasks.teamId, query.teamId) : undefined,
         query.priority ? eq(tasks.priority, query.priority) : undefined,
         query.assignee ? assignedTo(query.assignee) : undefined,
+        query.hideCancelled ? notOnCancelledEvent : undefined,
       ].filter((filter): filter is SQL => filter !== undefined);
 
       const rows = await db

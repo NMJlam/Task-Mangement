@@ -114,6 +114,31 @@ export function useEvent(id: string | undefined) {
   }, [id]);
 
   /**
+   * Removes a cancelled event for good. Never throws: a refusal comes back as
+   * the route's own sentence (expenses on record), and the caller leaves the
+   * page on success.
+   */
+  const deleteEvent = useCallback(async (): Promise<
+    { ok: true } | { ok: false; message: string }
+  > => {
+    if (!id) return { ok: false, message: "No event to delete." };
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/events/${id}/permanent`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) return { ok: true };
+      const body: unknown = await res.json().catch(() => null);
+      return { ok: false, message: apiErrorMessage(body) ?? "Failed to delete the event." };
+    } catch {
+      return { ok: false, message: "Failed to delete the event. Try again." };
+    } finally {
+      setBusy(false);
+    }
+  }, [id]);
+
+  /**
    * Every event edit, through the one `PATCH /api/events/:id` the route already
    * exposes — dates, details, allocation and visibility all land here. The
    * response is the full detail, so the page's own state is replaced with what
@@ -222,6 +247,7 @@ export function useEvent(id: string | undefined) {
     reload,
     state,
     cancelEvent,
+    deleteEvent,
     updateEvent,
     updateDates,
     changeStatus,

@@ -73,6 +73,8 @@ const taskId = "018f3a4b-0000-7000-8000-000000000001";
 const ada = { id: "018f3a4b-0000-7000-8000-00000000000a", name: "Ada Lovelace" };
 const grace = { id: "018f3a4b-0000-7000-8000-00000000000b", name: "Grace Hopper" };
 const EVENT_ID = "018f3a4b-0000-7000-8000-000000000010";
+/** The unfiltered board's read: tasks on cancelled events are hidden by default. */
+const BOARD = "/api/tasks?hideCancelled=true";
 
 /**
  * The day the picker's grid is showing, and the instant a time on it means.
@@ -207,7 +209,7 @@ describe("TasksPage", () => {
             },
           }),
         );
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -288,7 +290,7 @@ describe("TasksPage", () => {
       const url = String(input);
       if (url === "/api/tasks" && init?.method === "POST")
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -317,7 +319,7 @@ describe("TasksPage", () => {
       if (url === `/api/tasks/${task.id}` && init?.method === "PATCH") {
         return Promise.resolve(response({ task: { ...task, eventId: EVENT_ID } }));
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -351,7 +353,7 @@ describe("TasksPage", () => {
         const body = JSON.parse(String(init.body));
         return Promise.resolve(response({ task: { ...task, ...body } }));
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -388,7 +390,7 @@ describe("TasksPage", () => {
         sentBodies.push(body);
         return Promise.resolve(response({ task: { ...task, dueAt: body.dueAt } }));
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -427,7 +429,7 @@ describe("TasksPage", () => {
     const other = { ...buildTask(), id: "018f3a4b-0000-7000-8000-000000000003", title: "Book AV" };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task, other] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task, other] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -488,8 +490,30 @@ describe("TasksPage", () => {
     // The canonical unfiltered URL, with every defaulted key dropped.
     await waitFor(() => expect(screen.getByTestId("tasks-location")).toHaveTextContent("/tasks"));
     expect(screen.getByTestId("tasks-location")).not.toHaveTextContent("overdue");
-    await waitFor(() => expect(taskRequest(fetchMock)!.search).toBe(""));
+    await waitFor(() => expect(taskRequest(fetchMock)!.search).toBe("?hideCancelled=true"));
     expect(taskRequest(fetchMock)!.pathname).toBe("/api/tasks");
+  });
+
+  it("hides tasks on cancelled events until Show cancelled is ticked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Promise.resolve(response({ user: me() }));
+      if (url.startsWith("/api/tasks")) return Promise.resolve(response({ tasks: [] }));
+      if (url === "/api/members") return Promise.resolve(response({ members: [] }));
+      if (url.startsWith("/api/events")) return Promise.resolve(response({ items: [] }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage("/tasks");
+
+    await waitFor(() => expect(taskRequest(fetchMock)!.search).toBe("?hideCancelled=true"));
+
+    await user.click(screen.getByLabelText("Show cancelled"));
+
+    await waitFor(() => expect(taskRequest(fetchMock)!.search).toBe(""));
+    expect(screen.getByTestId("tasks-location")).toHaveTextContent("/tasks?cancelled=true");
   });
 
   it("falls back to defaults for filter values the URL invents", async () => {
@@ -505,8 +529,10 @@ describe("TasksPage", () => {
     renderPage("/tasks?status=urgent-ish&priority=nonsense&event=not-a-uuid&scope=everyone");
 
     await waitFor(() => expect(taskRequest(fetchMock)).toBeDefined());
-    // Nothing invalid reaches the API, and the whole board is read.
-    expect(Object.fromEntries(taskRequest(fetchMock)!.searchParams)).toEqual({});
+    // Nothing invalid reaches the API, and the default board is read.
+    expect(Object.fromEntries(taskRequest(fetchMock)!.searchParams)).toEqual({
+      hideCancelled: "true",
+    });
     expect(screen.getByLabelText("Status")).toHaveValue("");
     expect(screen.getByLabelText("Priority")).toHaveValue("");
     expect(screen.getByRole("button", { name: "All Tasks" })).toHaveAttribute(
@@ -566,7 +592,7 @@ describe("TasksPage", () => {
       const url = String(input);
       if (url === `/api/tasks/${task.id}/status` && init?.method === "PATCH")
         return Promise.resolve(response({ task: { ...task, status: "in_progress" } }));
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -609,7 +635,7 @@ describe("TasksPage", () => {
       const url = String(input);
       if (url === `/api/tasks/${first.id}/status` && init?.method === "PATCH")
         return Promise.resolve(response({ task: { ...first, boardOrder: 1 } }));
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [first, second] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [first, second] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -649,7 +675,7 @@ describe("TasksPage", () => {
       const url = String(input);
       if (url === `/api/tasks/${first.id}/status` && init?.method === "PATCH")
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [first, second] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [first, second] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -681,7 +707,7 @@ describe("TasksPage", () => {
         sentBodies.push(body.assigneeIds);
         return Promise.resolve(response({ task: { ...task, assigneeIds: body.assigneeIds } }));
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -730,7 +756,7 @@ describe("TasksPage", () => {
         sentBodies.push(body.assigneeIds);
         return Promise.resolve(response({ task: { ...task, assigneeIds: body.assigneeIds } }));
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -770,7 +796,7 @@ describe("TasksPage", () => {
           }),
         );
       }
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -807,7 +833,7 @@ describe("TasksPage", () => {
     const task = buildTask();
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -833,7 +859,7 @@ describe("TasksPage", () => {
     const task = { ...buildTask(), assigneeIds: [ada.id, grace.id] };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -847,7 +873,7 @@ describe("TasksPage", () => {
   it("shows an empty state when the member search matches nobody", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [buildTask()] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [buildTask()] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -875,7 +901,7 @@ describe("TasksPage", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") return Promise.resolve(response({ user: me() }));
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -902,7 +928,7 @@ describe("TasksPage", () => {
         return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
       if (url === "/api/me")
         return Promise.resolve(response({ user: { ...me(), role: "director", tier: 1 } }));
-      if (url === "/api/tasks") return Promise.resolve(response({ tasks: [task] }));
+      if (url === BOARD) return Promise.resolve(response({ tasks: [task] }));
       if (url === "/api/members") return Promise.resolve(response({ members: roster() }));
       throw new Error(`Unexpected request: ${url}`);
     });

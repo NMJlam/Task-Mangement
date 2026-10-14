@@ -469,6 +469,83 @@ describe("/api/events", () => {
     });
   });
 
+  describe("DELETE /api/events/:id/permanent", () => {
+    it("deletes a cancelled event with every one of its tasks and their assignments", async () => {
+      const president = await member("president", "president");
+      const event = await seedEvent({ title: "test-event-purge", status: "cancelled" });
+      const first = await seedTask(event.id, [president.id]);
+      const second = await seedTask(event.id, [president.id], {
+        status: "done",
+        completedAt: new Date(),
+      });
+      signedInAs(president);
+
+      const response = await request(app).delete(`/api/events/${event.id}/permanent`);
+
+      expect(response.status).toBe(204);
+      expect(
+        await db
+          .select()
+          .from(events)
+          .where(sql`id = ${event.id}`),
+      ).toEqual([]);
+      expect(
+        await db
+          .select()
+          .from(tasks)
+          .where(sql`event_id = ${event.id}`),
+      ).toEqual([]);
+      expect(
+        await db
+          .select()
+          .from(taskAssignees)
+          .where(sql`task_id IN (${first.id}, ${second.id})`),
+      ).toEqual([]);
+    });
+
+    it("refuses an event that has not been cancelled", async () => {
+      const president = await member("president", "president");
+      const event = await seedEvent({ title: "test-event-purge-live" });
+      signedInAs(president);
+
+      const response = await request(app).delete(`/api/events/${event.id}/permanent`);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("EVENT_NOT_CANCELLED");
+    });
+
+    it("refuses an event with expenses on record", async () => {
+      const president = await member("president", "president");
+      const event = await seedEvent({ title: "test-event-purge-ledger", status: "cancelled" });
+      await db.insert(expenses).values({
+        id: newId(),
+        eventId: event.id,
+        amountCents: 200,
+        description: "settled",
+        category: "other",
+        status: "paid",
+        decidedAt: new Date(),
+        paidAt: new Date(),
+      });
+      signedInAs(president);
+
+      const response = await request(app).delete(`/api/events/${event.id}/permanent`);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("EVENT_HAS_EXPENSES");
+    });
+
+    it("403s anyone who could not cancel it", async () => {
+      const secretary = await member("secretary", "secretary");
+      const event = await seedEvent({ title: "test-event-purge-forbidden", status: "cancelled" });
+      signedInAs(secretary);
+
+      const response = await request(app).delete(`/api/events/${event.id}/permanent`);
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   /**
    * The event routes reach task ownership through `task_assignee`, so these are
    * the tests that would fail if one of them still read the dropped column.

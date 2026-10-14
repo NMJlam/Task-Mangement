@@ -253,8 +253,8 @@ A task object:
 
 | Endpoint                      | Who    | Input                                                                    | Success                                |
 | ----------------------------- | ------ | ------------------------------------------------------------------------ | -------------------------------------- |
-| `GET /api/tasks`              | tier 0 | `?eventId&teamId&status&priority&assignee&limit&offset`                  | `200 { tasks: [] }`, newest first      |
-| `GET /api/tasks/overdue`      | tier 0 | `?eventId&teamId&assignee&limit&offset`                                  | `200 { tasks: [] }`, soonest due first |
+| `GET /api/tasks`              | tier 0 | `?eventId&teamId&status&priority&assignee&hideCancelled&limit&offset`    | `200 { tasks: [] }`, newest first      |
+| `GET /api/tasks/overdue`      | tier 0 | `?eventId&teamId&assignee&hideCancelled&limit&offset`                    | `200 { tasks: [] }`, soonest due first |
 | `GET /api/tasks/:id`          | tier 0 | —                                                                        | `200 { task }`                         |
 | `POST /api/tasks`             | tier 0 | body below                                                               | `201 { task }`                         |
 | `POST /api/tasks/bulk`        | tier 1 | `{ "tasks": [ … ] }`, 1–100                                              | `201 { tasks: [] }`                    |
@@ -266,7 +266,9 @@ A task object:
 range. `assignee` stays singular and filters by membership: it returns every
 task whose `assigneeIds` contains that member, once each. Ties on `createdAt`
 (a bulk insert shares one) and on `dueAt` break on `id`, so offset pages never
-repeat or skip a task.
+repeat or skip a task. `hideCancelled=true` leaves out tasks on a cancelled
+event (default `false`); the `/tasks` board sends it unless "Show cancelled" is
+ticked.
 
 **Every task route hides what you can't see.** A task is visible when its own
 `minTier` is at or below your tier, and so is its event's, if it has one
@@ -376,15 +378,16 @@ fields):
   `404 EVENT_NOT_FOUND` on every route below — never `403`, which would confirm
   it exists.
 
-| Endpoint                          | Who                                | Success          |
-| --------------------------------- | ---------------------------------- | ---------------- |
-| `GET /api/events`                 | tier 0                             | `200` page below |
-| `GET /api/events/:id`             | tier 0                             | `200 { event }`  |
-| `GET /api/events/:id/progress`    | tier 0                             | `200` progress   |
-| `POST /api/events`                | tier 1                             | `201 { event }`  |
-| `PATCH /api/events/:id`           | owner, or tier 1                   | `200 { event }`  |
-| `PATCH /api/events/:id/status`    | tier 1                             | `200` status     |
-| `DELETE /api/events/:id` (cancel) | president, or the Events-team lead | `204`            |
+| Endpoint                           | Who                                | Success          |
+| ---------------------------------- | ---------------------------------- | ---------------- |
+| `GET /api/events`                  | tier 0                             | `200` page below |
+| `GET /api/events/:id`              | tier 0                             | `200 { event }`  |
+| `GET /api/events/:id/progress`     | tier 0                             | `200` progress   |
+| `POST /api/events`                 | tier 1                             | `201 { event }`  |
+| `PATCH /api/events/:id`            | owner, or tier 1                   | `200 { event }`  |
+| `PATCH /api/events/:id/status`     | tier 1                             | `200` status     |
+| `DELETE /api/events/:id` (cancel)  | president, or the Events-team lead | `204`            |
+| `DELETE /api/events/:id/permanent` | president, or the Events-team lead | `204`            |
 
 ### `GET /api/events` · tier 0
 
@@ -552,6 +555,19 @@ every distinct assignee of the event's unfinished tasks.
 The Events-team exception is matched on `team.name = 'Events'` and requires the
 event to have a workstream on that team. **Renaming the team silently removes
 the exception.**
+
+### `DELETE /api/events/:id/permanent` · president, or the Events-team lead
+
+Deletes a **cancelled** event for good, with its tasks, workstreams and thread
+(all cascade). Same permission as cancelling. Logged as `event.deleted`.
+
+| Response                  | When                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `204`                     | Deleted.                                                                   |
+| `403 FORBIDDEN`           | Tier 1+ but neither the president nor the Events-team lead.                |
+| `404 EVENT_NOT_FOUND`     | No such event, or above your tier.                                         |
+| `409 EVENT_NOT_CANCELLED` | Cancel it first — that step releases budget and notifies assignees.        |
+| `409 EVENT_HAS_EXPENSES`  | Expenses are the club's ledger (`RESTRICT`), so the event stays cancelled. |
 
 ## Calendar
 

@@ -76,6 +76,8 @@ export type TasksQuery = {
    * meaning — the endpoint defines the status filter itself.
    */
   overdue?: boolean;
+  /** Leaves out tasks on a cancelled event (`?hideCancelled=true`). */
+  hideCancelled?: boolean;
   /**
    * `enabled: false` keeps the hook idle — `event-detail` calls it above its
    * early returns, where the route param may still be missing, and an idle hook
@@ -91,7 +93,15 @@ export type TasksQuery = {
  * alone; every other option narrows the same read.
  */
 export function useTasks(
-  { eventId, assignee, status, priority, overdue = false, enabled = true }: TasksQuery = {},
+  {
+    eventId,
+    assignee,
+    status,
+    priority,
+    overdue = false,
+    hideCancelled = false,
+    enabled = true,
+  }: TasksQuery = {},
   {
     onChanged,
   }: {
@@ -131,6 +141,7 @@ export function useTasks(
     // The overdue read owns its own status rule, so sending one would be a
     // contradiction rather than a further narrowing.
     if (status && !overdue) params.set("status", status);
+    if (hideCancelled) params.set("hideCancelled", "true");
     const search = params.toString();
     const url = `/api/tasks${overdue ? "/overdue" : ""}${search ? `?${search}` : ""}`;
 
@@ -149,7 +160,7 @@ export function useTasks(
     return () => {
       active = false;
     };
-  }, [enabled, eventId, assignee, status, priority, overdue]);
+  }, [enabled, eventId, assignee, status, priority, overdue, hideCancelled]);
 
   const createTask = useCallback(async (input: CreateTask) => {
     setBusy("new");
