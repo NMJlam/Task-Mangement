@@ -734,6 +734,10 @@ function EventChip({
   // lines of its own text, and 12% of the token over the panel leaves the text
   // colour's measured contrast against that panel unchanged.
   const status = statusStyles[event.status];
+  // An event whose end (or start, with no end) is behind now is greyed out. It
+  // takes the neutral wash rather than a faded opacity: the neutral chip's text
+  // is already measured against its tint, where 60% opacity would drop under AA.
+  const past = (event.endsAt ?? event.startsAt).getTime() < Date.now();
 
   return (
     <div
@@ -744,7 +748,7 @@ function EventChip({
       ref={movable ? ref : undefined}
       className={cn(
         "flex items-start gap-0.5 px-1.5 py-0.5 transition-[background-color,opacity] motion-reduce:transition-none",
-        toneChip[status.tone],
+        toneChip[past ? "neutral" : status.tone],
         // Hover is a ring, not a background swap: replacing the status tint on
         // hover would put the status text on a colour nothing checked it against.
         isDragging ? "opacity-60" : "hover:ring-1 hover:ring-ring/40",
@@ -756,7 +760,7 @@ function EventChip({
         // day it occupies — without it every one of them would be announced
         // identically. The status rides along because the tint is the only other
         // place it appears, and colour is not a label.
-        aria-label={`Open ${event.title}, ${status.label}, on ${mediumDate.format(date)}`}
+        aria-label={`Open ${event.title}, ${status.label}${past ? ", past" : ""}, on ${mediumDate.format(date)}`}
         onClick={(click) => onOpen(event.id, click.currentTarget)}
         className="min-w-0 flex-1 cursor-pointer rounded-sm text-left"
       >
