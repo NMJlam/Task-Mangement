@@ -14,8 +14,8 @@ function displayName(member: RosterMember): string {
 /**
  * The `+` trigger and the searchable member list it reveals.
  *
- * A Radix Popover portaled INTO the dialog (`portalTarget`), which is the one
- * arrangement that satisfies all three constraints at once:
+ * A Radix Popover portaled INTO the dialog (`portalTarget`) when there is one,
+ * which is the one arrangement that satisfies all three constraints at once:
  *
  *   - it floats, so opening it overlays the metadata instead of pushing the
  *     dialog taller;
@@ -26,18 +26,24 @@ function displayName(member: RosterMember): string {
  *   - the dialog centres without a transform, so the popper's `strategy: fixed`
  *     resolves against the viewport rather than a transformed ancestor.
  *
- * Shared by both dialogs. The two callers persist differently — the detail
- * dialog writes the whole set on each toggle, the create dialog edits a local
- * draft that is submitted with the rest of its form — so this component only
- * ever reports the next whole set and never touches the network. That also
- * means `onChange` is the edit switch: with it, the list is live; without it,
- * the assignments render as plain text with no control at all.
+ * `portalTarget` is optional because these constraints only exist inside a
+ * dialog. With none — a proposal card in a chat, which is ordinary page flow —
+ * the popover portals to the body and Radix's own default boundary (the
+ * viewport) does the flipping.
+ *
+ * Shared by both task dialogs, the new-conversation dialog and the proposal
+ * card. The callers persist differently — a dialog writes the whole set on each
+ * toggle, the card edits a local draft that is applied with the rest of its
+ * plan — so this component only ever reports the next whole set and never
+ * touches the network. That also means `onChange` is the edit switch: with it,
+ * the list is live; without it, the assignments render as plain text with no
+ * control at all.
  */
 export function AssigneeField({
   members,
   selectedIds,
   onChange,
-  portalTarget,
+  portalTarget = null,
   subject,
   idPrefix,
   busy = false,
@@ -46,7 +52,11 @@ export function AssigneeField({
   members: RosterMember[];
   selectedIds: string[];
   onChange?: (next: string[]) => void;
-  portalTarget: HTMLElement | null;
+  /**
+   * The dialog content the popover must live in, when there is a dialog.
+   * `null` — a card in ordinary page flow — portals to the document body.
+   */
+  portalTarget?: HTMLElement | null;
   /** Names the member list for assistive tech — the task's title, or "this task". */
   subject: string;
   /** Keeps the popover's DOM ids unique when two instances could be mounted. */
@@ -118,14 +128,14 @@ export function AssigneeField({
           )}
         </div>
 
-        {onChange && portalTarget && (
+        {onChange && (
           <Popover.Portal container={portalTarget}>
             <Popover.Content
               id={panelId}
               aria-label={`Members for ${subject}`}
               // `start`, not `end`: the `+` sits at the start of its row in
-              // both dialogs, so a 288px panel aligned to its right edge would
-              // overhang the dialog's left edge, and collision detection then
+              // every caller, so a 288px panel aligned to its right edge would
+              // overhang the card's left edge, and collision detection then
               // shifts it clear — leaving the panel floating, detached from the
               // control that opened it. Aligned to the start edge it needs no
               // shift and stays visually attached.
@@ -135,7 +145,9 @@ export function AssigneeField({
               // Kept INSIDE the dialog card: without a boundary the popper is
               // measured against the viewport, so it hangs below the modal and
               // covers the description. With the dialog as the boundary Radix
-              // shifts or flips it to stay within the card.
+              // shifts or flips it to stay within the card. A null boundary
+              // (no dialog) drops out of Radix's boundary list, which is what
+              // restores the viewport default.
               collisionBoundary={portalTarget}
               collisionPadding={12}
               className="z-50 grid w-[min(18rem,calc(100vw-3rem))] gap-2 rounded-lg border bg-popover p-3 text-popover-foreground"
