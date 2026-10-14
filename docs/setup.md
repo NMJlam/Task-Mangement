@@ -247,7 +247,7 @@ decides whether it costs anything:
    AI_ENABLED=1
    GEMINI_API_KEY=<the key>
    GEMINI_MODEL=gemini-3.5-flash-lite
-   AI_DAILY_RUN_CAP=50
+   AI_DAILY_RUN_CAP=200
    ```
 
    `.env` is gitignored. If a key does reach a commit, revoke it in AI Studio —
@@ -261,7 +261,7 @@ decides whether it costs anything:
    finishes a plan. The client retries a busy call twice; after that the member
    sees "The AI service is busy right now". `npm run dev` restarts the backend
    when `.env` changes, so a new model id takes effect on save. Compare the daily request limit against
-   `AI_DAILY_RUN_CAP` — with a committee of twenty, fifty runs each would
+   `AI_DAILY_RUN_CAP` — with a committee of twenty, 200 runs each would
    exhaust most free daily quotas, so drop the cap to 10–15 before a demo.
 
 5. **Restrict the key** (optional, two minutes):

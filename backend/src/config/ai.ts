@@ -30,6 +30,6 @@ export function aiConfig(): AiConfig {
     enabled: process.env.AI_ENABLED === "1" && Boolean(process.env.GEMINI_API_KEY),
     apiKey: process.env.GEMINI_API_KEY ?? "",
     model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
-    dailyRunCap: Number(process.env.AI_DAILY_RUN_CAP) || 50,
+    dailyRunCap: Number(process.env.AI_DAILY_RUN_CAP) || 200,
   };
 }
