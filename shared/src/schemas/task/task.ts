@@ -169,12 +169,19 @@ const paginationShape = {
   offset: z.coerce.number().int().min(0).default(0),
 };
 
+/**
+ * Leaves out tasks on a cancelled event. Opt-in, so every existing reader keeps
+ * the whole list; the `/tasks` board asks for it by default.
+ */
+const hideCancelled = z.stringbool().default(false);
+
 export const listTasksQuerySchema = z.object({
   eventId: z.uuid().optional(),
   teamId: z.uuid().optional(),
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
   assignee: z.uuid().optional(),
+  hideCancelled,
   ...paginationShape,
 });
 
@@ -188,6 +195,7 @@ export const overdueTasksQuerySchema = z.object({
   teamId: z.uuid().optional(),
   assignee: z.uuid().optional(),
   priority: taskPrioritySchema.optional(),
+  hideCancelled,
   ...paginationShape,
 });
 

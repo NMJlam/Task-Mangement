@@ -304,6 +304,31 @@ describe("/api/tasks", () => {
       const none = await request(app).get("/api/tasks").query({ teamId, assignee: bystander.id });
       expect(none.body.tasks).toEqual([]);
     });
+
+    it("hides tasks on a cancelled event only when asked, keeping standing work", async () => {
+      const actor = await member("officer", "officer");
+      const live = await event();
+      const cancelled = await event({ status: "cancelled" });
+      for (const [title, eventId] of [
+        ["Live", live.id],
+        ["Cancelled", cancelled.id],
+        ["Standing", null],
+      ] as const) {
+        const [task] = await db.insert(tasks).values({ id: newId(), eventId, title }).returning();
+        await assignTo(task!.id, [actor.id]);
+      }
+      signedInAs(actor);
+
+      async function titles(query: Record<string, string>) {
+        const response = await request(app)
+          .get("/api/tasks")
+          .query({ assignee: actor.id, ...query });
+        return (response.body.tasks as { title: string }[]).map((task) => task.title).sort();
+      }
+
+      expect(await titles({})).toEqual(["Cancelled", "Live", "Standing"]);
+      expect(await titles({ hideCancelled: "true" })).toEqual(["Live", "Standing"]);
+    });
   });
 
   describe("GET /api/tasks/overdue", () => {

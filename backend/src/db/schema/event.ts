@@ -22,9 +22,10 @@ import { uuidShape } from "./sql-uuid.js";
  * and each owes a deliverable. That relationship is `workstream`.
  *
  * 'cancelled' IS the soft delete, and status alone carries it. There is no
- * deleted_at, because RESTRICT on expense.event_id already makes a destructive
- * delete impossible, and a soft-delete flag that leaks from one query is worse
- * than a hard delete.
+ * deleted_at: a soft-delete flag that leaks from one query is worse than a hard
+ * delete. A cancelled event with no expenses can be hard-deleted
+ * (`DELETE /api/events/:id/permanent`); RESTRICT on expense.event_id keeps every
+ * other one.
  *
  * `owner` is NOT the `creator` audit_log would give you — it is an
  * AUTHORISATION input (the `PATCH` rule is "lead+ or owner"), so it must be a

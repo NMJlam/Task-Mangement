@@ -22,6 +22,8 @@ export type TaskFilterState = {
   /** An event id, or `""` for every event. */
   event: string;
   overdue: boolean;
+  /** Shows tasks on cancelled events, which the board hides by default. */
+  cancelled: boolean;
 };
 
 export const defaultTaskFilters: TaskFilterState = {
@@ -30,6 +32,7 @@ export const defaultTaskFilters: TaskFilterState = {
   priority: "",
   event: "",
   overdue: false,
+  cancelled: false,
 };
 
 /** Whether the reader has narrowed anything — what "Clear Filters" clears. */
@@ -39,7 +42,8 @@ export function isFiltered(filters: TaskFilterState): boolean {
     filters.status !== "" ||
     filters.priority !== "" ||
     filters.event !== "" ||
-    filters.overdue
+    filters.overdue ||
+    filters.cancelled
   );
 }
 
@@ -59,6 +63,7 @@ export function TaskFilters({
   onPriorityChange,
   onEventChange,
   onOverdueChange,
+  onCancelledChange,
   onClear,
 }: {
   filters: TaskFilterState;
@@ -69,6 +74,7 @@ export function TaskFilters({
   onPriorityChange: (next: TaskPriority | "") => void;
   onEventChange: (next: string) => void;
   onOverdueChange: (next: boolean) => void;
+  onCancelledChange: (next: boolean) => void;
   onClear: () => void;
 }) {
   return (
@@ -101,6 +107,19 @@ export function TaskFilters({
           />
           <Label htmlFor="task-overdue" className="cursor-pointer text-sm text-muted-foreground">
             Overdue only
+          </Label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            id="task-cancelled"
+            type="checkbox"
+            checked={filters.cancelled}
+            onChange={(event) => onCancelledChange(event.target.checked)}
+            className="size-4 cursor-pointer rounded-none border accent-primary"
+          />
+          <Label htmlFor="task-cancelled" className="cursor-pointer text-sm text-muted-foreground">
+            Show cancelled
           </Label>
         </div>
 

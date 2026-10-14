@@ -10,6 +10,7 @@ export const auditActionSchema = z.enum([
   "event.updated",
   "event.status_changed",
   "event.cancelled",
+  "event.deleted",
 ]);
 
 export type AuditAction = z.infer<typeof auditActionSchema>;

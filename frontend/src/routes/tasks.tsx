@@ -46,6 +46,7 @@ function readFilters(params: URLSearchParams): TaskFilterState {
     priority: priority.success ? priority.data : "",
     event: event.success && event.data ? event.data : "",
     overdue: params.get("overdue") === "true",
+    cancelled: params.get("cancelled") === "true",
   };
 }
 
@@ -59,6 +60,7 @@ function describeFilters(filters: TaskFilterState, query: string, events?: Event
   if (filters.event) {
     parts.push(events?.find((event) => event.id === filters.event)?.title ?? "the chosen event");
   }
+  if (filters.cancelled) parts.push("including cancelled events");
   if (query.trim()) parts.push(`matching “${query.trim()}”`);
   return parts.join(", ");
 }
@@ -85,6 +87,8 @@ export function TasksPage() {
     priority: filters.priority || undefined,
     eventId: filters.event || undefined,
     overdue: filters.overdue,
+    // A cancelled event picked by name is asked for, so it is not hidden again.
+    hideCancelled: !filters.cancelled && !filters.event,
     enabled: !needsIdentity || identityReady,
   });
   // DELETE /api/tasks/:id is `authorise(1)`, one of the two blast-radius task
@@ -118,6 +122,7 @@ export function TasksPage() {
     if (next.priority) params.set("priority", next.priority);
     if (next.event) params.set("event", next.event);
     if (next.overdue) params.set("overdue", "true");
+    if (next.cancelled) params.set("cancelled", "true");
     // The raw text, not a trimmed copy: the search box is controlled by this
     // value, and trimming it here would swallow a space mid-word and stack the
     // next keystroke onto the wrong string.
@@ -180,6 +185,7 @@ export function TasksPage() {
         onPriorityChange={(priority) => updateFilters({ priority })}
         onEventChange={(event) => updateFilters({ event })}
         onOverdueChange={(overdue) => updateFilters({ overdue })}
+        onCancelledChange={(cancelled) => updateFilters({ cancelled })}
         onClear={() => writeParams(defaultTaskFilters, "")}
       />
 

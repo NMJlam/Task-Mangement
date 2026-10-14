@@ -23,6 +23,7 @@ import {
   type GetEventQuery,
   type ListEventsQuery,
   type ListEventsResponse,
+  type Role,
   type TaskCounts,
   type Tier,
   type UpdateEvent,
@@ -35,6 +36,7 @@ import {
   appUsers,
   channels,
   events,
+  expenses,
   taskAssignees,
   tasks,
   teams,
@@ -809,6 +811,19 @@ eventsRouter.patch(
 // — there is no dedicated schema column for it, so renaming that team breaks
 // this check silently.
 
+async function mayCancel(user: { id: string; role: Role }, eventId: string): Promise<boolean> {
+  if (can(user.role, "event:cancel")) return true;
+  const db = getDb();
+  const [eventsTeam] = await db.select().from(teams).where(eq(teams.name, "Events")).limit(1);
+  if (eventsTeam?.lead !== user.id) return false;
+  const [workstream] = await db
+    .select({ id: workstreams.id })
+    .from(workstreams)
+    .where(and(eq(workstreams.eventId, eventId), eq(workstreams.teamId, eventsTeam.id)))
+    .limit(1);
+  return Boolean(workstream);
+}
+
 eventsRouter.delete(
   "/events/:id",
   authenticate,
@@ -825,21 +840,7 @@ eventsRouter.delete(
         return;
       }
 
-      const isPresident = can(req.user!.role, "event:cancel");
-      let isEventsTeamLead = false;
-      if (!isPresident) {
-        const [eventsTeam] = await db.select().from(teams).where(eq(teams.name, "Events")).limit(1);
-        if (eventsTeam?.lead === req.user!.id) {
-          const [workstream] = await db
-            .select({ id: workstreams.id })
-            .from(workstreams)
-            .where(and(eq(workstreams.eventId, id), eq(workstreams.teamId, eventsTeam.id)))
-            .limit(1);
-          isEventsTeamLead = Boolean(workstream);
-        }
-      }
-
-      if (!isPresident && !isEventsTeamLead) {
+      if (!(await mayCancel(req.user!, id))) {
         res.status(403).json({
           error: {
             code: "FORBIDDEN",
@@ -870,6 +871,74 @@ eventsRouter.delete(
         await releaseAllocation(tx, id);
         await notifyAssignees(tx, id, "event_cancelled", `"${event.title}" was cancelled.`);
         await auditEvent(tx, req.user!.id, "event.cancelled", id, { from: event.status });
+      });
+
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── DELETE /api/events/:id/permanent ─────────────────────────────────────────
+//
+// Removes a cancelled event for good: its tasks, workstreams and thread go with
+// it (all ON DELETE CASCADE). Only a cancelled event, so a stray click can never
+// skip the cancel step's budget release and notifications. Expenses are the
+// club's ledger and are RESTRICT, so an event with any is refused instead.
+
+eventsRouter.delete(
+  "/events/:id/permanent",
+  authenticate,
+  authorise(1),
+  validate(eventParamsSchema, "params"),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id!;
+      const db = getDb();
+
+      const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+      if (!event || event.minTier > req.user!.tier) {
+        notFound(res);
+        return;
+      }
+
+      if (!(await mayCancel(req.user!, id))) {
+        res.status(403).json({
+          error: {
+            code: "FORBIDDEN",
+            message: "Only the president or the Events-team lead can delete this event.",
+          },
+        });
+        return;
+      }
+
+      if (event.status !== "cancelled") {
+        res.status(409).json({
+          error: { code: "EVENT_NOT_CANCELLED", message: "Cancel the event before deleting it." },
+        });
+        return;
+      }
+
+      const [expense] = await db
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(eq(expenses.eventId, id))
+        .limit(1);
+      if (expense) {
+        res.status(409).json({
+          error: {
+            code: "EVENT_HAS_EXPENSES",
+            message:
+              "This event has expenses on record, so it stays cancelled rather than deleted.",
+          },
+        });
+        return;
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.delete(events).where(and(eq(events.id, id), eq(events.status, "cancelled")));
+        await auditEvent(tx, req.user!.id, "event.deleted", id, { title: event.title });
       });
 
       res.status(204).end();
