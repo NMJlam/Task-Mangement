@@ -28,6 +28,22 @@ describe("expenseTransition", () => {
     ).toThrow(ExpenseTransitionError);
   });
 
+  it("lets an actor who may decide their own claim approve or reject it", () => {
+    expect(
+      expenseTransition("pending", { action: "approve" }, "same", "same", now, true),
+    ).toMatchObject({ status: "approved", decider: "same" });
+    expect(
+      expenseTransition(
+        "pending",
+        { action: "reject", reason: "Duplicate" },
+        "same",
+        "same",
+        now,
+        true,
+      ),
+    ).toMatchObject({ status: "rejected", decider: "same" });
+  });
+
   it("returns a paid expense to approved and clears paidAt", () => {
     // paidAt must clear with the status: expense_paid_at_matches_status_check
     // ties the two together, so leaving it set would be refused by the database.

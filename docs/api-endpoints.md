@@ -977,8 +977,9 @@ clearing `paidAt` — it stays committed (still owed) but stops counting as spen
 and can be marked paid again. Returns `{ "expense": { … }, "budget": { … } }`
 with refreshed budget context. A second or out-of-order decision is
 `409 INVALID_EXPENSE_STATE`; approving/rejecting your own claim is
-`422 OWN_EXPENSE` (marking paid or unpaid has no such rule — it is bookkeeping,
-not a spending decision). The submitter is notified of a payment and of its
+`422 OWN_EXPENSE` unless you hold `expense:approve-own` — the treasurer, who
+may decide every expense, their own included (marking paid or unpaid has no
+such rule — it is bookkeeping, not a spending decision). The submitter is notified of a payment and of its
 reversal.
 
 ## AI

@@ -82,15 +82,10 @@ export const expenses = pgTable(
       sql`(${table.status} = 'rejected') = (${table.rejectionReason} IS NOT NULL)`,
     ),
 
-    // Separation of duty. Written this way, NOT as
-    // `decider IS DISTINCT FROM submitter`: that form returns FALSE for two
-    // NULLs, a CHECK is violated only by FALSE, and both columns go NULL when a
-    // member is removed, so the obvious form would block member deletion.
-    check(
-      "expense_decider_is_not_submitter_check",
-      sql`${table.decider} IS NULL OR ${table.decider} <> ${table.submitter}`,
-    ),
-
+    // No decider <> submitter check. Separation of duty depends on the
+    // decider's role (the treasurer may decide their own claim,
+    // `expense:approve-own`), which a CHECK cannot see, so `expenseTransition`
+    // is where that rule lives.
     check(
       "expense_decided_at_matches_status_check",
       sql`(${table.status} = 'pending') = (${table.decidedAt} IS NULL)`,

@@ -73,4 +73,9 @@ describe("role access", () => {
     expect(can("vice_president", "expense:approve")).toBe(false);
     expect(can("treasurer", "budget:manage")).toBe(true);
   });
+
+  it("lets the treasurer alone decide an expense they submitted", () => {
+    const holders = roleSchema.options.filter((role) => can(role, "expense:approve-own"));
+    expect(holders).toEqual(["treasurer"]);
+  });
 });

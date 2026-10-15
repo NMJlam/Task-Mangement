@@ -471,16 +471,6 @@ describe("expense constraints", () => {
     ).toBe("expense_rejection_reason_matches_status_check");
   });
 
-  it("rejects a decider who is also the submitter", async () => {
-    expect(
-      await violatedConstraint(
-        `INSERT INTO "expense" (${base}, "status", "decided_at", "submitter", "decider")
-         VALUES ('${newId()}', 'Pizza', 'catering', 100, 'approved', now(),
-                 '${userA}', '${userA}')`,
-      ),
-    ).toBe("expense_decider_is_not_submitter_check");
-  });
-
   it("rejects a pending expense that already has decided_at", async () => {
     expect(
       await violatedConstraint(

@@ -1,0 +1,1 @@
+ALTER TABLE "expense" DROP CONSTRAINT "expense_decider_is_not_submitter_check";

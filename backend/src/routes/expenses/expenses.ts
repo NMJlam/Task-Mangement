@@ -186,7 +186,13 @@ expensesRouter.post(
     try {
       const db = getDb();
       const expense = await db.transaction((tx) =>
-        decideExpense(tx, req.params.id!, res.locals.validated as DecideExpense, req.user!.id),
+        decideExpense(
+          tx,
+          req.params.id!,
+          res.locals.validated as DecideExpense,
+          req.user!.id,
+          can(req.user!.role, "expense:approve-own"),
+        ),
       );
       res.status(200).json({
         expense,
