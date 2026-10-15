@@ -153,7 +153,7 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-test("shows the briefing on the Overview and pinned in AI Breakdown", async ({ page }) => {
+test("shows the briefing on the Overview and pinned in AI Assistant", async ({ page }) => {
   await stubAssistant(page);
 
   await page.goto("/");
@@ -188,7 +188,7 @@ test("shows no assistant chat in Messages", async ({ page }) => {
   // Messages reads the real thread API, which never serves an ai channel — and
   // the page no longer has an assistant entry of its own.
   await expect(page.getByText("MAC Assistant")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /assistant/iu })).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("link", { name: /assistant/iu })).toHaveCount(0);
 });
 
 test("says the assistant is off when it is, and still lists the chats", async ({ page }) => {

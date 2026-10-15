@@ -15,7 +15,7 @@ export type BriefingState =
 
 /**
  * ViewModel for the member's daily briefing, shared by the Overview card and
- * the briefing in AI Breakdown so the two never disagree. The server makes at
+ * the briefing in AI Assistant so the two never disagree. The server makes at
  * most one a club day and re-serves it after that, so reading on every mount —
  * and on every retry — is cheap.
  */

@@ -26,7 +26,7 @@ function renderCard() {
   );
 }
 
-it("shows the briefing with a way into it in AI Breakdown", async () => {
+it("shows the briefing with a way into it in AI Assistant", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(today));
 
   renderCard();

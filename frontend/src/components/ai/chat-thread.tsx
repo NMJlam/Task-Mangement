@@ -10,7 +10,7 @@ import type { ApplyStats } from "@/hooks/use-ai-chat";
 const messageTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
- * The right column of AI Breakdown: one chat's header, conversation and
+ * The right column of AI Assistant: one chat's header, conversation and
  * composer. Declarative — everything it shows and does arrives as props from
  * the page's view-models.
  */

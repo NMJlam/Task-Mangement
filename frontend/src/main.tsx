@@ -10,8 +10,8 @@ import { HealthPage } from "./routes/health";
 import { LoginPage } from "./routes/login";
 import { NotFoundPage } from "./routes/not-found";
 
-const AiBreakdownPage = lazy(() =>
-  import("./routes/ai-breakdown").then(({ AiBreakdownPage }) => ({ default: AiBreakdownPage })),
+const AiAssistantPage = lazy(() =>
+  import("./routes/ai-assistant").then(({ AiAssistantPage }) => ({ default: AiAssistantPage })),
 );
 const CalendarPage = lazy(() =>
   import("./routes/calendar").then(({ CalendarPage }) => ({ default: CalendarPage })),
@@ -145,7 +145,7 @@ const routes: RouteObject[] = [
     path: "/ai",
     element: (
       <RequireAuth>
-        <AiBreakdownPage />
+        <AiAssistantPage />
       </RequireAuth>
     ),
   },
@@ -154,7 +154,7 @@ const routes: RouteObject[] = [
     path: "/ai/briefing",
     element: (
       <RequireAuth>
-        <AiBreakdownPage view="briefing" />
+        <AiAssistantPage view="briefing" />
       </RequireAuth>
     ),
   },
@@ -162,7 +162,7 @@ const routes: RouteObject[] = [
     path: "/ai/:chatId",
     element: (
       <RequireAuth>
-        <AiBreakdownPage />
+        <AiAssistantPage />
       </RequireAuth>
     ),
   },

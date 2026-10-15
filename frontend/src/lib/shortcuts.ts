@@ -13,7 +13,7 @@ export const GO_TO = [
   { id: "finance", key: "f", to: "/finance", label: "Finance" },
   { id: "inbox", key: "i", to: "/notifications", label: "Inbox" },
   { id: "messages", key: "m", to: "/messages", label: "Messages" },
-  { id: "ai", key: "a", to: "/ai", label: "AI Breakdown" },
+  { id: "ai", key: "a", to: "/ai", label: "AI Assistant" },
   { id: "members", key: "p", to: "/members", label: "Members" },
   { id: "settings", key: "s", to: "/settings", label: "Settings" },
 ] as const;
