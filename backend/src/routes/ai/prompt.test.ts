@@ -42,6 +42,16 @@ describe("buildSystemPrompt and the member's reading of a reply", () => {
   });
 });
 
+describe("buildSystemPrompt and Smart-assign", () => {
+  it("tells the model to assign every new task, balanced on open-task count", () => {
+    // Optional in the tool's args, so unless the prompt asks, whether a plan
+    // comes back assigned is down to the model's mood on the day.
+    const prompt = buildSystemPrompt(tools, "", me);
+    expect(prompt).toMatch(/every new task[^.]*assigneeHandles/iu);
+    expect(prompt).toMatch(/lowest openTaskCount/u);
+  });
+});
+
 describe("buildSystemPrompt and who is asking", () => {
   it("names the caller and reads 'my' as their handle, so 'my tasks' are not the club's", () => {
     const prompt = buildSystemPrompt(tools, "", me);
