@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const lastActive = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 /**
- * The left column of AI Breakdown: New chat, then the member's chats with the
+ * The left column of AI Assistant: New chat, then the member's chats with the
  * open one marked. Laid out like the Messages list, including the horizontal
  * strip it becomes on a narrow screen. Rows are links — a chat has an address —
  * with rename and delete beside each as their own buttons, so neither is nested

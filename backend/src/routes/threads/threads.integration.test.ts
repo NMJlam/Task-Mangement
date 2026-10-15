@@ -710,7 +710,7 @@ describe("/api/threads (integration)", () => {
   /**
    * An assistant chat is a channel too, and its owner is its member — which is
    * exactly what the thread routes used to look for. They must not serve it:
-   * AI chats live in AI Breakdown only, never in Messages.
+   * AI chats live in AI Assistant only, never in Messages.
    */
   describe("assistant chats", () => {
     async function aiChat(owner: { id: string }) {

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
-import { AiBreakdownPage } from "./ai-breakdown";
+import { AiAssistantPage } from "./ai-assistant";
 
 const CHAT_A = "018f3a4b-0000-7000-8000-0000000000a1";
 const CHAT_B = "018f3a4b-0000-7000-8000-0000000000b2";
@@ -114,9 +114,9 @@ function stubApi(
 function renderAt(path: string) {
   const router = createMemoryRouter(
     [
-      { path: "/ai", element: <AiBreakdownPage /> },
-      { path: "/ai/briefing", element: <AiBreakdownPage view="briefing" /> },
-      { path: "/ai/:chatId", element: <AiBreakdownPage /> },
+      { path: "/ai", element: <AiAssistantPage /> },
+      { path: "/ai/briefing", element: <AiAssistantPage view="briefing" /> },
+      { path: "/ai/:chatId", element: <AiAssistantPage /> },
     ],
     { initialEntries: [path], future: { v7_relativeSplatPath: true } },
   );

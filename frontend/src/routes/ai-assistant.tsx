@@ -17,13 +17,13 @@ import { cn } from "@/lib/utils";
 const GENERATED_PANEL_ID = "ai-generated-panel";
 
 /**
- * AI Breakdown: the member's assistant chats beside the open one, laid out like
+ * AI Assistant: the member's assistant chats beside the open one, laid out like
  * Messages. `/ai` is a blank chat — nothing is saved until its first message
  * succeeds — `/ai/:chatId` is one that exists, and `/ai/briefing` is today's
  * briefing pinned above the chats. The address carries what is open, so a
  * reload or a shared link lands where the member was.
  */
-export function AiBreakdownPage({ view }: { view?: "briefing" }) {
+export function AiAssistantPage({ view }: { view?: "briefing" }) {
   const { chatId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
