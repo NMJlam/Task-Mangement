@@ -22,6 +22,8 @@ export function expenseTransition(
   actorId: string,
   submitter: string | null,
   now = new Date(),
+  /** `expense:approve-own` — the route resolves it from the caller's role. */
+  mayDecideOwn = false,
 ): ExpensePatch {
   if (decision.action === "mark_paid") {
     if (status !== "approved") {
@@ -53,7 +55,7 @@ export function expenseTransition(
       "Only a pending expense can be approved or rejected.",
     );
   }
-  if (submitter === actorId) {
+  if (submitter === actorId && !mayDecideOwn) {
     throw new ExpenseTransitionError("OWN_EXPENSE", "You cannot decide your own expense.");
   }
 
@@ -113,9 +115,22 @@ export async function deletePendingExpense(tx: Tx, id: string): Promise<void> {
   await tx.delete(expenses).where(and(eq(expenses.id, id), eq(expenses.status, "pending")));
 }
 
-export async function decideExpense(tx: Tx, id: string, decision: DecideExpense, actorId: string) {
+export async function decideExpense(
+  tx: Tx,
+  id: string,
+  decision: DecideExpense,
+  actorId: string,
+  mayDecideOwn = false,
+) {
   const current = await lockedExpense(tx, id);
-  const patch = expenseTransition(current.status, decision, actorId, current.submitter);
+  const patch = expenseTransition(
+    current.status,
+    decision,
+    actorId,
+    current.submitter,
+    new Date(),
+    mayDecideOwn,
+  );
   const [updated] = await tx
     .update(expenses)
     .set(patch)

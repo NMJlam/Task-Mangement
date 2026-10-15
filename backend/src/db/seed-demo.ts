@@ -683,8 +683,8 @@ export async function seedDemo(production = false): Promise<void> {
     .onConflictDoNothing();
 
   // One expense per status, so the treasurer's queue, the ledger and the
-  // rejected list all have rows. decider is never the submitter
-  // (expense_decider_is_not_submitter_check).
+  // rejected list all have rows. decider is never the submitter, the
+  // separation of duty everyone but the treasurer is held to.
   await db
     .insert(expenses)
     .values([

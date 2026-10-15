@@ -4,6 +4,11 @@ export const CAPABILITIES = {
   "member:role-change": ["president", "vice_president"],
   "invite:create": ["president", "secretary", "director"],
   "expense:approve": ["president", "treasurer"],
+  // Deciding a claim you submitted yourself. The treasurer approves every
+  // expense, their own included, since they log most of them; everyone else
+  // still needs a second person, so the president's own claims go to the
+  // treasurer.
+  "expense:approve-own": ["treasurer"],
   "budget:manage": ["president", "treasurer"],
   // Tier 2 also contains the VP, treasurer and secretary — cancelling an
   // event releases its allocation (Rule 2), and that call is the president's

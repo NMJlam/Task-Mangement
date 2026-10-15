@@ -256,6 +256,23 @@ describe("FinancePage", () => {
     expect(screen.queryByRole("button", { name: "Mark Printing unpaid" })).not.toBeInTheDocument();
   });
 
+  it("offers the treasurer Approve on their own claim", async () => {
+    const own = expense({ submitter: "018f3a4b-0000-7000-8000-000000000001" });
+    stubFetch({ expenses: { expenses: [own], total: 1 } });
+    renderPage();
+    expect(await screen.findByRole("button", { name: "Approve Printing" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject Printing" })).toBeInTheDocument();
+  });
+
+  it("withholds Approve from a president's own claim", async () => {
+    viewer.role = "president";
+    const own = expense({ submitter: "018f3a4b-0000-7000-8000-000000000001" });
+    stubFetch({ expenses: { expenses: [own], total: 1 } });
+    renderPage();
+    await screen.findByText("Printing");
+    expect(screen.queryByRole("button", { name: "Approve Printing" })).not.toBeInTheDocument();
+  });
+
   it("offers Unmark Paid only to the finance roles", async () => {
     viewer.role = "officer";
     stubFetch({

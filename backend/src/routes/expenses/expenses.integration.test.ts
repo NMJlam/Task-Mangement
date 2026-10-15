@@ -122,10 +122,6 @@ describe("finance routes (integration)", () => {
       submitter: treasurer.id,
     });
 
-    expect(
-      (await request(app).post(`/api/expenses/${id}/decision`).send({ action: "approve" })).status,
-    ).toBe(422);
-
     signInAs(president);
     const approved = await request(app)
       .post(`/api/expenses/${id}/decision`)
@@ -149,6 +145,34 @@ describe("finance routes (integration)", () => {
     expect(paid.body.expense.status).toBe("paid");
     expect(paid.body.budget.spentCents).toBeGreaterThanOrEqual(12_500);
     expect((await db.select().from(expenses).where(eq(expenses.id, id)))[0]?.status).toBe("paid");
+  });
+
+  it("lets the treasurer decide their own claim, but not the president", async () => {
+    const treasurer = await member("treasurer", "treasurer");
+    const president = await member("president", "president");
+    const claim = (description: string) =>
+      request(app).post("/api/expenses").send({ description, amountCents: 900, category: "other" });
+
+    signInAs(treasurer);
+    const treasurers = (await claim(`${PREFIX}treasurer's own`)).body.expense.id as string;
+    const approved = await request(app)
+      .post(`/api/expenses/${treasurers}/decision`)
+      .send({ action: "approve" });
+    expect(approved.status).toBe(200);
+    // Stored, too: no constraint left in the database refuses decider = submitter.
+    expect((await db.select().from(expenses).where(eq(expenses.id, treasurers)))[0]).toMatchObject({
+      status: "approved",
+      submitter: treasurer.id,
+      decider: treasurer.id,
+    });
+
+    signInAs(president);
+    const presidents = (await claim(`${PREFIX}president's own`)).body.expense.id as string;
+    const refused = await request(app)
+      .post(`/api/expenses/${presidents}/decision`)
+      .send({ action: "approve" });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error.code).toBe("OWN_EXPENSE");
   });
 
   it("unmarks a paid expense: back to approved, still committed, no longer spent", async () => {

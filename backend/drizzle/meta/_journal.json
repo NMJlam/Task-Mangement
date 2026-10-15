@@ -99,6 +99,13 @@
       "when": 1791882116597,
       "tag": "0013_rare_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792029119830,
+      "tag": "0014_purple_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

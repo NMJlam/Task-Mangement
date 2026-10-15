@@ -31,6 +31,7 @@ export function FinancePage() {
   const me = useMe();
   const finance = useFinance();
   const canManage = me.status === "ok" && can(me.user.role, "expense:approve");
+  const canDecideOwn = me.status === "ok" && can(me.user.role, "expense:approve-own");
   // A separate capability from logging and deciding expenses: today the same two
   // roles hold both, but they are different powers and can drift apart.
   const canEditBudget = me.status === "ok" && can(me.user.role, "budget:manage");
@@ -295,6 +296,7 @@ export function FinancePage() {
               key={expense.id}
               expense={expense}
               canManage={canManage}
+              canDecideOwn={canDecideOwn}
               myId={me.status === "ok" ? me.user.id : undefined}
               busy={finance.busy}
               onDecide={decide}
@@ -427,20 +429,22 @@ function AllocationRow({ row }: { row: BudgetSummary["allocations"][number] }) {
 function ExpenseRow({
   expense,
   canManage,
+  canDecideOwn,
   myId,
   busy,
   onDecide,
 }: {
   expense: Expense;
   canManage: boolean;
+  canDecideOwn: boolean;
   myId: string | undefined;
   busy: boolean;
   onDecide: (expense: Expense, action: ExpenseAction) => void;
 }) {
-  // Separation of duty: the database refuses a decider who is the submitter
-  // (`expense_decider_is_not_submitter_check`), so the buttons match that rule
-  // rather than offering an action the server will reject.
-  const mine = myId !== undefined && expense.submitter === myId;
+  // Separation of duty: the server refuses to let you decide a claim you
+  // submitted unless you hold `expense:approve-own` (the treasurer), so the
+  // buttons match that rule rather than offering an action it will reject.
+  const barredAsOwn = myId !== undefined && expense.submitter === myId && !canDecideOwn;
 
   return (
     <Card className="gap-0 py-0 shadow-none">
@@ -454,7 +458,7 @@ function ExpenseRow({
             {money(expense.amountCents)} · {expense.category}
           </p>
         </div>
-        {canManage && expense.status === "pending" && !mine && (
+        {canManage && expense.status === "pending" && !barredAsOwn && (
           <div className="flex shrink-0 gap-2">
             <Button
               disabled={busy}
