@@ -68,7 +68,7 @@ export const proposeCreateEvent: Tool = {
 export const proposeCreateTasks: Tool = {
   name: "proposeCreateTasks",
   minTier: 0,
-  describe: `Stage one or more new tasks for the member to review, in a single call. Args: tasks (array). Each task: title (required); optional: description, priority (low|medium|high|urgent), dueOffsetDays (whole days from the event's start, negative is before: -7 is a week ahead), assigneeHandles (array of member handles such as M2), and either eventRef ($event1, an event staged this turn) or eventHandle (E3, an existing event), or neither for standing work. A tier-0 caller may stage at most 1 task in total this turn; tier 1+ may stage up to ${AI_MAX_PROPOSALS}.`,
+  describe: `Stage one or more new tasks for the member to review, in a single call. Args: tasks (array). Each task: title (required); assigneeHandles (array of member handles from listMembers, such as M2 — give every task one unless the member asked otherwise); optional: description, priority (low|medium|high|urgent), dueOffsetDays (whole days from the event's start, negative is before: -7 is a week ahead), and either eventRef ($event1, an event staged this turn) or eventHandle (E3, an existing event), or neither for standing work. A tier-0 caller may stage at most 1 task in total this turn; tier 1+ may stage up to ${AI_MAX_PROPOSALS}.`,
   async run(ctx: ToolContext, args): Promise<unknown> {
     const parsed = proposeCreateTasksArgsSchema.safeParse(args);
     if (!parsed.success) return rejection(parsed.error, "Invalid tasks");
